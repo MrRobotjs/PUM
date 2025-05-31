@@ -1,0 +1,81 @@
+{# app/templates/setup/wizard_step_2_plex.html #}
+{% extends "base.html" %}
+{% from "_formhelpers.html" import render_field, render_submit_field %}
+
+{% block head_extra %}
+    {# Font Awesome is in base.html #}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] px-4 py-12">
+    <div class="w-full max-w-lg"> {# Slightly wider for potentially longer field descriptions #}
+        <div class="bg-plex-surface dark:bg-gray-800 shadow-2xl rounded-lg">
+            <div class="px-6 py-5 bg-plex-accent dark:bg-opacity-25">
+                <h2 class="text-xl font-semibold text-center text-white dark:text-plex-accent">
+                    Setup Wizard: Step 2 of 3
+                </h2>
+                <p class="text-sm text-center text-white/80 dark:text-plex-accent/80 mt-1">Plex & Application URL</p>
+            </div>
+
+            <div class="p-6 md:p-8">
+                <p class="text-sm text-plex-text-secondary dark:text-gray-300 mb-6 text-center">
+                    Configure your Plex server details and the public URL for this application.
+                </p>
+
+                <form method="POST" action="{{ url_for('setup.setup_wizard', step=2) }}" novalidate>
+                    {{ form.hidden_tag() }} {# CSRF token from SetupPlexAndAppForm #}
+
+                    <div class="space-y-6"> 
+                        {{ render_field(form.plex_url, 
+                                        placeholder="http://localhost:32400 or https://plex.domain.com", 
+                                        focus_theme='plex',
+                                        autocomplete="url") }}
+                        
+                        <div class="form-field-group">
+                            {{ form.plex_token.label(class="form-label") }}
+                            {# Manually render input to control classes precisely, or enhance render_field macro #}
+                            {{ form.plex_token(type="password", class="form-input form-input-themed form-input-plex-focus" + (" form-input-error" if form.plex_token.errors else ""), placeholder="Your X-Plex-Token") }}
+                            <div class="mt-2 p-3 bg-blue-50 dark:bg-gray-700 border border-blue-200 dark:border-gray-600 rounded-md text-xs text-blue-700 dark:text-blue-300">
+                                <strong>Finding your X-Plex-Token:</strong>
+                                <ol class="list-decimal list-inside ml-2 mt-1 mb-0 space-y-0.5">
+                                    <li>Open Plex Web. Navigate to any library item.</li>
+                                    <li>Click menu (...) → "Get Info" → "View XML".</li>
+                                    <li>In the URL bar of the new tab/window, find <code>X-Plex-Token=YOUR_TOKEN_HERE</code>. Copy the value.</li>
+                                </ol>
+                            </div>
+                            {% if form.plex_token.errors %}{% for error in form.plex_token.errors %}<p class="form-error-text">{{ error }}</p>{% endfor %}{% endif %}
+                            {% if form.plex_token.description %}<p class="form-description-text">{{ form.plex_token.description }}</p>{% endif %}
+                        </div>
+                        
+                        {{ render_field(form.app_base_url, 
+                                        placeholder="e.g., https://pum.yourdomain.com", 
+                                        focus_theme='plex',
+                                        autocomplete="url") }}
+                    </div>
+                    
+                    <hr class="border-plex-border dark:border-gray-600 my-6">
+                    
+                    <div class="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0 sm:space-x-3 pt-2">
+                        <a href="{{ url_for('setup.setup_wizard', step=1) }}" 
+                           class="w-full sm:w-auto inline-flex justify-center items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-plex-accent dark:focus:ring-offset-plex-bg">
+                            <i class="fas fa-arrow-left me-2"></i> Previous
+                        </a>
+                        {# Use the correct submit field name from SetupPlexAndAppForm #}
+                        {{ render_submit_field(form.submit_step2_settings, class="w-full sm:w-auto", text="Next: Discord Config", size="normal", icon_class="fas fa-arrow-right") }} 
+                    </div>
+                </form>
+            </div>
+        </div>
+        {# Progress Indicator #}
+        <div class="mt-6 text-center">
+            <p class="text-xs text-plex-text-secondary dark:text-gray-400">
+                <a href="{{ url_for('setup.setup_wizard', step=1) }}" class="hover:text-plex-accent dark:hover:text-plex-accent-hover">Step 1</a>
+                <span class="mx-1">•</span> 
+                <span class="font-bold text-plex-accent dark:text-plex-accent-hover">Step 2</span> 
+                <span class="mx-1">•</span> 
+                <span>Step 3</span>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

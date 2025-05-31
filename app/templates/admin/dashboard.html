@@ -1,0 +1,131 @@
+{# app/templates/admin/dashboard.html #}
+{% extends "base.html" %}
+
+{% block head_extra %}
+    {# Font Awesome is now in base.html #}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    {# Page Header #}
+    <div class="flex flex-col sm:flex-row items-center justify-between mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-plex-text-primary dark:text-white mb-4 sm:mb-0">
+            Admin Dashboard
+        </h1>
+        <!-- Optional: Report generation button or other quick actions -->
+    </div>
+
+    {# Stat Cards Row - Using Grid for responsiveness #}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {# Total Managed Plex Users Card #}
+        <a href="{{ url_for('admin_users.manage_users_list') }}" class="block hover:no-underline focus:outline-none focus:ring-2 focus:ring-plex-accent dark:focus:ring-plex-accent-hover rounded-lg focus:ring-offset-2 dark:focus:ring-offset-plex-bg transition-all duration-150 ease-in-out transform hover:scale-[1.02]">
+            <div class="bg-plex-surface dark:bg-gray-800 shadow-lg rounded-lg p-5 border-l-4 border-plex-accent dark:border-plex-accent h-full flex flex-col justify-between"> {# h-full for equal height if cards are in a flex row outside grid #}
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-plex-accent/20 dark:bg-plex-accent/30 rounded-md p-3">
+                        <i class="fas fa-users fa-2x text-plex-accent dark:text-plex-accent-hover"></i>
+                    </div>
+                    <div class="ml-4 flex-grow">
+                        <div class="text-xs font-semibold text-plex-text-secondary dark:text-gray-400 uppercase tracking-wider">
+                            Total Managed Users
+                        </div>
+                        <div class="text-3xl font-bold text-plex-text-primary dark:text-white">
+                            {{ total_users|default(0) }}
+                        </div>
+                    </div>
+                </div>
+                <div class="text-right text-xs text-plex-text-secondary dark:text-gray-500 mt-2">View Users →</div>
+            </div>
+        </a>
+
+        {# Active Invite Links Card #}
+        <a href="{{ url_for('admin_invites.manage_invites_list') }}" class="block hover:no-underline focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 rounded-lg focus:ring-offset-2 dark:focus:ring-offset-plex-bg transition-all duration-150 ease-in-out transform hover:scale-[1.02]">
+            <div class="bg-plex-surface dark:bg-gray-800 shadow-lg rounded-lg p-5 border-l-4 border-green-500 dark:border-green-400 h-full flex flex-col justify-between">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-green-500/20 dark:bg-green-500/30 rounded-md p-3">
+                        <i class="fas fa-link fa-2x text-green-600 dark:text-green-400"></i>
+                    </div>
+                    <div class="ml-4 flex-grow">
+                        <div class="text-xs font-semibold text-plex-text-secondary dark:text-gray-400 uppercase tracking-wider">
+                            Active Invite Links
+                        </div>
+                        <div class="text-3xl font-bold text-plex-text-primary dark:text-white">
+                            {{ active_invites|default(0) }}
+                        </div>
+                    </div>
+                </div>
+                <div class="text-right text-xs text-plex-text-secondary dark:text-gray-500 mt-2">Manage Invites →</div>
+            </div>
+        </a>
+        
+        {# Plex Server Status Card #}
+        <div class="bg-plex-surface dark:bg-gray-800 shadow-lg rounded-lg p-5 border-l-4 border-blue-500 dark:border-blue-400">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-blue-500/20 dark:bg-blue-500/30 rounded-md p-3">
+                    <i class="fas fa-server fa-2x text-blue-600 dark:text-blue-400"></i>
+                </div>
+                <div class="ml-4 flex-grow">
+                    <div class="text-xs font-semibold text-plex-text-secondary dark:text-gray-400 uppercase tracking-wider">
+                        Plex Server Status
+                    </div>
+                    <div class="text-lg font-semibold">
+                        {% if app_settings.get('PLEX_URL') %}
+                            {% if plex_utils_get_plex_server_status_is_connected %}
+                                <span class="text-green-500 dark:text-green-400">Connected</span>
+                                <span class="text-xs text-plex-text-secondary dark:text-gray-500 block truncate" title="{{ plex_server_name|default('Name N/A') }}">
+                                    ({{ plex_server_name|default('Name N/A') }})
+                                </span>
+                            {% else %}
+                                <span class="text-red-500 dark:text-red-400">Disconnected</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-yellow-500 dark:text-yellow-400">Not Configured</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Recent Activity Section #}
+    <div class="bg-plex-surface dark:bg-gray-800 shadow-xl rounded-lg">
+        <div class="px-6 py-4 border-b border-plex-border dark:border-gray-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-plex-text-primary dark:text-white">
+                Recent Activity
+            </h3>
+            <a href="{{ url_for('admin_settings.view_history') }}" class="text-sm text-plex-accent hover:text-plex-accent-hover dark:hover:text-yellow-300 font-medium">
+                View All History →
+            </a>
+        </div>
+        <div class="p-6">
+            {% if recent_logs %}
+                <ul class="space-y-4"> {# Increased spacing slightly #}
+                {% for log in recent_logs %}
+                    <li class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg shadow hover:shadow-md transition-shadow duration-200">
+                        <div class="flex items-center justify-between text-xs text-plex-text-secondary dark:text-gray-400 mb-1.5">
+                            <span><i class="far fa-clock mr-1"></i>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full
+                                        {% if 'ERROR' in log.event_type %} bg-red-100 text-red-700 dark:bg-red-700 dark:text-red-100
+                                        {% elif 'SETUP' in log.event_type or 'CLI' in log.event_type %} bg-purple-100 text-purple-700 dark:bg-purple-700 dark:text-purple-100
+                                        {% elif 'CREATED' in log.event_type or 'SYNCED' in log.event_type %} bg-green-100 text-green-700 dark:bg-green-700 dark:text-green-100
+                                        {% elif 'DELETED' in log.event_type or 'REMOVED' in log.event_type %} bg-yellow-100 text-yellow-700 dark:bg-yellow-600 dark:text-yellow-100
+                                        {% elif 'UPDATED' in log.event_type %} bg-blue-100 text-blue-700 dark:bg-blue-700 dark:text-blue-100
+                                        {% else %} bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200 {% endif %}">
+                                {{ log.event_type.replace('_', ' ')|title }}
+                            </span>
+                        </div>
+                        <p class="text-sm text-plex-text-primary dark:text-gray-200 leading-relaxed">
+                            {% if log.plex_username %}<strong>Plex:</strong> <span class="font-medium">{{ log.plex_username }}</span><br>{% endif %}
+                            {% if log.discord_id %}<strong>Discord ID:</strong> <span class="font-medium">{{ log.discord_id }}</span><br>{% endif %}
+                            {% if log.details %}<span class="text-plex-text-secondary dark:text-gray-400">{{ log.details }}</span>{% endif %}
+                        </p>
+                    </li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-center text-plex-text-secondary dark:text-gray-400 py-6">No recent activity recorded.</p>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

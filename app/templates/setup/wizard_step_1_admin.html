@@ -1,0 +1,77 @@
+{# app/templates/setup/wizard_step_1_admin.html #}
+{% extends "base.html" %}
+{% from "_formhelpers.html" import render_field, render_submit_field %}
+
+{% block head_extra %}
+    <!-- Font Awesome is in base.html -->
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] px-4 py-12">
+    <div class="w-full max-w-md">
+        <div class="bg-plex-surface dark:bg-gray-800 shadow-2xl rounded-lg">
+            <div class="px-6 py-5 bg-plex-accent dark:bg-opacity-25">
+                <h2 class="text-xl font-semibold text-center text-white dark:text-plex-accent">
+                    Setup Wizard: Step 1 of 3
+                </h2>
+                <p class="text-sm text-center text-white/80 dark:text-plex-accent/80 mt-1">Create Admin Account</p>
+            </div>
+
+            <div class="p-6 md:p-8">
+                <p class="text-sm text-plex-text-secondary dark:text-gray-300 mb-6 text-center">
+                    Choose how you want to create the primary administrator account for this application.
+                </p>
+
+                {# Option 1 (Now First): Setup with Plex Account Button #}
+                {% if show_plex_setup_button %} {# Passed from the route #}
+                <div class="mb-6"> {# Added margin-bottom to separate from "OR" #}
+                    <h3 class="text-lg font-medium text-plex-text-primary dark:text-white mb-3 text-center">Setup with Plex Account (Recommended)</h3>
+                    <p class="text-xs text-plex-text-secondary dark:text-gray-400 mb-3 text-center">
+                        Use your Plex.tv account to create and log in as the admin. This is the easiest method.
+                    </p>
+                    {# MODIFIED BUTTON STYLING: text-gray-900 (dark grey) #}
+                    <a href="{{ url_for('setup.initiate_plex_admin_setup') }}"
+                       class="w-full btn-base btn-lg bg-plex-accent hover:bg-plex-accent-hover text-gray-900 focus:ring-plex-accent flex items-center justify-center">
+                        <i class="fa-brands fa-plex fa-fw mr-2"></i> Setup Admin with Plex
+                    </a>
+                </div>
+
+                {# "OR" Separator #}
+                <div class="my-6 flex items-center">
+                    <div class="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                    <span class="flex-shrink mx-4 text-gray-500 dark:text-gray-400 text-sm">OR</span>
+                    <div class="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                </div>
+                {% endif %}
+
+
+                {# Option 2 (Now Second): Traditional Username/Password Form #}
+                <form method="POST" action="{{ url_for('setup.setup_wizard', step=1) }}" novalidate id="localAdminSetupForm">
+                    {{ form.hidden_tag() }} {# CSRF token for this form #}
+
+                    <h3 class="text-lg font-medium text-plex-text-primary dark:text-white mb-3 text-center">Create with Username & Password</h3>
+                    <div class="space-y-6">
+                        {{ render_field(form.username, placeholder="e.g., admin", autocomplete="username", focus_color='plex') }}
+                        {{ render_field(form.password, type="password", placeholder="Choose a strong password", autocomplete="new-password", focus_color='plex') }}
+                        {{ render_field(form.confirm_password, type="password", placeholder="Confirm your password", autocomplete="new-password", focus_color='plex') }}
+                    </div>
+                    
+                    <div class="pt-6">
+                        {{ render_submit_field(form.submit, class="w-full", size="lg", text="Create Local Admin & Continue") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+        {# Progress Indicator #}
+        <div class="mt-6 text-center">
+            <p class="text-xs text-plex-text-secondary dark:text-gray-400">
+                <span class="font-bold text-plex-accent dark:text-plex-accent-hover">Step 1</span> 
+                <span class="mx-1">•</span> 
+                <span>Step 2</span> 
+                <span class="mx-1">•</span> 
+                <span>Step 3</span>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+version: '3.8' # Specifies the Docker Compose file format version
+
+services:
+  # Defines the main application service
+  pum: # Service name (short for Plex User Manager, can be anything)
+    container_name: pum # A friendly name for the running container
+    
+    # build: tells Docker Compose how to build the image for this service
+    build:
+      context: . # Use the current directory (where this docker-compose.yml is) as the build context
+      dockerfile: Dockerfile # Explicitly state the Dockerfile name (though Dockerfile is default)
+      # args: # Optional: Build-time arguments can be passed to Dockerfile
+        # - SOME_BUILD_ARG=value 
+    
+    # restart: defines the restart policy for the container
+    restart: unless-stopped # Restart unless manually stopped or Docker daemon stops
+    
+    ports:
+      # Maps port 5699 on your host machine to port 5000 inside the container.
+      # Gunicorn inside the container will listen on port 5000 (as per Dockerfile CMD).
+      # You will access the application in your browser via http://localhost:5690.
+      - "5699:5000" 
+    
+    volumes:
+      - ./PUM:/app/instance
+    
+    environment:
+      
+      # Timezone for the container (good practice for consistent logging and scheduling)
+      - TZ=America/New_York # Change to your local timezone
+
+      # Flask specific environment variables (FLASK_APP is set in Dockerfile)
+      # FLASK_DEBUG is also set to 0 in Dockerfile for production-like Gunicorn.
+      # For local debugging with Flask's dev server, you might override it here or in Dockerfile.
+      - FLASK_DEBUG=1 
+
+      - LOG_LEVEL=DEBUG
+
+      # SECRET_KEY: Crucial for session security, CSRF protection.
+      # It's best to set a strong, unique key for any real use.
+      # The app has a default in config.py, but this can override it.
+      # For local dev, the default might be fine, but for any sharing/staging, set a strong one.
+      #- SECRET_KEY=your_local_dev_secret_key_make_this_unique_if_sharing # Example
+      
+      # DATABASE_URL: The app's config.py defaults to 'sqlite:////app/instance/app.db'.
+      # This environment variable can override it if you need to point to a different DB
+      # location or type (though for SQLite with volume mapping, the default is usually fine).
+      # - DATABASE_URL=sqlite:////app/instance/my_other_app.db
+    
+    logging:
+      # Configures Docker container logging for easier debugging.
+      driver: "json-file" # Standard Docker logging driver
+      options:
+        max-size: "10m" # Max size of a log file before it's rotated
+        max-file: "3"   # Max number of log files to keep

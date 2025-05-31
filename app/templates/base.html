@@ -1,0 +1,247 @@
+{# app/templates/base.html #}
+<!doctype html>
+<html lang="en" class=""> {# The 'dark' class will be toggled on this html element by JavaScript #}
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if title %}{{ title }} - {% endif %}{{ app_settings.get('APP_NAME', 'Plex User Manager') }}</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.ico') }}" type="image/x-icon">
+
+    {# Font Awesome 6.7.2 - Loaded Globally Here #}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/brands.min.css" integrity="sha512-58P9Hy7II0YeXLv+iFiLCv1rtLW47xmiRpC1oFafeKNShp8V5bKV/ciVtYqbk2YfxXQMt58DjNfkXFOn62xE+g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    {% block head_extra %}{% endblock %}
+
+    <script>
+        // Dark Mode Toggler Logic (inline in head to prevent FOUC)
+        // 1. Apply 'dark' class to <html> based on localStorage or system preference
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+
+        // 2. Function to toggle theme and save preference (can be called by a button)
+        function toggleTheme() {
+          const htmlEl = document.documentElement;
+          if (htmlEl.classList.contains('dark')) {
+            htmlEl.classList.remove('dark');
+            localStorage.theme = 'light';
+          } else {
+            htmlEl.classList.add('dark');
+            localStorage.theme = 'dark';
+          }
+          updateThemeIconsVisibility(); // Update icons immediately after toggle
+        }
+
+        // 3. Function to update icons based on theme (will be called on load and toggle)
+        function updateThemeIconsVisibility() {
+            const themeToggleButton = document.getElementById('themeToggleButton');
+            if (!themeToggleButton) return; // Element might not exist on all pages if button is conditional
+            const lightIcon = themeToggleButton.querySelector('.theme-icon-light');
+            const darkIcon = themeToggleButton.querySelector('.theme-icon-dark');
+            if (!lightIcon || !darkIcon) return;
+
+            if (document.documentElement.classList.contains('dark')) {
+                lightIcon.style.display = 'none';
+                darkIcon.style.display = 'inline-block';
+            } else {
+                lightIcon.style.display = 'inline-block';
+                darkIcon.style.display = 'none';
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-plex-bg text-gray-900 dark:text-plex-text-primary font-sans antialiased transition-colors duration-300 ease-in-out">
+
+    {# Navigation Bar #}
+    <nav class="bg-plex-surface shadow-md fixed top-0 left-0 right-0 z-50">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                {# Left Side: Brand and Main Nav Links #}
+                <div class="flex items-center">
+                    <a class="text-xl font-bold text-plex-accent hover:text-plex-accent-hover" href="{{ url_for('main.index_or_setup') }}">
+                        {{ app_settings.get('APP_NAME', 'Plex User Manager') }}
+                    </a>
+                    <div class="hidden md:block">
+                        <div class="ms-10 flex items-baseline space-x-1">
+                            {% if setup_completed and current_user.is_authenticated and current_user.is_admin %}
+                                {% set active_link_base = "bg-plex-accent text-gray-900 dark:text-plex-bg" %}
+                                {% set active_link_hover = "hover:bg-plex-accent-hover" %}
+                                {% set active_link_classes = active_link_base + " " + active_link_hover %}
+                                {% set inactive_link_classes = "text-plex-text-secondary hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-plex-text-primary dark:text-gray-300 dark:hover:text-white" %}
+
+                                <a href="{{ url_for('main.dashboard') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint and request.endpoint == 'main.dashboard' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Dashboard</a>
+                                <a href="{{ url_for('admin_invites.manage_invites_list') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint and request.endpoint == 'admin_invites.manage_invites_list' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Invites</a>
+                                <a href="{{ url_for('admin_users.manage_users_list') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint and request.endpoint.startswith('admin_users.') %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Users</a>
+                                <a href="{{ url_for('admin_settings.view_history') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint and request.endpoint == 'admin_settings.view_history' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">History</a>
+                                <a href="{{ url_for('admin_settings.app_settings_page') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint and request.endpoint == 'admin_settings.app_settings_page' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Settings</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                {# Right Side: Setup/Login/User Menu & Theme Toggle #}
+                <div class="flex items-center">
+                    <button onclick="toggleTheme()" id="themeToggleButton" type="button" class="p-1 rounded-full text-plex-text-secondary hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 dark:focus:ring-offset-plex-bg focus:ring-white me-3" aria-label="Toggle theme">
+                        <i class="fas fa-sun theme-icon-light" style="display: none;"></i> {# JS will control visibility #}
+                        <i class="fas fa-moon theme-icon-dark" style="display: none;"></i>  {# JS will control visibility #}
+                    </button>
+
+                    {% if not setup_completed and request.endpoint != 'setup.setup_wizard' %}
+                        <a href="{{ url_for('setup.setup_wizard') }}" class="bg-plex-accent hover:bg-plex-accent-hover text-white px-3 py-2 rounded-md text-sm font-medium">Run Setup</a>
+                    {% elif current_user.is_authenticated and current_user.is_admin %}
+                        <div class="ms-3 relative" id="userMenuContainer">
+                            <div>
+                                <button type="button" class="max-w-xs bg-plex-surface dark:bg-gray-700 rounded-full flex items-center text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 dark:focus:ring-offset-plex-bg focus:ring-white" id="user-menu-button" aria-expanded="false" aria-haspopup="true">
+                                    <span class="sr-only">Open user menu</span>
+                                    <span class="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600">
+                                        <span class="text-sm font-medium leading-none text-white">{{ current_user.username[0]|upper if current_user.username else 'A' }}</span>
+                                    </span>
+                                </button>
+                            </div>
+                            <div id="userMenuDropdown" class="origin-top-right absolute end-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white dark:bg-plex-surface ring-1 ring-black dark:ring-gray-700 ring-opacity-5 focus:outline-none hidden" role="menu" aria-orientation="vertical" aria-labelledby="user-menu-button" tabindex="-1">
+                                <div class="px-4 py-2 text-sm text-gray-700 dark:text-plex-text-secondary" role="none">Admin: <strong>{{ current_user.username }}</strong></div>
+                                <hr class="border-gray-200 dark:border-gray-700 my-1">
+                                <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-plex-text-secondary hover:bg-gray-100 dark:hover:bg-gray-700" role="menuitem" tabindex="-1">Logout</a>
+                            </div>
+                        </div>
+                    {% elif setup_completed and request.endpoint and not request.endpoint.startswith(('auth.', 'sso_plex.', 'sso_discord.', 'main.use_invite_link')) %}
+                        <a href="{{ url_for('auth.login') }}" class="text-plex-text-secondary hover:text-white px-3 py-2 rounded-md text-sm font-medium">Admin Login</a>
+                    {% endif %}
+
+                    {# Mobile Menu Button #}
+                    <div class="ms-2 flex md:hidden">
+                        <button type="button" id="mobileMenuButton" class="bg-plex-surface inline-flex items-center justify-center p-2 rounded-md text-gray-400 dark:text-gray-300 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white" aria-controls="mobile-menu" aria-expanded="false">
+                            <span class="sr-only">Open main menu</span>
+                            <svg class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                            <svg class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Mobile Menu #}
+        <div class="md:hidden hidden" id="mobile-menu">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-gray-700 dark:border-plex-border">
+                {% if setup_completed and current_user.is_authenticated and current_user.is_admin %}
+                    {% set active_link_base = "bg-plex-accent text-gray-900 dark:text-plex-bg" %}
+                    {% set active_link_hover = "hover:bg-plex-accent-hover" %}
+                    {% set active_link_classes = active_link_base + " " + active_link_hover %}
+                    {% set inactive_link_classes = "text-plex-text-secondary hover:bg-gray-700 hover:text-white dark:text-gray-300 dark:hover:text-white" %}
+
+                    <a href="{{ url_for('main.dashboard') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint and request.endpoint == 'main.dashboard' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Dashboard</a>
+                    <a href="{{ url_for('admin_invites.manage_invites_list') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint and request.endpoint == 'admin_invites.manage_invites_list' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Invites</a>
+                    <a href="{{ url_for('admin_users.manage_users_list') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint and request.endpoint.startswith('admin_users.') %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Users</a>
+                    <a href="{{ url_for('admin_settings.view_history') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint and request.endpoint == 'admin_settings.view_history' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">History</a>
+                    <a href="{{ url_for('admin_settings.app_settings_page') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint and request.endpoint == 'admin_settings.app_settings_page' %}{{ active_link_classes }}{% else %}{{ inactive_link_classes }}{% endif %}">Settings</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="pt-20 container mx-auto px-4 sm:px-6 lg:px-8 min-h-[calc(100vh-8rem)]">
+        {# Flash Messages - Simplified Dismiss without Alpine.js #}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="space-y-3 mb-6 max-w-3xl mx-auto">
+                {% for category, message in messages %}
+                    {% set alert_classes = 'p-4 rounded-md border flex justify-between items-center shadow-sm' %}
+                    {% if category == 'success' %}
+                        {% set alert_classes = alert_classes ~ ' bg-green-100 dark:bg-green-800/30 border-green-400 dark:border-green-600 text-green-700 dark:text-green-200' %}
+                        {% set btn_dismiss_classes = 'text-green-500 hover:bg-green-200 dark:text-green-300 dark:hover:bg-green-700 focus:ring-green-400' %}
+                    {% elif category == 'danger' %}
+                        {% set alert_classes = alert_classes ~ ' bg-red-100 dark:bg-red-800/30 border-red-400 dark:border-red-600 text-red-700 dark:text-red-200' %}
+                        {% set btn_dismiss_classes = 'text-red-500 hover:bg-red-200 dark:text-red-300 dark:hover:bg-red-700 focus:ring-red-400' %}
+                    {% elif category == 'warning' %}
+                        {% set alert_classes = alert_classes ~ ' bg-yellow-100 dark:bg-yellow-800/30 border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-200' %}
+                        {% set btn_dismiss_classes = 'text-yellow-500 hover:bg-yellow-200 dark:text-yellow-300 dark:hover:bg-yellow-700 focus:ring-yellow-400' %}
+                    {% else %} {# Default to info style #}
+                        {% set alert_classes = alert_classes ~ ' bg-blue-100 dark:bg-blue-800/30 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-200' %}
+                        {% set btn_dismiss_classes = 'text-blue-500 hover:bg-blue-200 dark:text-blue-300 dark:hover:bg-blue-700 focus:ring-blue-400' %}
+                    {% endif %}
+                    <div class="{{ alert_classes }}" role="alert">
+                        <span>{{ message }}</span>
+                        <button type="button" 
+                                class="ms-auto -mx-1.5 -my-1.5 rounded-lg focus:ring-2 p-1.5 inline-flex h-8 w-8 {{ btn_dismiss_classes }}" 
+                                onclick="this.closest('[role=alert]').style.display='none';" aria-label="Dismiss">
+                            <span class="sr-only">Dismiss</span>
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="mt-auto py-6 border-t border-plex-border dark:border-gray-700 text-center bg-plex-surface dark:bg-gray-800">
+        <div class="container mx-auto px-4">
+            <span class="text-sm text-plex-text-secondary dark:text-gray-400">
+                © {{ app_settings.get('APP_NAME', 'Plex User Manager') }}. 
+                Powered by <a href="https://github.com/MrRobotjs/PUM" target="_blank" rel="noopener noreferrer" class="text-plex-accent hover:underline">PUM</a>.
+            </span>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts_extra %}{% endblock %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Mobile menu toggle
+            const mobileMenuButton = document.getElementById('mobileMenuButton');
+            const mobileMenu = document.getElementById('mobile-menu');
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', () => {
+                    const expanded = mobileMenuButton.getAttribute('aria-expanded') === 'true' || false;
+                    mobileMenuButton.setAttribute('aria-expanded', String(!expanded));
+                    mobileMenu.classList.toggle('hidden');
+                    mobileMenuButton.querySelectorAll('svg').forEach(svg => svg.classList.toggle('hidden'));
+                });
+            }
+
+            // User menu dropdown toggle
+            const userMenuButton = document.getElementById('user-menu-button');
+            const userMenuDropdown = document.getElementById('userMenuDropdown');
+            if (userMenuButton && userMenuDropdown) {
+                userMenuButton.addEventListener('click', (event) => {
+                    event.stopPropagation(); 
+                    const expanded = userMenuButton.getAttribute('aria-expanded') === 'true' || false;
+                    userMenuButton.setAttribute('aria-expanded', String(!expanded));
+                    userMenuDropdown.classList.toggle('hidden');
+                    if (!expanded && userMenuDropdown.querySelector('[role="menuitem"]')) {
+                        userMenuDropdown.querySelector('[role="menuitem"]').focus();
+                    }
+                });
+                document.addEventListener('click', (event) => {
+                    const container = document.getElementById('userMenuContainer'); 
+                    if (container && !container.contains(event.target) && userMenuButton.getAttribute('aria-expanded') === 'true') {
+                        userMenuButton.setAttribute('aria-expanded', 'false');
+                        userMenuDropdown.classList.add('hidden');
+                    }
+                });
+                userMenuDropdown.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && userMenuButton.getAttribute('aria-expanded') === 'true') {
+                        userMenuButton.setAttribute('aria-expanded', 'false');
+                        userMenuDropdown.classList.add('hidden');
+                        userMenuButton.focus();
+                    }
+                });
+            }
+
+            // Call theme icon update on initial load after DOM is ready
+            // The updateThemeIconsVisibility function is defined in the <head> script block
+            if (typeof updateThemeIconsVisibility === 'function') {
+                updateThemeIconsVisibility();
+            }
+        });
+    </script>
+</body>
+</html>

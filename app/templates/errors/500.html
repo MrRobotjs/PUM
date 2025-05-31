@@ -1,0 +1,44 @@
+{# app/templates/errors/500.html #}
+{% extends "base.html" %}
+
+{% block head_extra %}
+    {# Font Awesome is in base.html #}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[calc(100vh-12rem)] text-center px-4 py-12">
+    {# Adjust min-height if your combined navbar + footer height is different #}
+
+    <div class="max-w-md">
+        {# Optional: Icon for server error #}
+        {# 
+        <div class="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-red-100 dark:bg-red-800/30 mb-6">
+            <i class="fas fa-bomb fa-3x text-red-500 dark:text-red-400"></i> {# Or fa-tools, fa-cogs #}
+        </div>
+        #}
+
+        <h1 class="text-8xl font-extrabold text-red-500 dark:text-red-400 tracking-tighter">
+            500
+        </h1>
+        <h2 class="mt-2 text-3xl font-bold text-plex-text-primary dark:text-white sm:text-4xl tracking-tight">
+            Internal Server Error
+        </h2>
+        <p class="mt-4 text-base text-plex-text-secondary dark:text-gray-300">
+            Sorry, something went wrong on our end. We've been notified and are looking into it. Please try again in a little while.
+        </p>
+        {# 
+        You might want to display a generic error reference if your error handler provides one,
+        but avoid showing detailed error messages from the 'error' object to the public.
+        {% if error and error.reference_id %}
+            <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">Error Reference: {{ error.reference_id }}</p>
+        {% endif %}
+        #}
+        <div class="mt-8">
+            <a href="{{ url_for('main.index_or_setup') }}"
+               class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-plex-accent hover:bg-plex-accent-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-plex-accent dark:focus:ring-offset-plex-bg transition-colors duration-150">
+                <i class="fas fa-home mr-2"></i> Go to Homepage
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

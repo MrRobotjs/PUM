@@ -1,0 +1,165 @@
+{# app/templates/_formhelpers.html - Tailwind Version using global helper classes #}
+
+{# --- Standard Input/Textarea/Select Field Macro --- #}
+{% macro render_field(field, label_visible=true, sr_label_only=false, type=None, placeholder=None, focus_theme='plex', container_class='form-field-group', input_extra_class='') %}
+  {# Extra keyword arguments are available in the implicit `kwargs` dict #}
+
+  {% set field_id = field.id or field.name %}
+  
+  {# Determine field_type #}
+  {% set determined_type = type %} {# Start with explicitly passed type #}
+  {% if not determined_type %} {# If type wasn't passed, try to infer #}
+    {% if field.widget is defined and field.widget.input_type is defined %}
+      {% set determined_type = field.widget.input_type %}
+    {% else %}
+      {% set determined_type = 'text' %} {# Default to text #}
+    {% endif %}
+  {% endif %}
+
+  {# Override for specific WTForms field types #}
+  {% set final_field_type = none %} {# Initialize final_field_type #}
+  {% if field.type == 'TextAreaField' %}{% set final_field_type = 'textarea' %}{% endif %}
+  {% if field.type == 'SelectMultipleField' or field.type == 'SelectField' %}{% set final_field_type = 'select' %}{% endif %}
+  {% if not final_field_type %}{% set final_field_type = determined_type %}{% endif %}
+
+
+  {# Determine base input class based on final_field_type #}
+  {% set base_class = 'form-input' %} 
+  {% if final_field_type == 'textarea' %}{% set base_class = 'form-textarea' %}{% endif %}
+  {% if final_field_type == 'select' %}{% set base_class = 'form-select' %}{% endif %}
+  
+  {# Assemble all classes for the input/select/textarea element #}
+  {% set classes_to_apply = [base_class] %}
+  {% if focus_theme == 'discord' %}{% do classes_to_apply.append('form-input-focus-discord') %}{% else %}{% do classes_to_apply.append('form-input-focus-plex') %}{% endif %}
+  {% if field.errors %}{% do classes_to_apply.append('form-input-error') %}{% endif %}
+  {% if input_extra_class %}{% do classes_to_apply.append(input_extra_class) %}{% endif %}
+  {% set final_input_classes = classes_to_apply|join(' ') %}
+
+  {# Prepare a dictionary for attributes to pass to the field widget #}
+  {% set widget_attrs = {'class': final_input_classes, 'id': field_id} %}
+  {% if placeholder or (field.label and not placeholder) %}{% do widget_attrs.update({'placeholder': placeholder or field.label.text}) %}{% endif %}
+  
+  {# Only set HTML 'type' attribute if it's an input-like field and 'type' was originally passed or inferred for an input #}
+  {% if final_field_type not in ['textarea', 'select'] %}
+    {% if type %} {# Prefer explicitly passed type from macro call #}
+        {% do widget_attrs.update({'type': type}) %}
+    {% elif determined_type and determined_type != 'select' and determined_type != 'textarea' %} {# Use inferred if not select/textarea #}
+        {% do widget_attrs.update({'type': determined_type}) %}
+    {% endif %}
+  {% endif %}
+  
+  {# Add any extra keyword arguments passed when calling the macro #}
+  {% if kwargs %}{% do widget_attrs.update(kwargs) %}{% endif %}
+
+
+  <div class="{{ container_class }}">
+    {% if field.label %}
+      {% if sr_label_only %}
+        {{ field.label(for=field_id, class="sr-only") }}
+      {% elif label_visible %}
+        {{ field.label(for=field_id, class="form-label") }}
+      {% endif %}
+    {% endif %}
+    
+    {{ field(**widget_attrs) }} {# This unpacks all attributes #}
+    
+    {% if field.description %}
+      <p class="form-description-text">{{ field.description }}</p>
+    {% endif %}
+    {% if field.errors %}
+      {% for error in field.errors %}
+        <p class="form-error-text">{{ error }}</p>
+      {% endfor %}
+    {% endif %}
+  </div>
+{% endmacro %}
+
+
+{# --- Checkbox Field Macro --- #}
+{% macro render_checkbox_field(field, label_visible=true, sr_label_only=false, focus_theme='plex', container_class='form-checkbox-container', input_extra_class='') %}
+  {# REMOVED **kwargs from signature, use implicit kwargs dict #}
+  {% set field_id = field.id or field.name %}
+  {% set classes_to_apply = ['form-checkbox'] %}
+  {% if focus_theme == 'discord' %}{% do classes_to_apply.append('form-checkbox-focus-discord') %}{% else %}{% do classes_to_apply.append('form-checkbox-focus-plex') %}{% endif %}
+  {% if input_extra_class %}{% do classes_to_apply.append(input_extra_class) %}{% endif %}
+  {% if field.errors %}{% do classes_to_apply.append('ring-2 ring-red-500 ring-offset-1 dark:ring-offset-plex-bg') %}{% endif %}
+  {% set final_checkbox_classes = classes_to_apply|join(' ') %}
+
+  {# Prepare widget_attrs for checkbox, including explicit kwargs #}
+  {% set widget_attrs = {'class': final_checkbox_classes, 'id': field_id} %}
+  {% if kwargs %}{% do widget_attrs.update(kwargs) %}{% endif %}
+
+  <div class="{{ container_class }}">
+    <div class="form-checkbox-input-area">
+        {{ field(**widget_attrs) }}
+    </div>
+    {% if field.label %}
+    <div class="form-checkbox-label-area">
+        {% if sr_label_only %}
+            {{ field.label(for=field_id, class="sr-only") }}
+        {% elif label_visible %}
+            {{ field.label(for=field_id, class="form-checkbox-label") }}
+        {% endif %}
+        {% if field.description %}
+            <p class="form-description-text text-xs">{{ field.description }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if field.errors %}
+        <div class="w-full mt-1 ms-7">
+        {% for error in field.errors %}
+            <p class="form-error-text">{{ error }}</p>
+        {% endfor %}
+        </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+
+{# --- Submit Button Macro --- #}
+{% macro render_submit_field(field, class="", size='normal', icon_class=None, text=None) %}
+  {# Extra keyword arguments are available in the implicit `kwargs` dict #}
+  {% set classes_to_apply = ['btn-base'] %} {# Base button styling helper class #}
+
+  {# Determine size class based on 'size' parameter #}
+  {% if size == 'sm' %}
+    {% do classes_to_apply.append('btn-sm') %}
+  {% elif size == 'lg' %}
+    {% do classes_to_apply.append('btn-lg') %}
+  {% else %} {# Default to 'normal' #}
+    {% do classes_to_apply.append('btn-normal') %}
+  {% endif %}
+
+  {# Default color if not overridden by custom 'class' argument #}
+  {# Simplified check: if 'class' doesn't contain typical color utilities, apply default #}
+  {% set has_custom_color = false %}
+  {% if class %}
+    {% if 'bg-' in class or 'text-' in class or 'border-' in class %}
+      {% set has_custom_color = true %}
+    {% endif %}
+  {% endif %}
+  
+  {% if not has_custom_color %}
+    {% do classes_to_apply.append('btn-default-color') %}
+  {% endif %}
+  
+  {% if class %}{% do classes_to_apply.append(class) %}{% endif %}
+  {% set final_button_classes = classes_to_apply|join(' ') %}
+
+  {# Prepare button_attrs, including explicit kwargs from the macro call #}
+  {% set button_attrs = {
+      'type': 'submit', 
+      'name': field.name, 
+      'id': field.id or field.name, 
+      'value': field.label.text if field.label and not text else (text or 'Submit'), 
+      'class': final_button_classes
+  } %}
+  {% if kwargs %}{% do button_attrs.update(kwargs) %}{% endif %}
+
+  <button {{ button_attrs|xmlattr }}>
+    {% if icon_class %}
+        <i class="{{ icon_class }} {{ 'me-2' if (text or (field.label and field.label.text)) else '' }}"></i>
+    {% endif %}
+    {{ text or (field.label.text if field.label else 'Submit') }}
+  </button>
+{% endmacro %}

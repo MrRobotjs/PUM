@@ -1,0 +1,61 @@
+{# app/templates/public/invite_success.html #}
+{% extends "base.html" %}
+
+{% block head_extra %}
+    <!-- Font Awesome (loaded in base.html) -->
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] px-4 py-12 text-center">
+    <div class="w-full max-w-lg">
+        <div class="bg-plex-surface dark:bg-gray-800 shadow-2xl rounded-lg p-8 border-t-4 border-green-500 dark:border-green-400">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 dark:bg-green-700 mb-6">
+                <i class="fas fa-check-circle fa-2x text-green-600 dark:text-green-300"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-plex-text-primary dark:text-white mb-3">
+                Plex Invitation Sent!
+            </h2>
+            {# No flash message block here, assuming base.html handles general flashes.
+               If you had a flash specifically for this page's success, it's removed. #}
+            
+            <p class="text-lg text-plex-text-secondary dark:text-gray-300 mb-4">
+                Your request has been processed successfully!
+            </p>
+            <p class="text-plex-text-primary dark:text-gray-200 mb-2">
+                A Plex server invitation has been sent to 
+                {% if invited_plex_email %}
+                    <strong class="text-plex-accent dark:text-yellow-400">{{ invited_plex_email }}</strong>.
+                {% else %}
+                    the email address you provided.
+                {% endif %}
+                Please check your inbox (and spam/junk folder) for an email from Plex.
+            </p>
+            <p class="text-plex-text-primary dark:text-gray-200 mb-6">
+                You will need to click the link in that email to accept the invitation and gain access to the server.
+            </p>
+            
+            <hr class="border-plex-border dark:border-gray-600 my-6">
+
+            <p class="text-sm text-plex-text-secondary dark:text-gray-400 mb-6">
+                If you don't receive the email within a few minutes, please double-check the email address provided or contact an administrator.
+            </p>
+            
+            {% if app_settings.get('DISCORD_SERVER_INVITE_URL') %}
+                <p class="mt-6 mb-3 text-plex-text-primary dark:text-gray-200">
+                    While you wait, feel free to join our Discord community:
+                </p>
+                <a href="{{ app_settings.get('DISCORD_SERVER_INVITE_URL') }}" 
+                   class="w-full sm:w-auto inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-plex-bg" 
+                   target="_blank" rel="noopener noreferrer">
+                    <i class="fa-brands fa-discord mr-2"></i> Join our Discord Server
+                </a>
+            {% else %}
+                <a href="{{ url_for('main.index_or_setup') }}" 
+                   class="w-full sm:w-auto inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:focus:ring-offset-plex-bg">
+                    Return to Homepage
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

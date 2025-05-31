@@ -1,0 +1,39 @@
+{# app/templates/errors/404.html #}
+{% extends "base.html" %}
+
+{% block head_extra %}
+    {# Font Awesome is in base.html if needed for icons on error pages #}
+    {# No page-specific styles needed beyond what base.html and Tailwind provide #}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[calc(100vh-12rem)] text-center px-4 py-12">
+    {# Adjust min-height if your combined navbar + footer height is different #}
+    {# min-h-screen with pt for navbar and pb for footer on body might also work #}
+
+    <div class="max-w-md">
+        {# Optional: Icon #}
+        {# 
+        <div class="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-red-100 dark:bg-red-800/30 mb-6">
+            <i class="fas fa-exclamation-triangle fa-3x text-red-500 dark:text-red-400"></i>
+        </div>
+        #}
+
+        <h1 class="text-8xl font-extrabold text-plex-accent dark:text-plex-accent-hover tracking-tighter">
+            404
+        </h1>
+        <h2 class="mt-2 text-3xl font-bold text-plex-text-primary dark:text-white sm:text-4xl tracking-tight">
+            Page Not Found
+        </h2>
+        <p class="mt-4 text-base text-plex-text-secondary dark:text-gray-300">
+            Sorry, we couldn’t find the page you’re looking for. It might have been moved, removed, or you might have mistyped the address.
+        </p>
+        <div class="mt-8">
+            <a href="{{ url_for('main.index_or_setup') }}"
+               class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-plex-accent hover:bg-plex-accent-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-plex-accent dark:focus:ring-offset-plex-bg transition-colors duration-150">
+                <i class="fas fa-home mr-2"></i> Go to Homepage
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
