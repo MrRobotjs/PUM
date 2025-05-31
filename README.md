@@ -4,6 +4,14 @@ Plex User Manager (PUM) is a self-hosted web application designed to streamline 
 
 The application features a web-based admin panel, a step-by-step setup wizard, and Docker support for easy deployment.
 
+Dashboard             |  Invites
+:-------------------------:|:-------------------------:
+![chrome_YBGsbBoc4z](https://github.com/user-attachments/assets/a3b0da21-2256-4dae-9ec6-90d494d3ca0e)  |  ![chrome_kUMqRmOBQL](https://github.com/user-attachments/assets/a6156cae-bf43-4e72-8ed5-119e09c7673b)
+Users             |  Users
+![chrome_d2i5NMAD2R](https://github.com/user-attachments/assets/7679fbe7-465d-433c-8cc8-90d4081abbae)  |  ![chrome_E8vCpE37vG](https://github.com/user-attachments/assets/e74254b4-e42e-42f3-8243-532ce249eb69)
+History             |  Settings
+![chrome_g07LxLgECk](https://github.com/user-attachments/assets/19f86c6e-41ff-49f6-8fd0-00008e6c6b5d)  |  ![chrome_U7txZXcf85](https://github.com/user-attachments/assets/d880a223-c52c-4ed5-a1f1-90efa1b57845)
+
 ## Key Features
 
 *   **Admin-Controlled Plex User Invitations:**
