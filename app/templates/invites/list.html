@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ super() }} - Manage Invites{% endblock %}
+{% block content %}
+<div class="container mx-auto px-4 py-2">
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">Manage Invites ({{ invites_count or 0 }})</h1>
+        <button class="btn btn-primary mt-4 sm:mt-0" onclick="create_invite_modal.showModal()">
+            <i class="fa-solid fa-plus mr-2"></i> Create Invite
+        </button>
+    </div>
+
+    <form method="GET" action="{{ url_for('invites.list_invites') }}" class="mb-6 p-4 bg-base-200 rounded-lg shadow" id="inviteFilterForm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end"> {# Increased grid cols for per_page #}
+            <div class="form-control">
+                <label class="label"><span class="label-text">Filter by Status</span></label>
+                <select name="filter" class="select select-sm select-bordered">
+                    <option value="all" {% if request.args.get('filter', 'all') == 'all' %}selected{% endif %}>All</option>
+                    <option value="active" {% if request.args.get('filter') == 'active' %}selected{% endif %}>Active</option>
+                    <option value="expired" {% if request.args.get('filter') == 'expired' %}selected{% endif %}>Expired</option>
+                    <option value="maxed" {% if request.args.get('filter') == 'maxed' %}selected{% endif %}>Max Uses</option>
+                    <option value="inactive" {% if request.args.get('filter') == 'inactive' %}selected{% endif %}>Deactivated</option>
+                </select>
+            </div>
+            <div class="form-control">
+                <label class="label"><span class="label-text">Search by Path</span></label>
+                <input type="text" name="search_path" placeholder="Custom path part" class="input input-sm input-bordered" value="{{ request.args.get('search_path', '') }}">
+            </div>
+            <div class="form-control">
+                <label class="label"><span class="label-text">Per Page</span></label>
+                <select name="per_page" class="select select-sm select-bordered" onchange="this.form.submit()">
+                    {% for count in [10, 25, 50, 100] %}
+                        <option value="{{ count }}" {% if current_per_page == count %}selected{% endif %}>{{ count }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-control">
+                <button type="submit" class="btn btn-sm btn-primary w-full"><i class="fa-solid fa-filter mr-2"></i> Apply</button>
+            </div>
+        </div>
+    </form>
+
+    <div id="invites-list-table-container" 
+         hx-get="{{ url_for('invites.list_invites_partial') }}{{ '?' ~ request.query_string if request.query_string else '' }}" 
+         hx-trigger="load, refreshInvitesList from:body"
+         hx-swap="innerHTML">
+        <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading invites...</p></div>
+    </div>
+</div>
+
+<!-- Modals (Create Invite, Invite Usages) as before -->
+<dialog id="create_invite_modal" class="modal modal-bottom sm:modal-middle"> 
+    <div class="modal-box max-w-2xl"> 
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+        </form> 
+        <h3 class="font-bold text-lg mb-4">
+            <i class="fa-solid fa-ticket-simple mr-2"></i>Create New Invite
+        </h3> 
+        <form id="createInviteForm" method="POST"
+              hx-post="{{ url_for('invites.create_invite') }}"
+              hx-target="#create-invite-form-fields-wrapper"
+              hx-swap="innerHTML"
+              hx-on::after-request="
+                if(event.detail.successful && event.detail.xhr.status !== 422) { 
+                    htmx.trigger(document.body, 'refreshInvitesList'); 
+                    const modal = document.getElementById('create_invite_modal'); 
+                    if (modal && typeof modal.close === 'function') modal.close(); 
+                    this.reset(); /* 'this' is the form, should be fine to reset */
+                    const expiryDateEl = this.querySelector('#calculated_expiry_date');
+                    if(expiryDateEl) expiryDateEl.textContent = 'N/A (if days > 0)';
+                    if(typeof window.showToast === 'function') showToast('Invite created successfully!', 'success');
+                } else if (event.detail.failed && event.detail.xhr.status === 422) { 
+                    console.log('Create invite form validation failed, form content updated by HTMX.');
+                    // Re-run JS for the newly swapped content IF the partial's script doesn't auto-run
+                    // initializeModalFormJS(document.getElementById('createInviteForm')); // Or target the wrapper
+                } else if (event.detail.failed) { 
+                    if(typeof window.showToast === 'function') showToast('Error creating invite. Server error.', 'error');
+                }
+              "
+              hx-indicator="#create_invite_loader_span">
+            
+            {# The content is now loaded from the partial #}
+            {% include 'invites/_create_invite_modal_form_content.html' %} 
+        </form>
+    </div> 
+</dialog>
+<dialog id="invite_usages_modal" class="modal modal-bottom sm:modal-middle"> <div class="modal-box max-w-3xl"> <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form> <div id="invite_usages_modal_content_div"> <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span></div> </div> </div> </dialog>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+function copyToClipboard(text, message) { navigator.clipboard.writeText(text).then(() => showToast(message || 'Copied!', 'success'), () => showToast('Failed copy!', 'error')); }
+document.addEventListener('DOMContentLoaded', function () {
+    function initializeModalFormJS(formElement) {
+        if (!formElement) return;
+        const expiresInDaysInput = formElement.querySelector('#expires_in_days_input');
+        const calculatedExpiryDateSpan = formElement.querySelector('#calculated_expiry_date');
+        function updateCalculatedExpiry() {
+            if (!expiresInDaysInput || !calculatedExpiryDateSpan) return;
+            const days = parseInt(expiresInDaysInput.value);
+            if (days && days > 0) { const expiryDate = new Date(new Date().setDate(new Date().getDate() + days)); calculatedExpiryDateSpan.textContent = expiryDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } 
+            else { calculatedExpiryDateSpan.textContent = 'Never (if 0 or empty)'; }
+        }
+        if (expiresInDaysInput) { expiresInDaysInput.addEventListener('input', updateCalculatedExpiry); updateCalculatedExpiry(); }
+        const selAll = formElement.querySelector('#create_modal_select_all_libs_partial');
+        const desAll = formElement.querySelector('#create_modal_deselect_all_libs_partial');
+        const cbs = formElement.querySelectorAll('.create-modal-library-checkbox-partial');
+        if(selAll) selAll.addEventListener('click', () => cbs.forEach(cb => cb.checked = true));
+        if(desAll) desAll.addEventListener('click', () => cbs.forEach(cb => cb.checked = false));
+    }
+    initializeModalFormJS(document.getElementById('createInviteForm'));
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target.id === 'createInviteForm') initializeModalFormJS(event.detail.target);
+    });
+    const cimEl = document.getElementById('create_invite_modal');
+    if (cimEl) { cimEl.addEventListener('close', function() { const f = document.getElementById('createInviteForm'); if (f) { f.reset(); const e = f.querySelector('#calculated_expiry_date'); if(e) e.textContent = 'N/A'; f.querySelectorAll('.text-error').forEach(el => el.remove()); f.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));}}); }
+});
+</script>
+{% endblock %}

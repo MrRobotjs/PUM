@@ -1,21 +1,21 @@
-boto3>=1.38.18
-cachetools>=5.5.2
-discord.py>=2.3.2
-email-validator>=1.1.3 # Or a more recent compatible version, check PyPI
 Flask>=3.0.0
-Flask-APScheduler>=1.13.1
-Flask-Babel>=4.0.0
-Flask-HTMX>=0.4.0
-Flask-Login>=0.6.3
-Flask-Migrate>=4.1.0
-Flask-Session>=0.8.0
 Flask-SQLAlchemy>=3.1.1
+Flask-Migrate>=4.1.0
 Flask-WTF>=1.2.2
-gunicorn>=22.0.0
-Markdown>=3.6
-packaging>=24.0
-plexapi>=4.17.0
-python-dotenv>=1.1.0
-requests>=2.32.3
+Flask-Login>=0.6.3
+Flask-Session>=0.8.0  # For server-side sessions if preferred/needed
+Flask-APScheduler>=1.13.1
+Flask-Babel>=4.0.0 # For potential i18n/l10n in the future, good to have
+Flask-HTMX>=0.4.0
 SQLAlchemy>=2.0.41
-# WTForms is a dep of Flask-WTF
+gunicorn>=22.0.0
+python-dotenv>=1.1.0
+markupsafe>=2.0
+requests>=2.32.3
+plexapi>=4.17.0
+discord.py>=2.5.2 # For Discord OAuth and potential bot interactions
+email-validator>=2.0.0 # WTForms often uses this for EmailField validation
+cachetools>=5.3.0  # For simple in-memory caching if needed beyond Flask-Caching
+packaging>=24.0 # Often a dependency of other packages, good to pin
+# boto3 is removed as it was not explicitly requested for a core feature yet.
+# Markdown is removed as it's not directly used in core features yet.

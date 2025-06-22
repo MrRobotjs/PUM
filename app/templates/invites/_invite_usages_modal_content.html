@@ -1,0 +1,92 @@
+<!-- File: app/templates/invites/_invite_usages_modal_content.html -->
+{# Expects 'invite' and 'usages' (list of InviteUsage objects) in context #}
+<h3 class="font-bold text-lg mb-1">Invite Usages</h3>
+<p class="text-sm text-base-content/80 mb-4">
+    For Invite:
+    <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank" class="link link-hover link-primary font-mono text-xs">
+        {{ invite.custom_path or invite.token }}
+    </a>
+</p>
+
+{% if usages and usages|length > 0 %}
+<div class="overflow-x-auto max-h-[60vh]">
+    <table class="table table-sm w-full">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>User</th>
+                <th>Status</th>
+                <th class="hidden sm:table-cell">IP Address</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for usage in usages %}
+            <tr class="hover">
+                <td title="{{ usage.used_at | format_datetime_human }}">
+                    {{ usage.used_at | time_ago }}
+                </td>
+                <td>
+                    {% if usage.plex_username %}
+                        <div class="flex items-center space-x-2">
+                            {% if usage.plex_thumb %}
+                            <div class="avatar avatar-xs">
+                                <div class="w-6 rounded-full">
+                                    <img src="{{ usage.plex_thumb }}" alt="{{ usage.plex_username }} avatar" />
+                                </div>
+                            </div>
+                            {% else %}
+                            <i class="fa-brands fa-plex fa-fw text-orange-400"></i>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold" title="Plex: {{ usage.plex_username }}">{{ usage.plex_username | truncate(20) }}</span>
+                                {% if usage.plex_email %}<div class="text-xs opacity-60" title="{{usage.plex_email}}">{{ usage.plex_email | truncate(20) }}</div>{% endif %}
+                            </div>
+                        </div>
+                    {% elif usage.discord_username %}
+                         <div class="flex items-center space-x-2">
+                            <i class="fa-brands fa-discord fa-fw text-blue-500"></i>
+                            <div>
+                                <span class="font-semibold" title="Discord: {{ usage.discord_username }}"> {{ usage.discord_username | truncate(20) }}</span>
+                                <div class="text-xs opacity-60">ID: {{ usage.discord_user_id | truncate(10) }}...</div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <span class="text-base-content/60">Anonymous</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if usage.accepted_invite and usage.pum_user %}
+                        <span class="badge badge-success badge-sm inline whitespace-normal">
+                            <i class="fa-solid fa-check-circle mr-1"></i> Accepted by {{ usage.pum_user.plex_username }}
+                        </span>
+                    {% elif usage.plex_auth_successful and usage.discord_auth_successful %}
+                        <span class="badge badge-info badge-sm inline whitespace-normal">Plex & Discord Linked</span>
+                    {% elif usage.plex_auth_successful %}
+                        <span class="badge badge-info badge-sm inline whitespace-normal">Plex Authenticated</span>
+                    {% elif usage.discord_auth_successful %}
+                         <span class="badge badge-info badge-sm inline whitespace-normal">Discord Authenticated</span>
+                    {% else %}
+                        <span class="badge badge-warning badge-sm inline whitespace-normal">Attempted</span>
+                    {% endif %}
+                    {% if usage.status_message %}
+                        <p class="text-xs text-error mt-1">{{ usage.status_message }}</p>
+                    {% endif %}
+                </td>
+                <td class="hidden sm:table-cell text-xs opacity-70">{{ usage.ip_address or 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-8">
+    <i class="fa-solid fa-list-ul fa-3x text-base-content/30 mb-4"></i>
+    <p class="text-lg text-base-content/70">No one has used this invite yet.</p>
+</div>
+{% endif %}
+
+<div class="modal-action mt-6">
+    <form method="dialog">
+        <button class="btn btn-sm">Close</button>
+    </form>
+</div>

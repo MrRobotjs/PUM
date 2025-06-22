@@ -1,0 +1,49 @@
+<!-- File: app/templates/dashboard/_plex_status_card_content.html -->
+{# Expects 'plex_server_status' (dict) in context #}
+{# This partial is swapped into the Plex Server Status card on the dashboard #}
+
+<div class="flex flex-row gap-3 items-center">
+    <div class="self-start p-3 rounded-md {{ 'bg-success/20 text-success' if plex_server_status and plex_server_status.online else 'bg-error/20 text-error' }}"><i class="fa-solid fa-network-wired fa-2x"></i></div>
+    <div class="flex flex-col">
+        <h2 class="card-title text-base-content/70 text-sm font-normal mb-px">Plex Server Status</h2>
+        {% if plex_server_status %}
+            {% if plex_server_status.online %}
+                <p class="text-sm"><strong class="text-success">Online</strong> - {{ plex_server_status.friendly_name | default('Unknown Server') }}</p>
+                <p class="text-xs text-base-content/70">Version: {{ plex_server_status.version | default('N/A') }}</p>
+            {% else %}
+                <p class="text-sm"><strong class="text-error">Offline</strong></p>
+                <p class="text-xs text-base-content/70" title="{{ plex_server_status.error_message | default('Could not connect.') }}">
+                    {{ plex_server_status.error_message | default('Could not connect to server.') | truncate(100, True) }}
+                </p>
+            {% endif %}
+            <p class="text-xs text-base-content/70">
+                Last Check: {{ plex_server_status.last_check_time | time_ago if plex_server_status.last_check_time else 'N/A' }}
+            </p>
+        {% else %} {# Should not happen if route always provides the dict #}
+            <p class="text-sm text-warning">Plex server status unavailable.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if plex_server_status %}
+    <div class="card-actions justify-end mt-4">
+        <a href="{{ url_for('dashboard.settings_plex') }}" class="btn btn-xs btn-outline btn-ghost">
+            <i class="fa-solid fa-sliders mr-1"></i> Configure
+        </a>
+        <button class="btn btn-xs btn-outline btn-ghost"
+                hx-post="{{ url_for('api.check_plex_server_status') }}"
+                hx-target="#plex_status_card_content" {# Should target its own container ID #}
+                hx-swap="innerHTML"
+                hx-indicator="#plex_status_loader_refresh">
+            <span id="plex_status_loader_refresh" class="htmx-indicator loading loading-spinner loading-xs"></span>
+            <i class="fa-solid fa-sync mr-1 htmx-indicator-hide"></i> Refresh
+        </button>
+    </div>
+    {% else %}
+    <p class="text-sm text-warning">Plex server status unavailable.</p>
+    <div class="card-actions justify-end mt-4">
+        <a href="{{ url_for('dashboard.settings_plex') }}" class="btn btn-xs btn-primary">
+            <i class="fa-solid fa-sliders mr-1"></i> Configure Plex
+        </a>
+    </div>
+{% endif %}

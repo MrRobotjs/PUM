@@ -1,0 +1,58 @@
+<!-- File: app/templates/setup/pum_config.html -->
+{% extends "setup/layout.html" %}
+
+{% set setup_step_title = "App URL Configuration" %}
+{% set setup_page_title = "Configure Application URL" %}
+{% set setup_page_subtitle = "This URL is essential for generating correct invite links and for Plex OAuth callbacks." %}
+{% set current_step_id = 'pum' %} {# For stepper highlighting #}
+
+{% block setup_content %}
+<form method="POST" action="{{ url_for('setup.pum_config') }}" id="pumConfigForm">
+    {{ form.hidden_tag() }} {# CSRF token #}
+
+    <div class="form-control w-full mb-4">
+        {{ form.app_base_url.label(class="label required") }}
+        {{ form.app_base_url(class="input input-bordered " + ("input-error" if form.app_base_url.errors else ""), placeholder="e.g., https://plexmanager.yourdomain.com") }}
+        {% if form.app_base_url.errors %}
+            {% for error in form.app_base_url.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ error }}</span>
+                </label>
+            {% endfor %}
+        {% else %}
+        <label class="label">
+            <span class="label-text-alt">{{ form.app_base_url.description }}</span>
+        </label>
+        {% endif %}
+    </div>
+
+    <div class="alert alert-info mt-6 mb-6">
+        <div>
+            <i class="fa-solid fa-circle-info fa-lg mr-2"></i>
+            <span>
+                Ensure this URL is publicly accessible and correctly points to this application.
+                If using a reverse proxy, this should be the final public URL.
+                For example, if this app runs on port 5699 locally but is accessed via <code>https://pum.example.com</code> through a reverse proxy,
+                then <code>https://pum.example.com</code> is the value you should enter.
+            </span>
+        </div>
+    </div>
+
+    <div class="form-control mt-8">
+        {{ form.submit(class="btn btn-primary w-full sm:w-auto") }}
+    </div>
+</form>
+
+{% if error_message %} {# General error from route, not form validation #}
+<div role="alert" class="alert alert-error mt-6">
+    <i class="fa-solid fa-circle-xmark fa-fw text-xl mr-3"></i>
+    <span>{{ error_message }}</span>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# No specific JavaScript needed for this page beyond what's in setup/layout.html or app.js #}
+{% endblock %}

@@ -1,0 +1,53 @@
+name: Docker Image CI for PUM
+
+on:
+  push:
+    branches: [ "main" ] # Trigger on push to main branch
+    tags:
+      - 'v*' # Trigger on version tags like v1.0, v0.2.1
+  pull_request:
+    branches: [ "main" ] # Optional: build on PRs to main for testing
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Required to push to GHCR
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }} # Uses the GitHub username that triggered the action
+          password: ${{ secrets.GITHUB_TOKEN }} # Special token provided by GitHub Actions
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/pum # github.repository_owner is your username/org
+          # For tags:
+          # - type=schedule
+          # - type=ref,event=branch
+          # - type=ref,event=pr
+          # - type=semver,pattern={{version}} # When you push a git tag like v1.2.3
+          # - type=semver,pattern={{major}}.{{minor}} # Creates e.g. v1.2
+          # - type=sha # Long and short SHA
+          tags: |
+            type=edge,branch=main  # For pushes to main, tag as 'edge' or 'dev'
+            type=ref,event=branch  # For pushes to any branch, tag with branch name (e.g., main)
+            type=ref,event=tag     # For pushes of tags, use the tag name (e.g., v0.1.0)
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }} # Tag 'latest' for main branch pushes or version tags
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }} # Only push if not a pull request
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

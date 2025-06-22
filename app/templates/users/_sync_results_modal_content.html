@@ -1,0 +1,99 @@
+{# File: app/templates/users/_sync_results_modal_content.html #}
+{# Expects added_users, updated_users, removed_users, error_count, error_messages #}
+
+<div class="modal-box max-w-2xl">
+    <form method="dialog">
+      <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" type="button" 
+              onclick="document.getElementById('sync_results_modal').close()">✕</button>
+    </form>
+    <h3 class="font-bold text-lg"><i class="fa-solid fa-list-check mr-2"></i>Sync Results</h3>
+
+    {% if error_count > 0 %}
+        <div class="alert alert-error shadow-lg my-4">
+            <div>
+                <i class="fa-solid fa-circle-xmark fa-lg mr-2"></i>
+                <span>
+                    Encountered {{ error_count }} error(s) during sync.
+                    {% if error_messages %}
+                        <ul class="list-disc list-inside text-xs mt-1">
+                            {% for msg in error_messages[:3] %} {# Show first 3 errors #}
+                                <li>{{ msg | truncate(150) }}</li>
+                            {% endfor %}
+                            {% if error_messages|length > 3 %}
+                                <li>... and {{ error_messages|length - 3 }} more. Check server logs.</li>
+                            {% endif %}
+                        </ul>
+                    {% else %}
+                         Check server logs for details.
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+    {% endif %}
+
+    {% if not added_users and not updated_users and not removed_users and error_count == 0 %}
+        <p class="py-4 text-success"><i class="fa-solid fa-check-circle mr-2"></i>Sync complete. No changes were made to user data.</p>
+    {% else %}
+        <p class="py-2 text-sm">Review the changes made during the Plex user synchronization:</p>
+        <div class="max-h-[60vh] overflow-y-auto space-y-3">
+            {% if added_users %}
+            <div class="collapse collapse-arrow bg-base-100 rounded-md shadow">
+                <input type="checkbox" checked /> 
+                <div class="collapse-title text-md font-medium text-success">
+                    <i class="fa-solid fa-user-plus mr-2"></i>Added Users ({{ added_users|length }})
+                </div>
+                <div class="collapse-content">
+                    <ul class="list-disc list-inside text-xs pl-2 space-y-0.5">
+                        {% for user in added_users %}
+                            <li>{{ user.username }} (Plex ID: {{ user.plex_id }})</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if updated_users %}
+            <div class="collapse collapse-arrow bg-base-100 rounded-md shadow">
+                <input type="checkbox" checked /> 
+                <div class="collapse-title text-md font-medium text-info">
+                    <i class="fa-solid fa-user-pen mr-2"></i>Updated Users ({{ updated_users|length }})
+                </div>
+                <div class="collapse-content">
+                    <ul class="list-none text-xs pl-2 space-y-1">
+                        {% for user_update in updated_users %}
+                            <li>
+                                <strong>{{ user_update.username }}:</strong>
+                                <ul class="list-disc list-inside pl-3 text-base-content/80">
+                                    {% for change in user_update.changes %}
+                                        <li>{{ change }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if removed_users %}
+            <div class="collapse collapse-arrow bg-base-100 rounded-md shadow">
+                <input type="checkbox" checked /> 
+                <div class="collapse-title text-md font-medium text-error">
+                    <i class="fa-solid fa-user-minus mr-2"></i>Removed Users ({{ removed_users|length }})
+                </div>
+                <div class="collapse-content">
+                     <ul class="list-disc list-inside text-xs pl-2 space-y-0.5">
+                        {% for user in removed_users %}
+                            <li>{{ user.username }} (Plex ID: {{ user.plex_id or 'N/A' }})</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <div class="modal-action mt-6">
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('sync_results_modal').close()">Close</button>
+    </div>
+</div>

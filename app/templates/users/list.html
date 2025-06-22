@@ -1,0 +1,552 @@
+{% extends "base.html" %}
+{% block title %}{{ super() }} - Managed Users{% endblock %}
+{% block content %}
+<div class="container mx-auto px-4 py-2">
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">Managed Users ({{ users_count or 0 }})</h1>
+        <div class="flex items-center space-x-2 mt-4 sm:mt-0">
+            <button class="btn btn-secondary" 
+                    hx-post="{{ url_for('users.sync_plex_users') }}"
+                    title="Refresh user list from Plex"> 
+                
+                <span class="sync-loader htmx-indicator loading loading-spinner loading-xs mr-2">
+                    {# Spinner will be shown by CSS when .htmx-request is active #}
+                </span>
+
+                <span class="sync-icon default-icon-state"> 
+                    <i class="fa-solid fa-sync mr-2"></i>
+                </span>
+                
+                <span class="sync-text">Sync Users</span>
+            </button>
+            <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-ghost" title="Change view">
+                    <i class="fa-solid fa-display mr-1"></i> View <i class="fa-solid fa-chevron-down fa-xs ml-1"></i>
+                </label>
+                <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-300 rounded-box w-40">
+                    {% set cards_args = request.args.to_dict() %}{% set _ = cards_args.update({'view': 'cards'}) %}
+                    <li><a href="{{ url_for('users.list_users', **cards_args) }}"
+                            class="{{ 'font-bold bg-base-100/50' if current_view == 'cards' else '' }}"><i
+                                class="fa-solid fa-grip-vertical fa-fw mr-2"></i> Card View</a></li>
+                    {% set table_args = request.args.to_dict() %}{% set _ = table_args.update({'view': 'table'}) %}
+                    <li><a href="{{ url_for('users.list_users', **table_args) }}"
+                            class="{{ 'font-bold bg-base-100/50' if current_view == 'table' else '' }}"><i
+                                class="fa-solid fa-table-list fa-fw mr-2"></i> Table View</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <!-- Filters and Sort Form -->
+    <form method="GET" action="{{ url_for('users.list_users') }}" class="mb-6 p-4 bg-base-200 rounded-lg shadow"
+        id="userFilterForm">
+        <input type="hidden" name="view" value="{{ current_view }}"> {# Preserve current view on filter submit #}
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
+            <div class="form-control">
+                <label class="label"><span class="label-text">Search User</span></label>
+                <input type="text" name="search" placeholder="Username or Email" class="input input-sm input-bordered"
+                    value="{{ request.args.get('search', '') }}">
+            </div>
+            <div class="form-control">
+                <label class="label"><span class="label-text">Filter by</span></label>
+                <select name="filter_type" class="select select-sm select-bordered">
+                    <option value="" {% if not request.args.get('filter_type') %}selected{% endif %}>All Users</option>
+                    <option value="home_user" {% if request.args.get('filter_type')=='home_user' %}selected{% endif %}>
+                        Home Users</option>
+                    <option value="shares_back" {% if request.args.get('filter_type')=='shares_back' %}selected{% endif
+                        %}>Shares Back</option>
+                    <option value="has_discord" {% if request.args.get('filter_type')=='has_discord' %}selected{% endif
+                        %}>Discord Linked</option>
+                    <option value="no_discord" {% if request.args.get('filter_type')=='no_discord' %}selected{% endif
+                        %}>No Discord Linked</option>
+                </select>
+            </div>
+            <div class="form-control">
+                <label class="label"><span class="label-text">Sort by</span></label>
+                <select name="sort_by" class="select select-sm select-bordered">
+                    <option value="username_asc" {% if request.args.get('sort_by', 'username_asc' )=='username_asc'
+                        %}selected{% endif %}>Username (A-Z)</option>
+                    <option value="username_desc" {% if request.args.get('sort_by')=='username_desc' %}selected{% endif
+                        %}>Username (Z-A)</option>
+                    <option value="last_streamed_desc" {% if request.args.get('sort_by')=='last_streamed_desc'
+                        %}selected{% endif %}>Last Streamed (Newest)</option>
+                    <option value="last_streamed_asc" {% if request.args.get('sort_by')=='last_streamed_asc'
+                        %}selected{% endif %}>Last Streamed (Oldest)</option>
+                    <option value="created_at_desc" {% if request.args.get('sort_by')=='created_at_desc' %}selected{%
+                        endif %}>Date Added (Newest)</option>
+                    <option value="created_at_asc" {% if request.args.get('sort_by')=='created_at_asc' %}selected{%
+                        endif %}>Date Added (Oldest)</option>
+                </select>
+            </div>
+
+            <div class="form-control">
+                <label class="label"><span class="label-text">Per Page</span></label>
+                <select name="per_page" class="select select-sm select-bordered" onchange="this.form.submit()">
+                    {% for count in [12, 24, 48, 96] %} {# Using common page sizes #}
+                    <option value="{{ count }}" {% if current_per_page==count %}selected{% endif %}>{{ count }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-control">
+                <button type="submit" class="btn btn-sm btn-primary w-full"><i class="fa-solid fa-filter mr-2"></i>
+                    Apply</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Purge Users Section -->
+    <div class="card bg-base-200 shadow-lg my-6">
+        <div class="card-body">
+            <h2 class="card-title text-lg"><i class="fa-solid fa-user-clock mr-2 text-warning"></i> Purge Inactive Users</h2>
+            <p class="text-xs text-base-content/70 mb-4">
+                Automatically remove users from PUM and your Plex server if they haven't streamed content
+                for a specified period. Plex Home users are always excluded from purging.
+            </p>
+            {# This form now ONLY collects criteria for the preview #}
+            <form id="previewPurgeForm"
+                  hx-post="{{ url_for('users.preview_purge_inactive_users') }}"
+                  hx-target="#confirm_purge_modal_content_div" {# Target the modal's content area #}
+                  hx-swap="innerHTML"
+                  hx-indicator="#preview-purge-loader"
+                  hx-on::after-request="if(event.detail.successful && event.detail.xhr.status !== 400) confirm_purge_modal.showModal();">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"> {# Adjusted grid #}
+                    <div class="form-control md:col-span-1">
+                        <label class="label" for="inactive_days_main_form">
+                            <span class="label-text font-medium">Inactive for at least (days):</span>
+                        </label>
+                        <input type="number" id="inactive_days_main_form" name="inactive_days" 
+                               class="input input-bordered input-primary" 
+                               value="{{ purge_settings.inactive_days }}" min="7" required>
+                        <label class="label"><span class="label-text-alt">Minimum 7 days.</span></label>
+                    </div>
+
+                    <div class="form-control md:col-span-1">
+                        <label class="label cursor-pointer justify-start">
+                            <input type="checkbox" id="exclude_sharers_main_form" name="exclude_sharers" value="true"
+                                   class="checkbox checkbox-primary mr-2" 
+                                   {% if purge_settings.exclude_sharers %}checked{% endif %}>
+                            <span class="label-text font-medium">Exclude users who share back?</span>
+                        </label>
+                         <label class="label"><span class="label-text-alt whitespace-normal">If checked, users marked "Shares Back" are safe.</span></label>
+                    </div>
+                     <div class="form-control md:col-span-1">
+                        <label class="label cursor-pointer justify-start">
+                            <input type="checkbox" id="exclude_purge_whitelisted_main_form" name="exclude_purge_whitelisted" value="true"
+                                   class="checkbox checkbox-primary mr-2" checked> {# Default to checked for safety #}
+                            <span class="label-text font-medium">Exclude Purge Whitelisted Users?</span>
+                        </label>
+                         <label class="label"><span class="label-text-alt whitespace-normal">If checked, users on Purge Whitelist are safe.</span></label>
+                    </div>
+                    
+                    <div class="form-control md:col-span-1">
+                        <button type="submit" class="btn btn-info w-full"> {# Changed from btn-warning #}
+                            <span id="preview-purge-loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                            <i class="fa-solid fa-list-check mr-2"></i> Preview Users for Purge
+                        </button>
+                    </div>
+                </div>
+            </form>
+            <div id="purge-status-message" class="mt-4 min-h-[2rem]">
+                <!-- Final purge status from hx-post on confirmPurgeSelectedForm will go here -->
+            </div>
+        </div>
+    </div>
+    <!-- End Purge Users Section -->
+
+    <div id="mass-edit-container" class="mb-4 hidden"> {# Visibility controlled by JS #}
+        <button type="button" class="btn btn-accent" onclick="mass_edit_modal.showModal()">
+            <i class="fa-solid fa-pen-to-square mr-2"></i> Mass Edit (<span id="selected-users-count">0</span> selected)
+        </button>
+    </div>
+
+    <div id="user-list-container">
+        {% if users and users.items %}
+        {% if current_view == 'table' %}
+        {% include 'users/_users_table.html' with context %} {# Pass full context to partials #}
+        {% else %}
+        {% include 'users/_users_cards.html' with context %} {# Pass full context to partials #}
+        {% endif %}
+
+        <!-- Pagination -->
+        {% if users.pages > 1 %}
+        <div class="join my-8 flex justify-center">
+            {# Previous Page Link #}
+            {% set prev_link_args = request.args.to_dict() %}{% set _ = prev_link_args.update({'page': users.prev_num})
+            %}
+            <a href="{{ url_for(request.endpoint, **prev_link_args) if users.has_prev else '#' }}"
+                class="join-item btn {{ 'btn-disabled' if not users.has_prev else '' }}"><i
+                    class="fa-solid fa-arrow-left"></i></a>
+
+            {# Page Number Links #}
+            {% for page_num in users.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=3) %} {#
+            Adjusted iter_pages for better look #}
+            {% if page_num %}
+            {% set page_link_args = request.args.to_dict() %}{% set _ = page_link_args.update({'page': page_num}) %}
+            {% if users.page == page_num %}
+            <button class="join-item btn btn-primary btn-active">{{ page_num }}</button>
+            {% else %}
+            <a href="{{ url_for(request.endpoint, **page_link_args) }}" class="join-item btn">{{ page_num }}</a>
+            {% endif %}
+            {% else %}
+            <button class="join-item btn btn-disabled">...</button>
+            {% endif %}
+            {% endfor %}
+
+            {# Next Page Link #}
+            {% set next_link_args = request.args.to_dict() %}{% set _ = next_link_args.update({'page': users.next_num})
+            %}
+            <a href="{{ url_for(request.endpoint, **next_link_args) if users.has_next else '#' }}"
+                class="join-item btn {{ 'btn-disabled' if not users.has_next else '' }}"><i
+                    class="fa-solid fa-arrow-right"></i></a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-center py-10 bg-base-200 rounded-lg shadow">
+            <i class="fa-solid fa-users-slash fa-3x text-base-content/30 mb-4"></i>
+            <p class="text-xl text-base-content/70">No users found matching your criteria.</p>
+            {% if request.args.get('search') or request.args.get('filter_type') or request.args.get('sort_by') !=
+            'username_asc' or request.args.get('per_page') %}
+            <p class="mt-2 text-sm">Try adjusting your filters or search term.</p>
+            <a href="{{ url_for('users.list_users', view=current_view) }}" class="btn btn-sm btn-outline mt-4">Clear
+                Filters</a>
+            {% else %}
+            <p class="mt-2 text-sm">Consider syncing with Plex to populate the user list.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+<!-- Mass Edit Modal -->
+<dialog id="mass_edit_modal" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box max-w-2xl">
+        <form method="dialog"> <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button> </form>
+        <h3 class="font-bold text-lg mb-4"><i class="fa-solid fa-users-cog mr-2"></i>Mass Edit Users</h3>
+        <form id="massEditForm" method="POST"
+            hx-post="{{ url_for('users.mass_edit_users', **request.args.to_dict(flat=False)) }}" {# Pass current query
+            args to preserve filters on refresh #} hx-target="#user-list-container" hx-swap="innerHTML"
+            hx-indicator="#mass_edit_loader">
+            {{ mass_edit_form.hidden_tag() }}
+            {{ mass_edit_form.user_ids(id="mass_edit_user_ids") }}
+            <div class="form-control mb-4">
+                {{ mass_edit_form.action.label(class="label") }}
+                {{ mass_edit_form.action(class="select select-bordered " + ("select-error" if
+                mass_edit_form.action.errors else ""), id="mass_edit_action_select") }}
+                {% if mass_edit_form.action.errors %}<span class="text-error text-xs mt-1">{{
+                    mass_edit_form.action.errors[0] }}</span>{% endif %}
+            </div>
+            <div id="mass_edit_libraries_section" class="form-control mb-4 hidden">
+                {{ mass_edit_form.libraries.label(class="label") }}
+                <div class="max-h-60 overflow-y-auto p-2 border border-base-300 rounded-md">
+                    {% for value, label in mass_edit_form.libraries.choices %}
+                    <label class="label cursor-pointer justify-start">
+                        <input type="checkbox" name="{{ mass_edit_form.libraries.name }}" value="{{ value }}"
+                            class="checkbox checkbox-primary mr-2" {% if mass_edit_form.libraries.data and value in
+                            mass_edit_form.libraries.data %}checked{% endif %}>
+                        <span class="label-text">{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% if mass_edit_form.libraries.errors %}<span class="text-error text-xs mt-1">{{
+                    mass_edit_form.libraries.errors[0] }}</span>{% endif %}
+                <label class="label"><span class="label-text-alt">Select libraries to apply. Existing access will be
+                        overwritten.</span></label>
+            </div>
+            <div id="mass_edit_delete_confirmation_section" class="form-control mb-4 hidden">
+                <div class="alert alert-error"><i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                    <div>
+                        <h3 class="font-bold">Confirm Deletion!</h3>
+                        <div class="text-xs">Removes users from PUM AND Plex server. Cannot be undone.</div>
+                    </div>
+                </div>
+                <label class="label cursor-pointer justify-start mt-2">{{ mass_edit_form.confirm_delete(class="checkbox
+                    checkbox-error mr-2", id="mass_edit_confirm_delete") }}<span class="label-text font-semibold">I
+                        understand and wish to permanently delete these users.</span></label>
+                {% if mass_edit_form.confirm_delete.errors %}<span class="text-error text-xs mt-1">{{
+                    mass_edit_form.confirm_delete.errors[0] }}</span>{% endif %}
+            </div>
+            <div id="mass_edit_progress_bar_container" class="my-4 hidden">
+                <div class="text-sm mb-1"><span id="mass_edit_progress_text">Processing...</span></div><progress
+                    id="mass_edit_progress_bar" class="progress progress-primary w-full" value="0" max="100"></progress>
+            </div>
+            <div class="modal-action mt-6">
+                <button type="button" class="btn btn-ghost" onclick="mass_edit_modal.close()">Cancel</button>
+                {{ mass_edit_form.submit(class="btn btn-primary", id="mass_edit_submit_button") }}
+                <span id="mass_edit_loader" class="htmx-indicator loading loading-spinner loading-md"></span>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- Confirm Purge Modal - Now its content is dynamic -->
+<dialog id="confirm_purge_modal" class="modal modal-bottom sm:modal-middle">
+  <div class="modal-box max-w-2xl"> {# Increased max-width for user list #}
+    <form method="dialog">
+        <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="confirm_purge_modal.close()">✕</button>
+    </form>
+    <div id="confirm_purge_modal_content_div">
+        <!-- Content from _purge_preview_modal_content.html will be loaded here by HTMX -->
+        <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading preview...</p></div>
+    </div>
+  </div>
+  {# Removed modal-backdrop from here as it's better controlled by JS/DaisyUI if needed for programmatic close #}
+</dialog>
+
+<dialog id="sync_results_modal" class="modal modal-bottom sm:modal-middle">
+  <div id="syncResultModalContainer">
+      {# Content from _sync_results_modal_content.html will be loaded here by HTMX #}
+      <div class="modal-box"><div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading sync results...</p></div></div>
+  </div>
+  {# No modal-backdrop form here, close is handled by button inside loaded content #}
+</dialog>
+
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+    // --- Define helper functions in a broader scope ---
+    const selectedUserIds = new Set(); // Global for this page's script
+
+    function updateMassEditButtonVisibilityAndCount() {
+        const massEditContainer = document.getElementById('mass-edit-container');
+        const selectedUsersCountSpan = document.getElementById('selected-users-count');
+        const massEditUserIdsInput = document.getElementById('mass_edit_user_ids');
+
+        if (!selectedUsersCountSpan || !massEditUserIdsInput || !massEditContainer) {
+            // console.warn("Mass edit UI elements not all found for update.");
+            return;
+        }
+        const count = selectedUserIds.size;
+        selectedUsersCountSpan.textContent = count;
+        massEditUserIdsInput.value = Array.from(selectedUserIds).join(',');
+        massEditContainer.classList.toggle('hidden', count === 0);
+    }
+
+    function handleUserCheckboxChange(checkboxElement) {
+        const userId = checkboxElement.dataset.userId;
+        if (checkboxElement.checked) {
+            selectedUserIds.add(userId);
+        } else {
+            selectedUserIds.delete(userId);
+        }
+        updateMassEditButtonVisibilityAndCount();
+    }
+
+    function handleCardClick(event) {
+        if (event.target.closest('.card-action-button, .user-select-checkbox, a[href], button:not(.user-card-clickable)')) {
+            return;
+        }
+        const card = event.currentTarget;
+        const userId = card.dataset.userIdForCard;
+        let checkbox = card.querySelector(`.user-select-checkbox[data-user-id="${userId}"]`); // More robust selector within the card
+        
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+            const changeEvent = new Event('change', { bubbles: true });
+            checkbox.dispatchEvent(changeEvent);
+        } else {
+            console.warn("Could not find checkbox in card for user ID:", userId);
+        }
+    }
+
+    function handleSelectAllTableChange() { // 'this' refers to the selectAllCheckboxTable
+        const isChecked = this.checked;
+        const userListContainer = document.getElementById('user-list-container');
+        if (!userListContainer) return;
+
+        userListContainer.querySelectorAll('.user-select-checkbox').forEach(checkbox => {
+            if (checkbox.closest('table') && checkbox.offsetParent !== null) { 
+                const userId = checkbox.dataset.userId;
+                if (isChecked) {
+                    selectedUserIds.add(userId);
+                } else {
+                    selectedUserIds.delete(userId);
+                }
+                checkbox.checked = isChecked;
+            }
+        });
+        updateMassEditButtonVisibilityAndCount();
+    }
+
+    function initializeTableSelectAll() {
+        const selectAllTableCheckbox = document.getElementById('select_all_users_table');
+        if (selectAllTableCheckbox) {
+            selectAllTableCheckbox.removeEventListener('change', handleSelectAllTableChange);
+            selectAllTableCheckbox.addEventListener('change', handleSelectAllTableChange);
+        }
+    }
+
+    function attachEventListenersToUserElements() {
+        const userListContainer = document.getElementById('user-list-container');
+        if (!userListContainer) {
+            // console.warn("attachEventListenersToUserElements: user-list-container not found.");
+            return;
+        }
+        // console.log("attachEventListenersToUserElements: Attaching listeners...");
+
+        userListContainer.querySelectorAll('.user-select-checkbox').forEach(checkbox => {
+            checkbox.removeEventListener('change', (e) => handleUserCheckboxChange(e.target));
+            checkbox.addEventListener('change', (e) => handleUserCheckboxChange(e.target));
+        });
+
+        userListContainer.querySelectorAll('.user-card-clickable').forEach(card => {
+            card.removeEventListener('click', handleCardClick);
+            card.addEventListener('click', handleCardClick);
+        });
+    }
+
+    function initializeShowMoreLibraries() {
+        const userListContainer = document.getElementById('user-list-container');
+        if (!userListContainer) return;
+
+        function toggleExtraLibrariesForUser(event) {
+            const button = event.currentTarget;
+            const userId = button.dataset.targetUserId;
+            const initiallyVisibleCount = parseInt(button.dataset.visibleCount) || 3;
+            // Query within userListContainer to ensure correct scope after HTMX swaps
+            const allBadgesForThisUser = userListContainer.querySelectorAll(`.library-badge-for-user-${userId}.extra-library-badge`);
+            
+            if (allBadgesForThisUser.length === 0) { // Only consider "extra" badges
+                button.style.display = 'none'; // No extra badges to toggle
+                return;
+            }
+
+            let currentlyShownExtraCount = 0;
+            allBadgesForThisUser.forEach(badge => {
+                badge.classList.toggle('hidden');
+                if (!badge.classList.contains('hidden')) {
+                    currentlyShownExtraCount++;
+                }
+            });
+            
+            const totalExtraBadges = allBadgesForThisUser.length;
+            if (currentlyShownExtraCount === 0) { // All extras are now hidden
+                button.innerHTML = `+ ${totalExtraBadges} more`;
+            } else { // Some or all extras are shown
+                button.innerHTML = `- Show less`;
+            }
+        }
+        
+        userListContainer.querySelectorAll('.show-more-libs-button').forEach(button => {
+            button.removeEventListener('click', toggleExtraLibrariesForUser); 
+            button.addEventListener('click', toggleExtraLibrariesForUser);
+        });
+    }
+    // --- End of helper function definitions ---
+
+
+    // Make page-specific re-initialization function globally available for app.js
+    window.reinitializeUserListFeatures = function() {
+        console.log("JS Users List: reinitializeUserListFeatures() called");
+        attachEventListenersToUserElements();
+        initializeTableSelectAll();
+        initializeShowMoreLibraries();    
+        
+        selectedUserIds.clear(); 
+        const userListContainer = document.getElementById('user-list-container');
+        if(userListContainer){
+            userListContainer.querySelectorAll('.user-select-checkbox:checked').forEach(checkbox => {
+                selectedUserIds.add(checkbox.dataset.userId);
+            });
+        }
+        updateMassEditButtonVisibilityAndCount(); 
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log("JS Users List: DOMContentLoaded fired.");
+        // --- Purge Modal Logic ---
+        const confirmPurgeModal = document.getElementById('confirm_purge_modal');
+        if (confirmPurgeModal) {
+            confirmPurgeModal.addEventListener('close', () => {
+                const contentDiv = document.getElementById('confirm_purge_modal_content_div');
+                if (contentDiv) {
+                    contentDiv.innerHTML = '<div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading preview...</p></div>';
+                }
+            });
+        }
+
+        // --- Mass Edit Modal Specific Logic ---
+        const massEditActionSelect = document.getElementById('mass_edit_action_select');
+        const librariesSection = document.getElementById('mass_edit_libraries_section');
+        const deleteConfirmSection = document.getElementById('mass_edit_delete_confirmation_section');
+        const massEditSubmitButton = document.getElementById('mass_edit_submit_button');
+        const confirmDeleteCheckbox = document.getElementById('mass_edit_confirm_delete');
+
+        if (massEditActionSelect) {
+            massEditActionSelect.addEventListener('change', function () {
+                if(librariesSection) librariesSection.classList.add('hidden'); 
+                if(deleteConfirmSection) deleteConfirmSection.classList.add('hidden');
+                if(massEditSubmitButton) massEditSubmitButton.disabled = (this.value === '');
+
+                if (this.value === 'update_libraries' && librariesSection) {
+                    librariesSection.classList.remove('hidden');
+                } else if (this.value === 'delete_users' && deleteConfirmSection) {
+                    deleteConfirmSection.classList.remove('hidden');
+                    if (massEditSubmitButton && confirmDeleteCheckbox) {
+                        massEditSubmitButton.disabled = !confirmDeleteCheckbox.checked;
+                    }
+                }
+            });
+            if (massEditSubmitButton && massEditActionSelect.value === '') massEditSubmitButton.disabled = true;
+        }
+        if (confirmDeleteCheckbox) {
+            confirmDeleteCheckbox.addEventListener('change', function () {
+                if (massEditActionSelect && massEditActionSelect.value === 'delete_users' && massEditSubmitButton) {
+                    massEditSubmitButton.disabled = !this.checked;
+                }
+            });
+        }
+        
+        const massEditFormEl = document.getElementById('massEditForm');
+        if (massEditFormEl) {
+            massEditFormEl.addEventListener('htmx:afterSwap', function (evt) { 
+                // console.log("JS Users List: htmx:afterSwap on massEditForm (user list reloaded).");
+                if (typeof window.reinitializeUserListFeatures === 'function') {
+                    window.reinitializeUserListFeatures(); 
+                }
+                const modal = document.getElementById('mass_edit_modal');
+                if (modal && typeof modal.close === 'function' && evt.detail.successful) {
+                    modal.close();
+                }
+            });
+        }
+
+        // --- Listener for custom event to open the SYNC RESULTS MODAL ---
+        document.body.addEventListener('openSyncResultsModal', function(evt) {
+            console.log("JS Users List: openSyncResultsModal event received. Detail:", evt.detail);
+            const modal = document.getElementById('sync_results_modal');
+            console.log("JS Users List: Modal element for sync results:", modal);
+
+            if (modal) {
+                console.log("JS Users List: typeof modal.showModal:", typeof modal.showModal);
+                if (typeof modal.showModal === 'function') {
+                    console.log("JS Users List: Attempting to call modal.showModal() for sync_results_modal");
+                    try {
+                        modal.showModal();
+                        console.log("JS Users List: sync_results_modal.showModal() called successfully.");
+                    } catch (e) {
+                        console.error("JS Users List: Error calling sync_results_modal.showModal():", e);
+                    }
+                } else {
+                    console.error("JS Users List: sync_results_modal.showModal is not a function. Modal HTML:", modal.outerHTML.substring(0,200) + "...");
+                    if (typeof window.showToast === 'function') {
+                         window.showToast('UI Error: Could not display sync results modal.', 'error');
+                    }
+                }
+            } else {
+                console.error("JS Users List: Sync results modal element (#sync_results_modal) not found in DOM.");
+                if (typeof window.showToast === 'function') {
+                     window.showToast('UI Error: Could not find sync results modal element.', 'error');
+                }
+            }
+        });
+        // --- End listener for sync results modal ---
+
+        // --- Initial Setup on Page Load ---
+        if (typeof window.reinitializeUserListFeatures === 'function') {
+            window.reinitializeUserListFeatures(); 
+        }
+    });
+</script>
+{% endblock %}

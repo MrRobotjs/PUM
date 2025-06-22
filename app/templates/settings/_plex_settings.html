@@ -1,0 +1,80 @@
+<!-- File: app/templates/settings/_plex_settings.html -->
+{# Expects 'form' (PlexSettingsForm instance) in context #}
+<form method="POST" action="{{ url_for('dashboard.settings_plex') }}" id="plexSettingsPageForm">
+    {{ form.hidden_tag() }}
+    {{ form.connection_tested_successfully(id="plex_settings_connection_tested_successfully") }} 
+
+    <h2 class="text-xl font-semibold mb-2">Plex Server Configuration</h2>
+    <p class="text-sm text-base-content/70 mb-6">Manage your Plex server connection details and related settings.</p>
+
+    <div class="space-y-4">
+        <div class="form-control w-full">
+            {{ form.plex_url.label(class="label required") }}
+            {# REMOVED name="plex_url" from here #}
+            {{ form.plex_url(id="plex_settings_plex_url", class="input input-bordered " + ("input-error" if form.plex_url.errors else ""), placeholder="e.g., https://plex.example.com or http://localhost:32400") }}
+            {% if form.plex_url.errors %}
+                {% for error in form.plex_url.errors %}
+                <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="form-control w-full">
+            {{ form.plex_token.label(class="label required") }}
+            {# REMOVED name="plex_token" from here #}
+            {{ form.plex_token(id="plex_settings_plex_token", class="input input-bordered " + ("input-error" if form.plex_token.errors else ""), placeholder="Your Plex X-Plex-Token") }}
+            {% if form.plex_token.errors %}
+                {% for error in form.plex_token.errors %}
+                <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+                {% endfor %}
+            {% else %}
+            <label class="label">
+                <span class="label-text-alt text-xs text-base-content/70 whitespace-normal">
+                    How to get your Plex token:
+                    <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noopener noreferrer" class="link link-hover link-primary">
+                        View Plex Support Article <i class="fa-solid fa-external-link-alt fa-xs"></i>
+                    </a>
+                </span>
+            </label>
+            {% endif %}
+        </div>
+
+        <div class="form-control mt-6 mb-2">
+            <button type="button" id="test_plex_settings_connection_button" class="btn btn-secondary w-full sm:w-auto"
+                    hx-post="{{ url_for('api.test_plex_connection') }}" 
+                    hx-include="#plex_settings_plex_url, #plex_settings_plex_token" {# Make sure API uses these IDs too if you changed the default hx-post values #}
+                    hx-target="#plex_settings_connection_status_message"
+                    hx-swap="innerHTML"
+                    hx-indicator="#plex_settings_test_connection_loader">
+                <span id="plex_settings_test_connection_loader" class="htmx-indicator loading loading-spinner loading-xs mr-2"></span>
+                <i class="fa-solid fa-plug mr-2"></i> Test Connection
+            </button>
+        </div>
+
+        <div id="plex_settings_connection_status_message" class="min-h-[2rem] mb-6 text-sm">
+            {% if form.connection_tested_successfully.data == 'false' and request.method == 'POST' and not form.errors %}
+                 <div class="alert alert-warning text-sm p-2"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Please test the connection successfully before saving.</div>
+            {% endif %}
+        </div>
+
+        <div class="divider">Other Plex Settings</div>
+
+        <div class="form-control w-full max-w-md">
+            {{ form.session_monitoring_interval.label(class="label") }}
+            {{ form.session_monitoring_interval(class="input input-bordered " + ("input-error" if form.session_monitoring_interval.errors else ""), type="number", min="10") }}
+             {% if form.session_monitoring_interval.errors %}
+                {% for error in form.session_monitoring_interval.errors %}
+                <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+                {% endfor %}
+            {% endif %}
+            <label class="label"><span class="label-text-alt text-xs text-base-content/70 whitespace-normal">How frequently (in seconds) to check Plex for active sessions to update "Last Streamed" for users.</span></label>
+        </div>
+
+        <div class="form-control mt-8">
+            {{ form.submit(class="btn btn-primary", id="save_plex_settings_button", disabled=not form.connection_tested_successfully.data == 'true' and form.plex_url.data) }}
+        </div>
+         <p class="text-xs text-base-content/70 mt-1">
+            The "Save" button is enabled after a successful connection test if Plex URL/Token are provided.
+        </p>
+    </div>
+</form>

@@ -1,0 +1,192 @@
+<!-- File: app/templates/users/edit.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Edit {{ user.plex_username }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-2 max-w-2xl">
+    <div class="flex items-center mb-6">
+        <a href="{{ url_for('users.list_users', view=request.args.get('view', 'cards')) }}" class="btn btn-ghost btn-sm mr-2">
+            <i class="fa-solid fa-arrow-left"></i> Back to Users
+        </a>
+        <h1 class="text-2xl sm:text-3xl font-bold">{{ user.plex_username }}</h1>
+    </div>
+
+    <div class="bg-base-200 shadow-xl rounded-lg p-6 sm:p-8">
+        <form method="POST" action="{{ url_for('users.edit_user', user_id=user.id, view=request.args.get('view', 'cards')) }}" id="editUserForm">
+            {{ form.hidden_tag() }} 
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 items-center">
+                <div class="avatar md:col-span-1 flex justify-center"> <div class="w-32 h-32 rounded-full ring ring-primary ring-offset-base-100 ring-offset-4"> <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';"/> </div> </div>
+                <div class="md:col-span-2 space-y-2">
+                    <div class="form-control flex flex-row">{{ form.plex_email.label(class="label pb-0") }} {{ form.plex_email(class="input input-bordered input-disabled", disabled=True) }} </div>
+                    <div class="form-control"> <label class="label justify-start cursor-default"> {{ form.is_home_user(class="checkbox checkbox-disabled mr-2 bg-gray-500", disabled=True) }} <span class="label-text">Plex Home User</span> </label> </div>
+                     {% if user.discord_user_id %} <div class="form-control"> <label class="label"> <span class="label-text"><i class="fa-brands fa-discord mr-1 text-info"></i> Discord</span> </label> <input type="text" readonly value="{{ user.discord_username or 'Linked' }} (ID: {{ user.discord_user_id }})" class="input input-bordered input-disabled input-sm bg-base-300/50"> </div> {% endif %}
+                </div>
+            </div>
+
+            <div class="divider">User Details & Whitelists</div>
+
+            <div class="form-control w-full mb-4 flex flex-col">
+                {{ form.notes.label(class="label font-medium") }}
+                {{ form.notes(class="textarea textarea-bordered h-24 w-auto " + ("textarea-error" if form.notes.errors else ""), placeholder="Add any notes about this user...") }}
+                {% if form.notes.errors %}{% for error in form.notes.errors %}<label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>{% endfor %}{% endif %}
+            </div>
+
+            {# Whitelist Toggles #}
+            <div class="form-control w-full mb-4">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.is_discord_bot_whitelisted(class="toggle toggle-primary mr-3") }}
+                    <span class="label-text font-medium">{{ form.is_discord_bot_whitelisted.label.text }}</span>
+                </label>
+                <p class="text-xs text-base-content/60 pl-15">If checked, this user will be immune to automated actions by the Discord Bot (e.g., removal if they leave the Discord server or lose a role).</p>
+                {% if form.is_discord_bot_whitelisted.errors %}{% for e in form.is_discord_bot_whitelisted.errors %}<p class="text-error text-xs mt-1 pl-12">{{e}}</p>{% endfor %}{% endif %}
+            </div>
+
+            <div class="form-control w-full mb-6">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.is_purge_whitelisted(class="toggle toggle-accent mr-3") }}
+                    <span class="label-text font-medium">{{ form.is_purge_whitelisted.label.text }}</span>
+                </label>
+                <p class="text-xs text-base-content/60 pl-15">If checked, this user will be immune to the "Purge Inactive Users" feature, regardless of their activity.</p>
+                {% if form.is_purge_whitelisted.errors %}{% for e in form.is_purge_whitelisted.errors %}<p class="text-error text-xs mt-1 pl-12">{{e}}</p>{% endfor %}{% endif %}
+            </div>
+
+            <div class="divider">Access Duration</div>
+            <div class="form-control w-full mb-2">
+                <label class="label">
+                    <span class="label-text font-medium">Current Access Expiration:</span>
+                </label>
+                <input type="text" readonly 
+                       value="{{ current_access_expires_at | format_datetime_human if current_access_expires_at else 'Permanent' }}" 
+                       class="input input-bordered input-sm bg-base-300/50 
+                              {% if current_access_expires_at and current_access_expires_at < now_utc() %}text-error font-semibold{% elif current_access_expires_at %}text-success{% endif %}">
+                {% if current_access_expires_at and current_access_expires_at < now_utc() %}
+                <p class="text-xs text-error mt-1">Note: Access has already expired. User will be removed by the next scheduled task if not updated.</p>
+                {% endif %}
+            </div>
+
+            <div class="form-control w-full mb-1">
+                {{ form.access_expires_in_days.label(class="label font-medium") }}
+                {{ form.access_expires_in_days(id="user_edit_access_expires_in_days_input", class="input input-bordered " + ("input-error" if form.access_expires_in_days.errors else ""), type="number", min="1") }}
+                {% if form.access_expires_in_days.errors %}
+                    {% for error in form.access_expires_in_days.errors %}
+                    <label class="label py-0 mt-1"><span class="label-text-alt text-error">{{ error }}</span></label>
+                    {% endfor %}
+                {% else %}
+                    <label class="label py-0 mt-1">
+                        <span class="label-text-alt">Calculated New Expiry: <strong id="user_edit_calculated_new_expiry_date">No change (if blank/invalid)</strong></span>
+                    </label>
+                {% endif %}
+            </div>
+             <p class="text-xs text-base-content/60 mb-4">{{ form.access_expires_in_days.description }}</p>
+
+            <div class="form-control w-full mb-6">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.clear_access_expiration(class="checkbox checkbox-warning checkbox-sm mr-2", id="user_edit_clear_access_expiration_checkbox") }}
+                    <span class="label-text font-medium">{{ form.clear_access_expiration.label.text }}</span>
+                </label>
+                <p class="text-xs text-base-content/60 pl-8">{{ form.clear_access_expiration.description }}</p>
+                 {% if form.clear_access_expiration.errors %}{% for e in form.clear_access_expiration.errors %}<p class="text-error text-xs mt-1 pl-8">{{e}}</p>{% endfor %}{% endif %}
+            </div>
+
+            <div class="divider">Library Access</div>
+
+            <div class="form-control w-full mb-6">
+                <label class="label">
+                    <span class="label-text hidden">{{ form.libraries.label.text }}</span>
+                    <span class="label-text-alt">
+                        <button type="button" id="select_all_libraries" class="btn btn-xs btn-ghost">Select All</button> |
+                        <button type="button" id="deselect_all_libraries" class="btn btn-xs btn-ghost">Deselect All</button>
+                    </span>
+                </label>
+                <div class="max-h-80 overflow-y-auto p-4 border border-base-300 rounded-md bg-base-100/30 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                    {# Corrected loop for libraries #}
+                    {% for subfield in form.libraries %} {# Iterate directly over the field for subfields #}
+                        <label class="label cursor-pointer justify-start py-1">
+                            {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-2 library-checkbox") }} {# Render the subfield (checkbox) #}
+                            {{ subfield.label(class="label-text", title=subfield.label.text) }} {# Render its label #}
+                        </label>
+                    {% endfor %}
+                </div>
+                <label class="label">
+                    <span class="label-text-alt whitespace-normal text-xs text-base-content/60">If no libraries are selected, the user will typically have access to <strong>all</strong> libraries by default (standard Plex behavior). To grant access to <strong>none</strong>, you would usually remove the user from the server share entirely. This tool manages specific library section shares.</span>
+                </label>
+                {% if form.libraries.errors %}{% for error in form.libraries.errors %}<label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>{% endfor %}{% endif %}
+            </div>
+             <p class="text-xs text-base-content/70 mb-6 text-center">
+                Note: Library changes are applied directly to the Plex server. If no changes are made to libraries, no Plex API calls for library updates will be performed on save.
+            </p>
+
+            <div class="form-control mt-8 flex flex-col sm:flex-row justify-end items-center gap-3">
+                <a href="{{ url_for('users.list_users', view=request.args.get('view', 'cards')) }}" class="btn btn-ghost order-2 sm:order-1 w-full sm:w-auto">Cancel</a>
+                {{ form.submit(class="btn btn-primary order-1 sm:order-2 w-full sm:w-auto") }}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const selectAllButton = document.getElementById('select_all_libraries');
+    const deselectAllButton = document.getElementById('deselect_all_libraries');
+    const libraryCheckboxes = document.querySelectorAll('.library-checkbox'); 
+    if (selectAllButton) { selectAllButton.addEventListener('click', function() { libraryCheckboxes.forEach(checkbox => checkbox.checked = true); }); }
+    if (deselectAllButton) { deselectAllButton.addEventListener('click', function() { libraryCheckboxes.forEach(checkbox => checkbox.checked = false); }); }
+
+    const daysInput = document.getElementById('user_edit_access_expires_in_days_input');
+    const calculatedDateSpan = document.getElementById('user_edit_calculated_new_expiry_date');
+    const clearCheckbox = document.getElementById('user_edit_clear_access_expiration_checkbox');
+
+    function updateCalculatedUserEditExpiry() {
+        if (!daysInput || !calculatedDateSpan) return;
+
+        if (clearCheckbox && clearCheckbox.checked) {
+            calculatedDateSpan.textContent = 'Will be set to Permanent';
+            daysInput.disabled = true; // Optionally disable days input if clearing
+            daysInput.value = ''; // Clear days input if clear is checked
+            return;
+        }
+        
+        daysInput.disabled = false; // Re-enable if clear is unchecked
+        const days = parseInt(daysInput.value);
+
+        if (!isNaN(days) && days > 0) {
+            const today = new Date();
+            const expiryDate = new Date(new Date().setDate(today.getDate() + days));
+            calculatedDateSpan.textContent = expiryDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        } else if (daysInput.value === '') {
+            calculatedDateSpan.textContent = 'No change to current expiry (if any)';
+        } else {
+            calculatedDateSpan.textContent = 'Invalid day value';
+        }
+    }
+
+    if (daysInput) {
+        daysInput.addEventListener('input', updateCalculatedUserEditExpiry);
+        // Initial call might need to be delayed if form data is pre-filled by Flask after DOMContentLoaded
+        setTimeout(updateCalculatedUserEditExpiry, 0); 
+    }
+    if (clearCheckbox) {
+        clearCheckbox.addEventListener('change', updateCalculatedUserEditExpiry);
+         // Also update on load in case the checkbox is pre-checked (e.g., form error resubmission)
+        setTimeout(updateCalculatedUserEditExpiry, 0);
+    }
+    
+    if (selectAllButton) {
+        selectAllButton.addEventListener('click', function() {
+            libraryCheckboxes.forEach(checkbox => checkbox.checked = true);
+        });
+    }
+
+    if (deselectAllButton) {
+        deselectAllButton.addEventListener('click', function() {
+            libraryCheckboxes.forEach(checkbox => checkbox.checked = false);
+        });
+    }
+});
+</script>
+{% endblock %}

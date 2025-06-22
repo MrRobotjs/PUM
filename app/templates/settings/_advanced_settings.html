@@ -1,0 +1,58 @@
+<!-- File: app/templates/settings/_advanced_settings.html -->
+{# No specific form for now, this tab could show a 'danger zone' or raw settings list #}
+{# Or you could create an AdvancedSettingsForm if needed #}
+
+<h2 class="text-xl font-semibold mb-2">Advanced Settings</h2>
+<p class="text-sm text-base-content/70 mb-6">Manage advanced configurations and raw settings. Be careful here.</p>
+
+<div class="space-y-6">
+
+    {# Example: Option to re-generate SECRET_KEY (Danger Zone) #}
+    <div class="card bg-base-100 border border-error shadow">
+        <div class="card-body">
+            <h3 class="card-title text-error"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Danger Zone</h3>
+            <p class="text-sm">These actions can have significant impacts on your application.</p>
+            <div class="divider my-1"></div>
+            <div class="flex flex-col sm:flex-row justify-between items-center py-2">
+                <div>
+                    <p class="font-semibold">Re-generate Application Secret Key</p>
+                    <p class="text-xs text-base-content/70">This will invalidate all current sessions and require users (including admin) to log in again. Use only if you suspect the current key is compromised.</p>
+                </div>
+                <button class="btn btn-error btn-sm mt-2 sm:mt-0"
+                        hx-post="{{ url_for('dashboard.regenerate_secret_key') }}"
+                        hx-confirm="Are you absolutely sure you want to re-generate the SECRET_KEY? This will log everyone out."
+                        hx-target="#secret_key_status_message"
+                        hx-swap="innerHTML"
+                        hx-indicator="this">
+                     <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+                    <i class="fa-solid fa-key mr-2"></i> Re-generate Key
+                </button>
+            </div>
+            <div id="secret_key_status_message" class="text-xs mt-1"></div>
+        </div>
+    </div>
+
+    {# Example: Placeholder for other advanced settings #}
+    {#
+    <div class="card bg-base-100 border border-base-300 shadow">
+        <div class="card-body">
+            <h3 class="card-title">Another Advanced Setting</h3>
+            <p class="text-sm">Description of another advanced setting.</p>
+            <div class="form-control mt-4">
+                 <button class="btn btn-primary btn-sm">Do Something Advanced</button>
+            </div>
+        </div>
+    </div>
+    #}
+
+    {# The "Current Saved Settings" table is already part of settings/index.html and shown when active_tab == 'advanced' #}
+    {% if not all_db_settings %}
+    <div class="mt-10">
+        <h2 class="text-xl font-semibold mb-4">Current Saved Settings</h2>
+        <p class="text-base-content/70">No settings found in the database or an error occurred loading them.</p>
+    </div>
+    {% endif %}
+
+</div>
+
+{# No form.submit() here unless you add a specific AdvancedSettingsForm #}

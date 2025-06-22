@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - You're Invited!{% endblock %}
+
+{% block content %} 
+<div class="hero min-h-[calc(100vh-12rem)] bg-base-100">
+    <div class="hero-content text-center">
+        <div class="max-w-md">
+            {% if error %}
+                <div class="card bg-error text-error-content shadow-xl p-8">
+                    <i class="fa-solid fa-circle-xmark fa-5x mx-auto mb-4"></i>
+                    <h1 class="text-4xl font-bold">Invite Problem</h1>
+                    <p class="py-6 text-lg">{{ error }}</p>
+                    {# If general setup is complete, link to admin login, else to setup start #}
+                    {% if g.setup_complete %}
+                        <a href="{{ url_for('auth.app_login') }}" class="btn btn-neutral">Admin Login</a>
+                    {% else %}
+                         <a href="{{ url_for('setup.account_setup') }}" class="btn btn-neutral">Go to Setup</a>
+                    {% endif %}
+                </div>
+            {% elif invite %}
+                <div class="card bg-base-200 shadow-xl p-6 sm:p-8">
+                    <figure class="mb-4"><i class="fa-solid fa-envelope-open-text fa-5x text-primary"></i></figure>
+                    <h1 class="text-3xl sm:text-4xl font-bold">You're Invited!</h1>
+                    <p class="py-4 text-base-content/80">You've been invited to join the <strong class="text-accent">{{ g.app_name or 'Plex Media Server' }}</strong>.</p>
+
+                    {% if already_authenticated_plex_user %}
+                        <div class="alert alert-success my-4 shadow-md">
+                            <i class="fa-brands fa-plex fa-lg mr-2"></i>
+                            <div>
+                                <h3 class="font-bold">Plex Account Linked!</h3>
+                                <div class="text-xs">Hello, <strong>{{ already_authenticated_plex_user.username }}</strong>!</div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if show_discord_button and already_authenticated_discord_user %} {# show_discord_button implies oauth_is_generally_enabled #}
+                         <div class="alert alert-info my-4 shadow-md">
+                            <i class="fa-brands fa-discord fa-lg mr-2"></i>
+                            <div>
+                                <h3 class="font-bold">Discord Account Linked!</h3>
+                                <div class="text-xs">Hello, <strong>{{ already_authenticated_discord_user.username }}</strong>!</div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('invites.process_invite_form', invite_path_or_token=invite_path_or_token) }}">
+                        {{ form.hidden_tag() }} 
+
+                        {# Plex Login Button - always show if not yet authed with Plex #}
+                        {% if not already_authenticated_plex_user %}
+                        <div class="form-control mt-6">
+                            <button name="auth_method" value="plex" type="submit" class="btn btn-primary bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black btn-block">
+                                <i class="fa-brands fa-plex fa-lg mr-2"></i> Sign In with Plex to Accept
+                            </button>
+                        </div>
+                        {% endif %}
+
+                        {# Discord Login Button - show if general OAuth is enabled AND user hasn't authed with Discord yet #}
+                        {% if show_discord_button and not already_authenticated_discord_user %}
+                            <div class="form-control mt-4">
+                                 <button name="auth_method" value="discord" type="submit" class="btn btn-info bg-[#5865F2] hover:bg-[#4752C4] border-[#5865F2] hover:border-[#4752C4] text-white btn-block">
+                                    <i class="fa-brands fa-discord fa-lg mr-2"></i>
+                                    {% if already_authenticated_plex_user %} {# If Plex is done, this button is for linking Discord #}
+                                        Link Discord Account 
+                                        {% if discord_sso_is_mandatory %} 
+                                            <span class="badge badge-warning badge-xs ml-1 animate-pulse">Required</span>
+                                        {% else %} 
+                                            <span class="badge badge-ghost badge-xs ml-1">Optional</span>
+                                        {% endif %}
+                                    {% else %} {# If Plex not done, this is primary Discord auth step #}
+                                        Sign In with Discord 
+                                        {% if discord_sso_is_mandatory %} 
+                                            <span class="badge badge-warning badge-xs ml-1 animate-pulse">Required</span>
+                                        {% else %} 
+                                            <span class="badge badge-ghost badge-xs ml-1">Optional</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </button>
+                                {% if discord_sso_is_mandatory and not already_authenticated_discord_user %}
+                                <label class="label">
+                                    <span class="label-text-alt text-warning text-xs whitespace-normal">Discord linking is required for this invite as per server policy.</span>
+                                </label>
+                                {% elif not discord_sso_is_mandatory %}
+                                <label class="label">
+                                    <span class="label-text-alt text-xs whitespace-normal">Linking Discord helps with communication and server features (if configured by admin).</span>
+                                </label>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        {# Accept Invite Button - Show if Plex is authed AND (Discord is not mandatory OR Discord is mandatory AND authed) #}
+                        {% if already_authenticated_plex_user %}
+                            {# Condition: Not (Discord is mandatory AND Discord is NOT yet authed) #}
+                            {% if not (discord_sso_is_mandatory and not already_authenticated_discord_user) %}
+                                <div class="form-control mt-8">
+                                    <button name="action" value="accept_invite" type="submit" class="btn btn-success btn-block">
+                                        <i class="fa-solid fa-check-circle mr-2"></i> Accept Invite & Join Server
+                                    </button>
+                                </div>
+                            {% elif discord_sso_is_mandatory and not already_authenticated_discord_user and show_discord_button %}
+                                {# This case is now covered by the help text under the Discord button, but can be an explicit alert if preferred #}
+                                <div class="alert alert-warning mt-6 text-sm p-3">
+                                    <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                                    <span>Please link your Discord account (required) to proceed.</span>
+                                </div>
+                            {% elif discord_sso_is_mandatory and not show_discord_button %}
+                                {# Edge case: SSO mandatory but OAuth somehow disabled for this page - should not happen if logic is right #}
+                                <div class="alert alert-error mt-6 text-sm p-3">
+                                    <i class="fa-solid fa-circle-xmark mr-2"></i>
+                                    <span>Discord linking is required, but Discord login is currently unavailable. Please contact an admin.</span>
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    </form>
+
+                    <div class="text-xs text-base-content/60 mt-6 space-y-0.5">
+                        <p>Invite expires: {{ invite.expires_at | format_datetime_human if invite.expires_at else "Never" }}</p>
+                        <p>Uses remaining: {{ (invite.max_uses - invite.current_uses) if invite.max_uses is not none else "Unlimited" }}</p>
+                        {% if invite.grant_library_ids|length > 0 %}
+                            <p>Grants access to {{ invite.grant_library_ids|length }} specific library/libraries.</p>
+                        {% else %}
+                            <p>Grants access to all shared libraries.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            {% else %}
+                <div class="card bg-warning text-warning-content shadow-xl p-8">
+                    <i class="fa-solid fa-question-circle fa-5x mx-auto mb-4"></i>
+                    <h1 class="text-4xl font-bold">Invite Information Unavailable</h1>
+                    <p class="py-6 text-lg">Could not load invite details at this time. The link may be invalid or there was an issue.</p>
+                     {% if g.setup_complete %}
+                        <a href="{{ url_for('auth.app_login') }}" class="btn btn-neutral">Admin Login</a>
+                    {% else %}
+                         <a href="{{ url_for('setup.account_setup') }}" class="btn btn-neutral">Go to Setup</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock content %}

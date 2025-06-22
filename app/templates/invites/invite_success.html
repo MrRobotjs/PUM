@@ -1,0 +1,31 @@
+<!-- File: app/templates/invites/invite_success.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Invite Accepted!{% endblock %}
+
+{% block content %}
+<div class="hero min-h-[calc(100vh-12rem)] bg-base-100">
+    <div class="hero-content text-center">
+        <div class="max-w-lg">
+            <div class="card bg-success text-success-content shadow-xl p-8">
+                <i class="fa-solid fa-party-horn fa-5x mx-auto mb-4"></i> {# Or fa-check-circle #}
+                <h1 class="text-4xl font-bold">Welcome, {{ username }}!</h1>
+                <p class="py-6 text-lg">
+                    Your invite has been successfully accepted. You should now have access to the Plex Media Server.
+                </p>
+                <p class="text-sm mb-6">
+                    You can access Plex via the official Plex Web App or any Plex client application.
+                </p>
+                <div class="card-actions justify-center">
+                    <a href="{{ plex_app_url }}" target="_blank" class="btn btn-neutral">
+                        Go to Plex <i class="fa-solid fa-arrow-up-right-from-square ml-2"></i>
+                    </a>
+                </div>
+                 <p class="text-xs mt-8">
+                    If you encounter any issues, please contact the server administrator.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

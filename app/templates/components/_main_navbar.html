@@ -1,0 +1,56 @@
+<!-- File: app/templates/components/_main_navbar.html -->
+<div class="navbar bg-base-200 shadow-md sticky top-0 z-30 no-print">
+    <div class="navbar-start">
+        <!-- Hamburger button to toggle the drawer - ONLY for screens smaller than lg -->
+        <div class="lg:hidden"> {# Wrapper to hide on large screens #}
+            <label for="main-sidebar-drawer-toggle" class="btn btn-square btn-ghost drawer-button">
+                <i class="fa-solid fa-bars fa-lg"></i>
+            </label>
+        </div>
+
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-ghost normal-case text-xl">
+            <i class="fa-solid fa-users-gear mr-2"></i> {{ g.app_name or "Plex User Manager" }}
+        </a>
+    </div>
+
+    <div class="navbar-center hidden lg:flex"> {# Desktop main navigation, shown only on lg and up #}
+        <ul class="menu menu-horizontal px-1">
+            <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.index' else '' }}"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</a></li>
+            <li><a href="{{ url_for('users.list_users') }}" class="{{ 'font-bold' if request.endpoint and request.endpoint.startswith('users.') else '' }}"><i class="fa-solid fa-users mr-1"></i> Users</a></li>
+            <li><a href="{{ url_for('invites.list_invites') }}" class="{{ 'font-bold' if request.endpoint and request.endpoint.startswith('invites.') else '' }}"><i class="fa-solid fa-ticket mr-1"></i> Invites</a></li>
+            <li><a href="{{ url_for('dashboard.streaming_sessions') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.streaming_sessions' else '' }}"><i class="fa-solid fa-tower-broadcast mr-1"></i> Streaming</a></li>
+            <li><a href="{{ url_for('dashboard.history') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.history' else '' }}"><i class="fa-solid fa-timeline mr-1"></i> History</a></li>
+            {# Settings link can also be here for desktop, or just in user dropdown/sidebar #}
+        </ul>
+    </div>
+
+    <div class="navbar-end">
+        <label class="swap swap-rotate btn btn-ghost btn-circle mr-2 relative" title="Toggle Theme">
+            <input type="checkbox" id="theme-toggle" />
+            <i class="fa-solid fa-sun swap-on fill-current w-5 h-5 absolute -translate-x-1/2 -translate-y-1/2 top-1/5"></i>
+            <i class="fa-solid fa-moon swap-off fill-current w-5 h-5 absolute -translate-x-1/2 -translate-y-1/2 top-1/5"></i>
+        </label>
+        <div class="dropdown dropdown-end">
+            <label tabindex="0" class="btn btn-ghost btn-circle avatar">
+                <div class="w-8 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                    {% if current_user.plex_thumb %}
+                        <img src="{{ current_user.plex_thumb }}" alt="{{ current_user.username or current_user.plex_username }} avatar" />
+                    {% else %}
+                        <span class="avatar placeholder">
+                          <div class="bg-neutral-focus text-neutral-content rounded-full w-8">
+                            <span class="text-xs">{{ (current_user.username or current_user.plex_username)[0]|upper if (current_user.username or current_user.plex_username) else 'A' }}</span>
+                          </div>
+                        </span>
+                    {% endif %}
+                </div>
+            </label>
+            <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[50] p-2 shadow bg-base-100 rounded-box w-52">
+                <li class="menu-title">
+                    <span>{{ current_user.username or current_user.plex_username }}</span>
+                  </li>
+                <li><a href="{{ url_for('dashboard.settings_general') }}"><i class="fa-solid fa-cog mr-2"></i> Settings</a></li>
+                <li><a href="{{ url_for('auth.logout') }}"><i class="fa-solid fa-arrow-right-from-bracket mr-2"></i> Logout</a></li>
+            </ul>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,162 @@
+{# File: app/templates/dashboard/_streaming_sessions_content.html #}
+{# Expects 'sessions' (list of dicts) AND 'summary_stats' (dict) in context #}
+
+{# --- Summary Statistics Line --- #}
+{% if summary_stats %}
+<div class="text-sm text-base-content/80 mb-3 pb-3 border-b border-base-300/40">
+    <i class="fa-solid fa-server fa-fw mr-1"></i>
+    <strong>Activity:</strong> Sessions: {{ summary_stats.total_streams }} stream{{ 's' if summary_stats.total_streams != 1 else '' }}
+    {% if summary_stats.total_streams > 0 %}
+        ({{ summary_stats.direct_play_count }} direct play, {{ summary_stats.transcode_count }} transcode)
+        | Bandwidth: {{ summary_stats.total_bandwidth_mbps }} Mbps
+        (LAN: {{ summary_stats.lan_bandwidth_mbps }} Mbps, WAN: {{ summary_stats.wan_bandwidth_mbps }} Mbps)
+    {% endif %}
+    <i class="fa-solid fa-info-circle fa-xs ml-1 text-base-content/50" title="Bandwidth is an estimate based on current stream bitrates."></i>
+</div>
+{% endif %}
+{# --- End Summary Statistics Line --- #}
+
+{% if sessions and sessions|length > 0 %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+        {% for session in sessions %}
+        <div class="card bg-base-200 shadow-lg w-full max-w-md relative group"> 
+            {% if session.session_key %}
+            <button class="btn btn-xs btn-circle btn-error absolute top-2 right-2 
+                           opacity-0 group-hover:opacity-100 focus-within:opacity-100 
+                           pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto
+                           transition-opacity duration-200 ease-in-out z-10"
+                    title="Terminate Session"
+                    onclick='openTerminateSessionModal({{ session.session_key | tojson }}, {{ session.user | tojson }}, {{ session.media_title | tojson }})'>
+                <i class="fa-solid fa-times"></i>
+            </button>
+            {% endif %}
+            
+            <div class="card-body p-3">
+                {# Main Flex Container: Poster | Details #}
+                <div class="flex items-start space-x-3">
+                    {# Poster Column #}
+                    <div class="avatar flex-shrink-0">
+                        <div class="w-16 h-24 rounded">
+                            {% if session.thumb_url %}
+                                <img src="{{ session.thumb_url }}" alt="{{ session.media_title }} Poster" 
+                                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_media_thumb.png') }}';" 
+                                     class="object-cover w-full h-full"/>
+                            {% else %}
+                                <div class="w-full h-full bg-base-300 flex flex-col items-center justify-center text-xs text-base-content/50">
+                                   <i class="fa-regular fa-image fa-2x mb-1"></i> No Poster Available
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {# Original Details Column (Top Part) #}
+                    <div class="flex-grow min-w-0">
+
+                        {# User, Player, Media Type - styled as per your preferred layout #}
+                        <div class="text-xs space-y-0.5 mt-1">
+                            <p class="text-base-content/80 flex items-center" title="{{ session.user }}">
+                                <i class="fa-solid fa-user fa-fw mr-1.5 text-info w-4 text-center"></i> 
+                                {% if session.pum_user_id %}
+                                    <a href="{{ url_for('users.edit_user', user_id=session.pum_user_id) }}" class="link link-hover text-info">
+                                        {{ session.user }}
+                                    </a>
+                                {% else %}
+                                    {{ session.user }}
+                                {% endif %}
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="{{ session.player_title }} ({{session.player_platform}} via {{session.product}})">
+                                <i class="fa-solid fa-play fa-fw mr-1.5 text-info w-4 text-center"></i> 
+                                <span class="font-medium mr-1 text-info">Player:</span>
+                                {{ session.player_title }} 
+                                <span class="text-base-content/50 ml-1">({{session.product if session.product != session.player_title else session.player_platform}})</span>
+                            </p>
+                             <p class="text-base-content/70 flex items-center">
+                                <i class="fa-solid fa-tv fa-fw mr-1.5 text-info w-4 text-center"></i>
+                                <span class="font-medium mr-1 text-info">Media/Library:</span>
+                                {{ session.media_type }} on {{ session.library_name }}
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Quality: {{ session.quality_detail }}">
+                                <i class="fa-solid fa-sliders fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Quality:</span>
+                                <span>{{ session.quality_detail }}</span>
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Stream: {{ session.stream_detail }}">
+                                <i class="fa-solid fa-wifi fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Stream:</span>
+                                <span class="font-medium {% if session.stream_detail and 'Transcode' in session.stream_detail %}text-orange-400{% else %}text-green-400{% endif %}">
+                                    {{ session.stream_detail }}
+                                </span>
+                                {% if 'Transcode' in session.stream_detail and session.transcode_reason %}
+                                    <i class="fa-solid fa-info-circle ml-1 text-orange-400/80" title="Reason: {{ session.transcode_reason }}"></i>
+                                {% endif %}
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Container: {{session.container_detail}}">
+                                <i class="fa-solid fa-box-archive fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Container:</span>
+                                <span>{{ session.container_detail }}</span>
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Video: {{session.video_detail}}">
+                                <i class="fa-solid fa-film fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Video:</span>
+                                <span>{{ session.video_detail }}</span>
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Audio: {{session.audio_detail}}">
+                                <i class="fa-solid fa-volume-high fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Audio:</span>
+                                <span>{{ session.audio_detail }}</span>
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Subtitle: {{session.subtitle_detail}}">
+                                <i class="fa-solid fa-closed-captioning fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Subtitle:</span>
+                                <span>{{ session.subtitle_detail }}</span>
+                            </p>
+                            <p class="text-base-content/70 flex items-center" title="Location: {{session.location_detail}}">
+                                <i class="fa-solid fa-location-dot fa-fw w-4 mr-1.5 text-info text-center"></i>
+                                <span class="font-medium mr-1 text-info">Location:</span>
+                                <span>{{ session.location_detail }}</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {# Progress Bar and State (below the flex container) #}
+                <div class="mt-2">
+                    <div class="flex justify-between items-center mb-0.5">
+                        <span class="text-xs font-medium uppercase 
+                            {% if session.state and session.state.lower() == 'playing' %}text-success
+                            {% elif session.state and session.state.lower() == 'paused' %}text-warning
+                            {% elif session.state and session.state.lower() == 'buffering' %}text-info
+                            {% else %}text-base-content/70{% endif %}">
+                            {{ session.state | capitalize if session.state else 'Unknown' }}
+                        </span>
+                        <span class="text-xs text-base-content/70">{{ session.progress | round(1) }}%</span>
+                    </div>
+                    <progress class="progress progress-xs w-full 
+                        {% if session.state and session.state.lower() == 'playing' %}progress-success
+                        {% elif session.state and session.state.lower() == 'paused' %}progress-warning 
+                        {% elif session.state and session.state.lower() == 'buffering' %}progress-info
+                        {% else %}progress-primary{% endif %}" 
+                        value="{{ session.progress }}" max="100"></progress>
+                    <h2 class="card-title text-sm font-semibold" title="{{ session.media_title }}">
+                        {{ session.media_title or 'Unknown Title' }}
+                        {% if session.year %}<span class="text-xs font-normal text-base-content/70 ml-1">({{ session.year }})</span>{% endif %}
+                    </h2>
+                    {% if session.media_type == 'Episode' and session.grandparent_title %}
+                        <p class="text-xs text-primary" title="{{session.grandparent_title}}{% if session.parent_title %} - {{session.parent_title}}{% endif %}">{{session.grandparent_title}}{% if session.parent_title %} - {{session.parent_title}}{% endif %}</p>
+                    {% elif session.media_type == 'Track' and (session.parent_title or session.grandparent_title) %}
+                        <p class="text-xs text-primary" title="{{session.grandparent_title}}{% if session.parent_title %} - {{session.parent_title}}{% endif %}">
+                            {{session.grandparent_title or ''}}{% if session.grandparent_title and session.parent_title %} - {% endif %}{{session.parent_title or ''}}
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center py-10 bg-base-200 rounded-lg shadow-md">
+        <i class="fa-solid fa-video-slash fa-3x text-base-content/30 mb-4"></i>
+        <p class="text-xl text-base-content/70">No active streams found.</p>
+        <p class="text-sm text-base-content/50 mt-1">If you believe there are active streams, try refreshing manually or wait for the next auto-refresh.</p>
+    </div>
+{% endif %}

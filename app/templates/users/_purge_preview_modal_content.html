@@ -1,0 +1,100 @@
+<!-- File: app/templates/users/_purge_preview_modal_content.html -->
+{# Expects eligible_users (list of dicts) and purge_criteria (dict) #}
+<form id="confirmPurgeSelectedForm"
+      hx-post="{{ url_for('users.purge_inactive_users') }}"
+      hx-target="#purge-status-message" {# Target for the final status message on the main page #}
+      hx-swap="innerHTML"
+      hx-indicator="#confirm-purge-selected-loader"
+      hx-on::after-request="
+        if(event.detail.successful) {
+            confirm_purge_modal.close(); /* Close this preview modal */
+            htmx.trigger(document.body, 'refreshUserList'); /* Refresh main user list */
+        } else {
+            /* Optionally show error within this modal if confirm purge fails */
+            const errorDiv = document.getElementById('confirm_purge_error_message_div');
+            if(errorDiv) errorDiv.innerHTML = '<div class=\'alert alert-error text-xs p-2\'>Error during final purge. Check main page status.</div>';
+        }
+      ">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {# Pass original criteria for logging/confirmation if needed, though not strictly used by purge logic now #}
+    <input type="hidden" name="original_inactive_days" value="{{ purge_criteria.inactive_days }}">
+    <input type="hidden" name="original_exclude_sharers" value="{{ 'true' if purge_criteria.exclude_sharers else 'false' }}">
+    <input type="hidden" name="original_exclude_whitelisted" value="{{ 'true' if purge_criteria.exclude_whitelisted else 'false' }}">
+
+    <h3 class="font-bold text-lg text-warning"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Confirm Users for Purge</h3>
+    <p class="py-2 text-sm">The following <strong id="purge-preview-count">{{ eligible_users|length }}</strong> user(s) match your criteria and are scheduled for removal. Uncheck any users you wish to spare.</p>
+    
+    {% if eligible_users %}
+        <div class="form-control mb-2">
+            <label class="label cursor-pointer justify-end p-0">
+                <span class="label-text text-xs mr-2">Toggle All:</span>
+                <input type="checkbox" class="checkbox checkbox-sm checkbox-warning" id="toggle_all_purge_users" checked onchange="toggleAllPurgeCheckboxes(this.checked)"/>
+            </label>
+        </div>
+        <div class="max-h-60 overflow-y-auto border border-base-300 rounded-md p-2 space-y-1 bg-base-100/50">
+            {% for user in eligible_users %}
+            <div class="p-1 rounded hover:bg-base-300/50 text-xs">
+                <label class="label cursor-pointer justify-start p-0">
+                    <input type="checkbox" name="user_ids_to_purge" value="{{ user.id }}" class="checkbox checkbox-sm checkbox-secondary mr-2 purge-user-checkbox" checked>
+                    <span class="font-semibold">{{ user.plex_username }}</span>
+                    <span class="ml-2 text-base-content/70 truncate" title="{{user.plex_email}}">({{ user.plex_email or 'No Email' }})</span>
+                    <span class="ml-auto text-base-content/60 text-right">
+                        Added: {{ user.created_at | time_ago }}<br>
+                        Streamed: {{ user.last_streamed_at | time_ago if user.last_streamed_at else 'Never' }}
+                    </span>
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="text-xs text-info mt-2">Selected users will be removed from PUM and your Plex server.</p>
+        <div id="confirm_purge_error_message_div" class="mt-2"></div>
+    {% else %}
+        <p class="text-success italic my-4">No users currently match your criteria for purging.</p>
+    {% endif %}
+
+    <div class="modal-action mt-6">
+      <button type="button" class="btn btn-ghost" onclick="confirm_purge_modal.close()">Cancel</button>
+      {% if eligible_users %}
+        <button type="submit" class="btn btn-error" id="confirm_purge_selected_button">
+            <span id="confirm-purge-selected-loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
+            Purge Selected (<span id="final-purge-count">{{ eligible_users|length }}</span>) Users
+        </button>
+      {% endif %}
+    </div>
+</form>
+
+<script>
+    // Script for this modal's specific interactions
+    (function() {
+        const checkboxes = document.querySelectorAll('.purge-user-checkbox');
+        const toggleAllCheckbox = document.getElementById('toggle_all_purge_users');
+        const finalCountSpan = document.getElementById('final-purge-count');
+        const previewCountSpan = document.getElementById('purge-preview-count'); // The one at the top
+        const confirmButton = document.getElementById('confirm_purge_selected_button');
+
+        function updateTotalCount() {
+            const count = document.querySelectorAll('.purge-user-checkbox:checked').length;
+            if (finalCountSpan) finalCountSpan.textContent = count;
+            if (previewCountSpan) previewCountSpan.textContent = count; // Also update the top count if needed
+            if (confirmButton) confirmButton.disabled = (count === 0);
+        }
+
+        checkboxes.forEach(cb => {
+            cb.removeEventListener('change', updateTotalCount); // Prevent duplicate listeners if modal reloads
+            cb.addEventListener('change', updateTotalCount);
+        });
+
+        if (toggleAllCheckbox) {
+            toggleAllCheckbox.removeEventListener('change', handleToggleAll);
+            toggleAllCheckbox.addEventListener('change', handleToggleAll);
+        }
+        
+        function handleToggleAll() {
+            checkboxes.forEach(cb => cb.checked = toggleAllCheckbox.checked);
+            updateTotalCount();
+        }
+        
+        // Initial count
+        updateTotalCount(); 
+    })();
+</script>

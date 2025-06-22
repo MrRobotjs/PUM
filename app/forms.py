@@ -1,186 +1,252 @@
-# app/forms.py
+# File: app/forms.py
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, IntegerField, TextAreaField, SelectMultipleField, SelectField
-from wtforms.validators import DataRequired, Email, EqualTo, Optional, URL, NumberRange, Length, Regexp, ValidationError
-from app.models import User 
-
-def path_safe_string_validator(form, field):
-    if field.data and not all(c.isalnum() or c in ['-', '_'] for c in field.data):
-        raise ValidationError('Path can only contain letters, numbers, hyphens (-), and underscores (_). No spaces or other special characters.')
+from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField, TextAreaField, HiddenField
+from wtforms.validators import DataRequired, EqualTo, Length, Optional, URL, NumberRange, Regexp
+from wtforms import SelectMultipleField
+from app.models import Setting # For custom validator if checking existing secrets
+from wtforms.widgets import ListWidget, CheckboxInput # <--- ADDED THIS IMPORT
+import urllib.parse 
 
 class LoginForm(FlaskForm):
-    username = StringField('Admin Username', validators=[DataRequired(message="Username is required.")])
-    password = PasswordField('Password', validators=[DataRequired(message="Password is required.")])
-    remember_me = BooleanField('Remember Me')
+    username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
+    password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Sign In')
 
-class SetupAdminForm(FlaskForm):
-    username = StringField('Admin Username', validators=[
-        DataRequired(message="Username is required."),
-        Length(min=4, max=64, message="Username must be between 4 and 64 characters.")
-    ])
-    password = PasswordField('Password', validators=[
-        DataRequired(message="Password is required."),
-        Length(min=8, message="Password must be at least 8 characters long.")
-    ])
-    confirm_password = PasswordField('Confirm Password', validators=[
-        DataRequired(message="Please confirm your password."),
-        EqualTo('password', message='Passwords must match.')
-    ])
-    submit = SubmitField('Create Admin Account')
+class PlexSSOLoginForm(FlaskForm): # This might just be a button, not a full form if handled by redirect
+    submit = SubmitField('Sign In with Plex')
 
-class SetupPlexAndAppForm(FlaskForm): 
-    plex_url = StringField('Plex URL (e.g., http://localhost:32400 or https://plex.yourdomain.com)', validators=[
-        DataRequired(message="Plex URL is required."), 
-        URL(message="Invalid URL format. Must include http:// or https://")
-    ])
-    plex_token = StringField('Plex Token (X-Plex-Token)', validators=[
-        DataRequired(message="Plex Token is required.")
-    ])
-    app_base_url = StringField('Application Base URL (e.g., http://localhost:5699 or https://pum.yourdomain.com)',
-                               validators=[
-                                   DataRequired(message="Application Base URL is required for constructing public links."), 
-                                   URL(message="Invalid URL format. Must be the full public URL of this application.")
-                               ],
-                               description="The full public URL where this application is accessible. Used by the Discord bot and for generating full invite links.")
-    submit_step2_settings = SubmitField('Next: Discord Config (Optional)') 
+class AccountSetupForm(FlaskForm):
+    login_method = SelectField('Admin Account Setup Method', choices=[('plex_sso', 'Sign in with Plex (Recommended)'), ('username_password', 'Create Username and Password')], validators=[DataRequired()])
+    username = StringField('Username', validators=[Optional(), Length(min=3, max=80)])
+    password = PasswordField('Password', validators=[Optional(), Length(min=8, max=128)])
+    confirm_password = PasswordField('Confirm Password', validators=[Optional(), EqualTo('password', message='Passwords must match.')])
+    submit_username_password = SubmitField('Create Admin Account')
+    submit_plex_sso = SubmitField('Continue with Plex')
 
-class PlexSettingsForm(FlaskForm): 
-    plex_url = StringField('Plex URL (e.g., http://localhost:32400 or https://plex.yourdomain.com)', validators=[
-        DataRequired(message="Plex URL is required."),
-        URL(message="Invalid URL format. Must include http:// or https://")
-    ])
-    plex_token = StringField('Plex Token (X-Plex-Token)', validators=[
-        DataRequired(message="Plex Token is required.")
-    ])
-    submit_plex_server_settings = SubmitField('Save and Test Plex Server Settings')
+class PlexConfigForm(FlaskForm):
+    plex_url = StringField('Plex URL', validators=[DataRequired(), URL(message="Invalid URL format. Include http(s)://")])
+    plex_token = StringField('Plex Token', validators=[DataRequired(), Length(min=19, max=24, message="Plex token is usually 19-24 characters long.")])
+    connection_tested_successfully = HiddenField(default="false")
+    submit = SubmitField('Save Plex Configuration')
+
+class AppBaseUrlForm(FlaskForm):
+    app_base_url = StringField('Application Base URL', validators=[DataRequired(message="This URL is required."), URL(message="Invalid URL. Must be full public URL (e.g., https://pum.example.com).")], description="Full public URL where this application is accessible.")
+    submit = SubmitField('Save Application URL')
+
+# --- Updated DiscordConfigForm ---
+class DiscordConfigForm(FlaskForm):
+    # --- Section 1: OAuth Settings ---
+    enable_discord_oauth = BooleanField(
+        'Enable Discord OAuth for Invitees & Admin Link', 
+        default=False,
+        description="Allows users to link their Discord on public invites and enables admin account linking. If disabled, the settings below are ignored."
+    )
+    discord_client_id = StringField(
+        'Discord Application Client ID', 
+        validators=[Optional(), Length(min=15, message="Client ID is typically a long string of digits.")],
+        description="Get this from your Discord Developer Application's 'OAuth2' page."
+    )
+    discord_client_secret = PasswordField(
+        'Discord Application Client Secret', 
+        validators=[Optional(), Length(min=30, message="Client Secret is typically a long string.")],
+        description="OAuth2 Client Secret. Only enter if you need to update it; leave blank to keep the existing saved secret."
+    )
+    discord_oauth_auth_url = StringField(
+        'Discord OAuth Authorization URL (for User Invites)',
+        validators=[Optional(), URL(message="Must be a valid URL.")],
+        render_kw={"placeholder": "e.g., https://discord.com/oauth2/authorize?client_id=...&scope=...&response_type=code&redirect_uri=..."},
+        description="Construct this URL from your Discord App's OAuth2 URL Generator. Ensure it includes 'identify', 'email', and 'guilds' in the 'scope' parameter. The 'redirect_uri' in this URL MUST exactly match PUM's 'Redirect URI (Invites)' displayed on this page."
+    )
+    discord_bot_require_sso_on_invite = BooleanField(
+        'Make Discord Login Mandatory on Public Invite Page', 
+        default=False, 
+        description="If checked, users must link Discord to accept an invite (requires 'Enable Discord OAuth' above to be active). This is automatically forced ON if 'Discord Bot Features' (Section 2) are enabled."
+    ) 
+
+    # --- Section 2: Bot Feature Settings ---
+    enable_discord_bot = BooleanField(
+        'Enable Discord Bot Features', 
+        default=False,
+        description="Enables automated actions based on Discord activity (e.g., removing users from Plex if they leave the Discord server). Requires OAuth (Section 1) to be enabled and correctly configured with necessary credentials."
+    )
+    discord_bot_token = PasswordField(
+        'Discord Bot Token', 
+        validators=[Optional(), Length(min=50, message="Bot token is a very long string.")], 
+        description="Token for your Discord Bot from the 'Bot' page in your Discord Developer Application. Only enter if you need to update it; leave blank to keep existing."
+    )
+    discord_guild_id = StringField(
+        'Your Discord Server ID (Guild ID)', 
+        validators=[Optional(), Regexp(r'^\d{17,20}$', message="Must be a valid Discord ID (typically 17-20 digits).")],
+        description="The ID of the Discord server (guild) this bot will operate on. Enable Developer Mode in Discord to copy IDs."
+    )
+    discord_monitored_role_id = StringField(
+        'Monitored Role ID (Grants Plex Access via Bot)', 
+        validators=[Optional(), Regexp(r'^\d{17,20}$', message="Must be a valid Discord Role ID.")],
+        description="The Discord Role ID that, when assigned, can trigger the bot to send a Plex invite." # Simplified
+    )
+    discord_thread_channel_id = StringField(
+        'Channel ID for Bot-Created Invite Threads', 
+        validators=[Optional(), Regexp(r'^\d{17,20}$', message="Must be a valid Discord Channel ID.")],
+        description="ID of a channel where the bot can create private threads for sending Plex invites." # Simplified
+    )
+    discord_bot_log_channel_id = StringField(
+        'Bot Action Log Channel ID (Optional)', 
+        validators=[Optional(), Regexp(r'^\d{17,20}$', message="Must be a valid Discord Channel ID.")],
+        description="If provided, the bot will log significant actions to this channel."
+    )
+    discord_server_invite_url = StringField(
+        'Your Discord Server Invite URL (Optional)', 
+        validators=[Optional(), URL()],
+        description="A general, non-expiring invite link to your Discord server. Shown on Plex invite page if guild membership is required."
+    )
+    discord_bot_whitelist_sharers = BooleanField(
+        'Bot: Whitelist Users Who Share Plex Servers Back?', 
+        default=False,
+        description="If checked, users detected as sharing their own Plex server(s) back will be immune to automated removal by the Discord Bot."
+    )
+    
+    submit = SubmitField('Save Discord Settings')
+
+    def validate(self, extra_validators=None):
+        if not super().validate(extra_validators): # Call superclass validate
+            return False 
+
+        # If bot is enabled, OAuth itself must be enabled.
+        if self.enable_discord_bot.data and not self.enable_discord_oauth.data:
+            self.enable_discord_oauth.errors.append("Discord OAuth (Section 1) must be enabled if Bot Features (Section 2) are enabled.")
+        
+        # Determine if OAuth is effectively enabled (either directly or because bot requires it)
+        oauth_should_be_enabled = self.enable_discord_oauth.data or self.enable_discord_bot.data
+        
+        if oauth_should_be_enabled:
+            # Client ID is required if OAuth is on and no ID is already saved in DB
+            if not self.discord_client_id.data and not Setting.get('DISCORD_CLIENT_ID'):
+                 self.discord_client_id.errors.append("OAuth Client ID is required if enabling OAuth/Bot features and no ID is already saved.")
+            
+            # Client Secret is required if OAuth is on and no secret is already saved in DB
+            # (If user is updating, they might leave it blank to keep existing)
+            if not self.discord_client_secret.data and not Setting.get('DISCORD_CLIENT_SECRET'):
+                 self.discord_client_secret.errors.append("OAuth Client Secret is required if enabling OAuth/Bot features and no secret is already saved.")
+            
+            # Auth URL is required if OAuth is on and no URL is already saved
+            if not self.discord_oauth_auth_url.data and not Setting.get('DISCORD_OAUTH_AUTH_URL'):
+                self.discord_oauth_auth_url.errors.append("Discord OAuth Authorization URL for invites is required when OAuth/Bot is enabled and no URL is saved.")
+            elif self.discord_oauth_auth_url.data: # If URL is provided, validate its scopes
+                try:
+                    parsed_url = urllib.parse.urlparse(self.discord_oauth_auth_url.data.lower())
+                    query_params = urllib.parse.parse_qs(parsed_url.query)
+                    scopes_in_url = query_params.get('scope', [''])[0].split()
+                    required_scopes = ["identify", "email", "guilds"]
+                    missing_scopes = [s for s in required_scopes if s not in scopes_in_url]
+                    if missing_scopes:
+                        self.discord_oauth_auth_url.errors.append(f"OAuth URL is missing required scope(s): {', '.join(missing_scopes)}. Must include 'identify', 'email', and 'guilds'.")
+                except Exception:
+                    self.discord_oauth_auth_url.errors.append("Could not parse scopes from the provided OAuth Authorization URL. Ensure it's well-formed.")
+
+        # If "Make Discord Login Mandatory" is checked, then "Enable Discord OAuth" must also be checked.
+        # This check is important as the field is now grouped with OAuth settings.
+        if self.discord_bot_require_sso_on_invite.data and not self.enable_discord_oauth.data:
+            # This error should ideally be on enable_discord_oauth or discord_bot_require_sso_on_invite
+            self.enable_discord_oauth.errors.append("If 'Make Discord Login Mandatory' is checked, 'Enable Discord OAuth' must also be enabled.")
+            # Alternatively, or additionally:
+            # self.discord_bot_require_sso_on_invite.errors.append("'Enable Discord OAuth' must be active to make SSO mandatory.")
 
 
-class GeneralAppSettingsForm(FlaskForm):
-    app_base_url = StringField('Application Base URL (e.g., http://localhost:5699 or https://pum.yourdomain.com)',
-                               validators=[
-                                   DataRequired(message="Application Base URL is required for constructing public links."),
-                                   URL(message="Invalid URL format. Must be the full public URL of this application.")
-                               ],
-                               description="The full public URL where this application is accessible. Used by the Discord bot and for generating full invite links.")
-
-    sync_remove_stale_users = BooleanField('Auto-remove users from this app if not found in Plex sync',
-                                           default=False, # Changed default to False as it's a destructive action
-                                           description="If checked, the 'Sync Users from Plex' feature will remove users from THIS APP'S DATABASE if they are no longer found in the list of users your Plex account is friends with or has in Plex Home. This does NOT remove them from your Plex server itself. Use with caution.")
-
-    # REMOVED: activity_poll_interval_minutes field
-    # activity_poll_interval_minutes = IntegerField(
-    #     'Plex Activity Check Interval (minutes)',
-    #     validators=[
-    #         DataRequired(message="Interval is required."), 
-    #         NumberRange(min=1, max=1440, message="Interval must be between 1 and 1440 minutes (24 hours).")
-    #     ],
-    #     default=5, 
-    #     description="How often to check Plex for active user streams (updates 'Last Active'). Lower values are more real-time but increase server load. Must be at least 1 minute."
-    # )
-    submit_general_app_settings = SubmitField('Save Application Settings')
+        # If bot is enabled, certain bot-specific fields become required (if not already saved in DB)
+        if self.enable_discord_bot.data:
+            required_bot_fields = {
+                'Bot Token': (self.discord_bot_token, 'DISCORD_BOT_TOKEN'),
+                'Guild ID': (self.discord_guild_id, 'DISCORD_GUILD_ID'),
+                'Monitored Role ID': (self.discord_monitored_role_id, 'DISCORD_MONITORED_ROLE_ID'),
+                'Thread Channel ID': (self.discord_thread_channel_id, 'DISCORD_THREAD_CHANNEL_ID')
+            }
+            for field_label, (field_instance, setting_key) in required_bot_fields.items():
+                if not field_instance.data and not Setting.get(setting_key):
+                    field_instance.errors.append(f"{field_label} is required when Discord Bot is enabled and no value is already saved.")
+        
+        # Check for any errors accumulated
+        has_errors = any(field.errors for field_name, field in self._fields.items())
+        return not has_errors
 
 
-class DiscordSettingsForm(FlaskForm):
-    discord_oauth_client_id = StringField('Discord OAuth2 Client ID',
-        validators=[Optional(), Regexp(r'^\d{17,20}$', message="Client ID must be a 17-20 digit number.")],
-        description="Client ID from your Discord Application's OAuth2 settings. Used for 'Login with Discord' button.")
-    discord_oauth_client_secret = StringField('Discord OAuth2 Client Secret',
-        validators=[Optional(), Length(min=30)],
-        description="Client Secret from your Discord Application's OAuth2 settings. Keep this confidential.",
-        render_kw={'type': 'password'})
-    discord_bot_enabled = BooleanField('Enable Discord Bot Features (e.g., role monitoring, server checks, bot commands)')
-    discord_bot_token = StringField('Discord Bot Token*', validators=[Optional(), Length(min=50, max=100, message="Token seems an unusual length.")])
-    discord_server_id = StringField('Discord Server ID*', validators=[Optional(), Regexp(r'^\d{17,20}$', message="Server ID must be a 17-20 digit number.")])
-    discord_bot_app_id = StringField('Discord Bot Application ID* (for bot slash commands)', validators=[Optional(), Regexp(r'^\d{17,20}$', message="Application ID must be a 17-20 digit number.")])
-    admin_discord_id = StringField('Your Admin Discord ID* (for bot DMs to you)', validators=[Optional(), Regexp(r'^\d{17,20}$', message="Your Discord User ID must be a 17-20 digit number.")])
-    discord_command_channel_id = StringField('Command Channel ID* (for bot invite requests/threads)', validators=[Optional(), Regexp(r'^\d{17,20}$', message="Channel ID must be a 17-20 digit number.")])
-    discord_mention_role_id = StringField('Role ID to Mention in Invite Threads (Optional, if bot enabled)', validators=[Optional(), Regexp(r'^\d{17,20}$', message="Role ID must be a 17-20 digit number.")])
-    discord_plex_access_role_id = StringField('Plex Access Role ID* (Role monitored by bot for Plex access changes)', validators=[Optional(), Regexp(r'^\d{17,20}$', message="Role ID must be a 17-20 digit number.")])
-    discord_bot_user_whitelist = TextAreaField('Discord Bot User Whitelist (Plex Usernames - for bot features)',
-                                               description="Optional: If bot features are enabled, list PLEX USERNAMES whose linked Discord users have special bot permissions. One per line or comma-separated.",
-                                               render_kw={"rows": 3},
-                                               validators=[Optional()])
-    submit_discord_settings = SubmitField('Save Discord Settings')
+# --- UserEditForm & MassUserEditForm ---
+class UserEditForm(FlaskForm): # As updated for whitelist fields
+    plex_username = StringField('Plex Username', render_kw={'readonly': True})
+    plex_email = StringField('Plex Email', render_kw={'readonly': True})
+    is_home_user = BooleanField('Plex Home User', render_kw={'disabled': True})
+    notes = TextAreaField('Notes', validators=[Optional(), Length(max=1000)])
+    libraries = SelectMultipleField(
+        'Accessible Libraries',
+        coerce=str,
+        validators=[Optional()],
+        widget=ListWidget(prefix_label=False),  # <<< ADDED WIDGET
+        option_widget=CheckboxInput()           # <<< ADDED OPTION_WIDGET
+    )
+    is_discord_bot_whitelisted = BooleanField('Whitelist from Discord Bot Actions')
+    is_purge_whitelisted = BooleanField('Whitelist from Inactivity Purge')
 
-    def validate_discord_bot_user_whitelist(self, field):
-        if not self.discord_bot_enabled.data: return
-        if field.data and field.data.strip():
-            raw_list = field.data or ""; identifiers_to_check = {item.strip() for item in raw_list.replace('\n', ',').split(',') if item.strip()}
-            invalid_plex_usernames = []; users_needing_discord_id = []
-            for identifier in identifiers_to_check:
-                user_obj = User.query.filter(User.plex_username.ilike(identifier)).first()
-                if not user_obj: invalid_plex_usernames.append(identifier)
-                elif not user_obj.discord_id or not user_obj.discord_id.strip(): users_needing_discord_id.append(identifier)
-            error_messages = []
-            if invalid_plex_usernames: error_messages.append(f"Bot Whitelist: Plex Usernames not found: {', '.join(invalid_plex_usernames)}.")
-            if users_needing_discord_id: error_messages.append(f"Bot Whitelist: Plex Users need Discord ID linked: {', '.join(users_needing_discord_id)}.")
-            if error_messages: raise ValidationError(" ".join(error_messages))
-
-    def validate(self, extra_validators=None): # Keep validate for Discord form
-        initial_validation = super(DiscordSettingsForm, self).validate(extra_validators)
-        is_form_globally_valid = initial_validation
-        if (self.discord_oauth_client_id.data and not self.discord_oauth_client_secret.data) or \
-           (not self.discord_oauth_client_id.data and self.discord_oauth_client_secret.data):
-            if not self.discord_oauth_client_id.data: self.discord_oauth_client_id.errors.append("OAuth Client ID is required if Client Secret is provided.")
-            if not self.discord_oauth_client_secret.data: self.discord_oauth_client_secret.errors.append("OAuth Client Secret is required if Client ID is provided.")
-            is_form_globally_valid = False
-        if self.discord_bot_enabled.data:
-            critical_bot_fields_map = { self.discord_bot_token: "Discord Bot Token", self.discord_server_id: "Discord Server ID", self.discord_bot_app_id: "Discord Bot Application ID", self.admin_discord_id: "Admin Discord ID", self.discord_command_channel_id: "Command Channel ID", self.discord_plex_access_role_id: "Plex Access Role ID" }
-            for field_object, field_label_text in critical_bot_fields_map.items():
-                if not field_object.data or not field_object.data.strip(): field_object.errors.append(f"This field is required when 'Enable Discord Bot Features' is checked."); is_form_globally_valid = False
-            if not is_form_globally_valid and not initial_validation : return False
-            elif not is_form_globally_valid and initial_validation : return False
-            if self.discord_bot_token.data and self.discord_bot_token.data.strip() and is_form_globally_valid:
-                from app.discord_utils import test_discord_bot_token 
-                is_token_ok, token_msg = test_discord_bot_token(self.discord_bot_token.data)
-                if not is_token_ok: self.discord_bot_token.errors.append(f"Token validation failed: {token_msg}"); is_form_globally_valid = False
-                else: setattr(self.discord_bot_token, 'description', token_msg) 
-        return is_form_globally_valid
-
-class InviteCreateForm(FlaskForm):
-    custom_path = StringField('Custom Invite Path (e.g., mycoolinvite)', validators=[DataRequired(message="Custom path is required."), Length(min=3, max=80), path_safe_string_validator])
-    expires_days = IntegerField('Expires in Days (0 or empty for indefinite)', validators=[Optional(), NumberRange(min=0)])
-    max_uses = IntegerField('Max Uses (0 or empty for unlimited)', validators=[Optional(), NumberRange(min=0)])
-    allowed_libraries = SelectMultipleField('Allowed Libraries (Ctrl/Cmd+Click to select multiple)', coerce=str, validators=[Optional()], choices=[])
-    submit = SubmitField('Create Invite Link')
-
-class UserInviteForm(FlaskForm):
-    discord_id = StringField('Your Discord User ID', validators=[Optional(), Regexp(r'^\d{17,20}$', message="If provided, Discord ID must be a 17-20 digit number.")])
-    plex_email = StringField('Your Plex Email Address', validators=[DataRequired(message="Your Plex email address is required."), Email(message="Invalid email address format.")])
-    submit = SubmitField('Request Plex Invitation')
-
-class EditUserForm(FlaskForm):
-    discord_id = StringField('Discord ID (leave empty to clear)', validators=[Optional(), Regexp(r'^\d{17,20}$', message="If provided, Discord ID must be a 17-20 digit number.")])
-    shares_back = BooleanField('User Shares Their Plex Server Back With You')
-    is_purge_whitelisted = BooleanField('Whitelist this user from automatic purging (Individual Setting)')
-    plex_libraries = SelectMultipleField('Shared Plex Libraries (Ctrl/Cmd+Click to select multiple)', coerce=str, validators=[Optional()], description="Select which libraries this user has access to. If none selected, access might be removed or fall back to Plex defaults.", choices=[])
+    access_expires_in_days = IntegerField(
+        'Set/Update Access Expiration (days from now)',
+        validators=[Optional(), NumberRange(min=1, message="Must be at least 1 day, or leave blank for no change / to use 'Clear' option.")],
+        render_kw={"placeholder": "e.g., 30 (updates from today)"},
+        description="Enter days from today for new expiry, or leave blank. Use checkbox below to clear existing expiry."
+    )
+    clear_access_expiration = BooleanField(
+        'Clear Existing Access Expiration (Grant Permanent Access)',
+        default=False,
+        description="Check this to remove any current access expiration date for this user."
+    )
+    
     submit = SubmitField('Save Changes')
 
-class PurgeSettingsForm(FlaskForm):
-    days_inactive = IntegerField('Purge users inactive for at least this many days', validators=[DataRequired(message="Number of days inactive is required."), NumberRange(min=1)], default=30, description="Users who never streamed OR last streamed before this many days ago will be purged.")
-    exempt_sharers = BooleanField('Do NOT purge users who share their server back', default=True)
-    exempt_home_users = BooleanField('Do NOT purge Plex Home users', default=True)
-    submit_purge_users = SubmitField('Purge Inactive Users')
+class MassUserEditForm(FlaskForm): # As updated
+    user_ids = HiddenField(validators=[DataRequired()])
+    action = SelectField('Action', choices=[
+            ('', '-- Select Action --'), ('update_libraries', 'Update Libraries'),
+            ('delete_users', 'Delete Users from PUM & Plex'),
+            ('add_to_bot_whitelist', 'Add to Discord Bot Whitelist'), 
+            ('remove_from_bot_whitelist', 'Remove from Discord Bot Whitelist'),
+            ('add_to_purge_whitelist', 'Add to Purge Whitelist'),
+            ('remove_from_purge_whitelist', 'Remove from Purge Whitelist')],
+        validators=[DataRequired(message="Please select an action.")])
+    libraries = SelectMultipleField('Set Access to Libraries (for "Update Libraries")', coerce=str, validators=[Optional()])
+    confirm_delete = BooleanField('Confirm Deletion (for "Delete Users")', validators=[Optional()])
+    submit = SubmitField('Apply Changes')
 
-class GlobalWhitelistSettingsForm(FlaskForm): # This form seems unused currently, might be for future use
-    purge_whitelist_users = TextAreaField('Global Purge Whitelist (Plex Usernames or Emails)', description="One Plex Username or Email per line, or comma-separated. These users will NOT be purged.", render_kw={"rows": 5, "placeholder": "user1@example.com\nPlexUsername\nanother@example.com, OtherPlexUser"}, validators=[Optional()])
-    submit_whitelists = SubmitField('Save Whitelist Settings')
+# --- InviteCreateForm ---
+class InviteCreateForm(FlaskForm): # As before
+    custom_path = StringField('Custom Invite Path (Optional)', validators=[Optional(), Length(min=3, max=100), Regexp(r'^[a-zA-Z0-9_-]*$', message="Letters, numbers, hyphens, underscores only.")], description="e.g., 'friends' -> /invite/friends")
+    expires_in_days = IntegerField('Expires in (days)', validators=[Optional(), NumberRange(min=0)], default=0, description="0 for no expiry.")
+    number_of_uses = IntegerField('Number of Uses', validators=[Optional(), NumberRange(min=0)], default=0, description="0 for unlimited uses.")
+    libraries = SelectMultipleField('Grant Access to Libraries', coerce=str, validators=[Optional()], description="Default: all libraries.")
+    submit = SubmitField('Create Invite')
+    allow_downloads = BooleanField('Enable Downloads (Allow Sync)', default=False, description="Allow the invited user to download/sync content from shared libraries.")
+    membership_duration_days = IntegerField(
+        'Membership Duration (days)', 
+        validators=[Optional(), NumberRange(min=1, message="Must be at least 1 day, or leave blank for permanent access from this invite.")], 
+        default=None, # Explicitly None to allow placeholder to show
+        render_kw={"placeholder": "e.g., 30 or 365 (blank = permanent)"},
+        description="Access duration for the user after accepting. Blank for permanent (until manually removed)."
+    )
+    
+# --- GeneralSettingsForm, PlexSettingsForm ---
+class GeneralSettingsForm(FlaskForm): # As before
+    app_name = StringField("Application Name", validators=[Optional(), Length(max=100)])
+    submit = SubmitField('Save General Settings')
 
-class UserFilterSortForm(FlaskForm):
-    search = StringField('Search Users', validators=[Optional(), Length(max=100)])
-    sort_by = SelectField('Sort By', choices=[('plex_username', 'Plex Username'), ('plex_email', 'Plex Email'), ('discord_username', 'Discord Username'), ('last_streamed_at', 'Last Active (Plex)'), ('shares_back', 'Shares Back Status'), ('is_plex_home_user', 'Plex Home Status'), ('is_purge_whitelisted', 'Purge Whitelist Status')], default='plex_username', validators=[Optional()])
-    sort_order = SelectField('Order', choices=[('asc', 'Ascending'), ('desc', 'Descending')], default='asc', validators=[Optional()])
-    filter_is_home_user = SelectField('Plex Home User', choices=[('', 'Any'), ('yes', 'Yes'), ('no', 'No')], default='', validators=[Optional()])
-    filter_shares_back = SelectField('Shares Back', choices=[('', 'Any'), ('yes', 'Yes'), ('no', 'No')], default='', validators=[Optional()])
-    filter_is_purge_whitelisted = SelectField('Purge Whitelisted', choices=[('', 'Any'), ('yes', 'Yes'), ('no', 'No')], default='', validators=[Optional()])
-    filter_is_discord_bot_whitelisted = SelectField('Discord Bot Whitelisted', choices=[('', 'Any'), ('yes', 'Yes'), ('no', 'No')], default='', validators=[Optional()])
-    filter_submit = SubmitField('Apply Filters & Sort')
-    clear_filters = SubmitField('Clear All') # This button might not be used if clear is an <a> tag
+class PlexSettingsForm(FlaskForm): # As before
+    plex_url = StringField('Plex URL', validators=[DataRequired(), URL()])
+    plex_token = StringField('Plex Token', validators=[DataRequired(), Length(min=19, max=24)])
+    connection_tested_successfully = HiddenField(default="false")
+    session_monitoring_interval = IntegerField('Session Monitoring Interval (seconds)', default=60, validators=[DataRequired(), NumberRange(min=10)])
+    submit = SubmitField('Save Plex Settings')
 
-class MassEditUserForm(FlaskForm): # From previous step
-    libraries_to_apply = SelectMultipleField('Apply these libraries to selected users (Ctrl/Cmd+Click to select multiple)', coerce=str, validators=[Optional()], description="Selected libraries will REPLACE existing shares for all chosen users. Leave empty to remove all direct shares from selected users.", choices=[])
-    submit_update_libraries = SubmitField('Update Libraries for Selected Users')
-
-class CSRFOnlyForm(FlaskForm):
-    pass
+class PurgeUsersForm(FlaskForm):
+    inactive_days = IntegerField(
+        'Inactive for at least (days)', 
+        validators=[DataRequired(), NumberRange(min=7)], 
+        default=90
+    )
+    exclude_sharers = BooleanField('Exclude users who share back their servers', default=True)
+    # No submit button here, it's handled by the modal interaction triggering HTMX on the main form
+    # csrf_token is handled by form.hidden_tag() if this form is rendered

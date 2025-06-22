@@ -1,0 +1,184 @@
+/* File: app/static/css/input.css */
+
+@import "tailwindcss"; /* Imports Tailwind's base, components, and utilities */
+
+@source "../../templates";
+
+/* DaisyUI Plugin Import and Theme Configuration for Tailwind v4 */
+@plugin "daisyui" {
+    themes: light --default, dark --prefersdark;
+    root: ":root";
+    logs: true;
+}
+@plugin "daisyui/theme" {
+  name: "light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(98% 0 0);
+  --color-base-300: oklch(95% 0 0);
+  --color-base-content: oklch(21% 0.006 285.885);
+  --color-primary: oklch(66% 0.179 58.318);
+  --color-primary-content: oklch(93% 0.034 272.788);
+  --color-secondary: oklch(65% 0.241 354.308);
+  --color-secondary-content: oklch(94% 0.028 342.258);
+  --color-accent: oklch(77% 0.152 181.912);
+  --color-accent-content: oklch(38% 0.063 188.416);
+  --color-neutral: oklch(14% 0.005 285.823);
+  --color-neutral-content: oklch(92% 0.004 286.32);
+  --color-info: oklch(74% 0.16 232.661);
+  --color-info-content: oklch(29% 0.066 243.157);
+  --color-success: oklch(76% 0.177 163.223);
+  --color-success-content: oklch(37% 0.077 168.94);
+  --color-warning: oklch(82% 0.189 84.429);
+  --color-warning-content: oklch(41% 0.112 45.904);
+  --color-error: oklch(71% 0.194 13.428);
+  --color-error-content: oklch(27% 0.105 12.094);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* Custom base styles or overrides can go here */
+body {
+  @apply font-sans;
+}
+
+/* Default state (no .htmx-request on button) */
+button:not(.htmx-request) > .sync-loader.htmx-indicator {
+  display: none !important; /* Loader hidden */
+}
+button:not(.htmx-request) > .sync-icon.default-icon-state {
+  display: inline-flex !important; /* Icon shown */
+  align-items: center;
+}
+
+/* Loading state (button has .htmx-request) */
+button.htmx-request > .sync-loader.htmx-indicator {
+  display: inline-block !important; /* Loader shown */
+}
+button.htmx-request > .sync-icon.default-icon-state {
+  display: none !important; /* Icon hidden */
+}
+
+/* The .sync-text span has no specific rules here, so it should always inherit 
+   its default display (inline for a span) or be influenced by the parent button's flex properties.
+   DaisyUI's .btn class usually makes children align nicely.
+*/
+
+/* --- General HTMX Indicator Rules (can be kept as fallbacks for other indicators) --- */
+.htmx-indicator {
+  display: none; /* Start transparent for any transition effects */
+  /* display:none; /* This general rule can sometimes be too broad; let specific rules above control button children */
+}
+.htmx-request .htmx-indicator{
+  display: inline-block;
+  /* display:inline-block; /* Again, let specific rules handle display for button children */
+}
+.htmx-request.htmx-indicator{ /* If the element IS the indicator and has htmx-request */
+  display: inline-block;
+}
+/* --- End General --- */
+
+/* --- Custom Animations & Utilities --- */
+
+/* 1. Define Keyframes (standard CSS, Tailwind will include this) */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOutDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+/* 2. Create utility classes that use these animations.
+      These are plain CSS classes that Tailwind will also include.
+      If Tailwind v4 has a new directive for defining animation utilities directly,
+      that would be preferred. For now, this is standard CSS.
+*/
+.animate-fadeInUp {
+  animation: fadeInUp 0.3s ease-out forwards;
+}
+
+.animate-fadeOutDown {
+  animation: fadeOutDown 0.3s ease-in forwards;
+}
+
+/* You can also put these inside @layer utilities if IntelliSense/Tailwind v4 prefers,
+   but the direct definition should also work. The key is that Tailwind's build
+   process bundles all of this.
+   Example if @layer is preferred for the utilities:
+*/
+/*
+@layer utilities {
+  .animate-fadeInUp {
+    animation-name: fadeInUp;
+    animation-duration: 0.3s;
+    animation-timing-function: ease-out;
+    animation-fill-mode: forwards;
+  }
+  .animate-fadeOutDown {
+    animation-name: fadeOutDown;
+    animation-duration: 0.3s;
+    animation-timing-function: ease-in;
+    animation-fill-mode: forwards;
+  }
+}
+*/
+
+
+/* --- Other Custom Styles --- */
+
+.flash-message {
+  @apply p-4 mb-4 rounded-md;
+}
+.flash-message.success {
+  @apply bg-success text-success-content;
+}
+.flash-message.error {
+  @apply bg-error text-error-content;
+}
+.flash-message.info {
+  @apply bg-info text-info-content;
+}
+.flash-message.warning {
+  @apply bg-warning text-warning-content;
+}
+
+label.required::after {
+  content: " *";
+  @apply text-error;
+}
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .no-print, .no-print * {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

@@ -1,0 +1,34 @@
+<!-- File: app/templates/settings/_general_settings.html -->
+{# Expects 'form' (GeneralSettingsForm instance) in context #}
+<form method="POST" action="{{ url_for('dashboard.settings_general') }}">
+    {{ form.hidden_tag() }}
+    <h2 class="text-xl font-semibold mb-6">General Application Settings</h2>
+
+    <div class="space-y-4">
+        <div class="form-control w-full max-w-md">
+            {{ form.app_name.label(class="label") }}
+            {{ form.app_name(class="input input-bordered " + ("input-error" if form.app_name.errors else ""), placeholder="e.g., My Plex Manager") }}
+            {% if form.app_name.errors %}
+                {% for error in form.app_name.errors %}
+                <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+                {% endfor %}
+            {% endif %}
+            <label class="label"><span class="label-text-alt whitespace-normal">The public name for this application.</span></label>
+        </div>
+
+        {# Add more general settings here as they are defined in GeneralSettingsForm #}
+        {# Example:
+        <div class="form-control w-full max-w-md">
+            {{ form.some_other_setting.label(class="label") }}
+            {{ form.some_other_setting(class="input input-bordered " + ("input-error" if form.some_other_setting.errors else "")) }}
+            {% if form.some_other_setting.errors %}
+                <label class="label"><span class="label-text-alt text-error">{{ form.some_other_setting.errors[0] }}</span></label>
+            {% endif %}
+        </div>
+        #}
+
+        <div class="form-control mt-8">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </div>
+</form>

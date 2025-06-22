@@ -1,0 +1,109 @@
+<!-- File: app/templates/setup/layout.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - {{ setup_step_title or "Application Setup" }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto"> {# Container for setup pages #}
+    <div class="text-center mb-8">
+        <h1 class="text-3xl sm:text-4xl font-bold">{{ setup_page_title or "Application Setup" }}</h1>
+        {% if setup_page_subtitle %}
+        <p class="text-lg text-base-content/80 mt-2">{{ setup_page_subtitle }}</p>
+        {% endif %}
+    </div>
+
+    {% set setup_steps_list = [
+        {'id': 'account', 'name': 'Admin Account', 'url': url_for('setup.account_setup')},
+        {'id': 'plex', 'name': 'Plex Server', 'url': url_for('setup.plex_config')},
+        {'id': 'pum', 'name': 'App URL', 'url': url_for('setup.pum_config')},
+        {'id': 'discord', 'name': 'Discord (Optional)', 'url': url_for('setup.discord_config')},
+        {'id': 'finish', 'name': 'Finish', 'url': '#'} 
+    ] %}
+    {# Comment moved: Finish might redirect to dashboard #}
+
+    {% if show_stepper | default(true) %}
+    <ul class="steps steps-horizontal w-full mb-10">
+        {% for step in setup_steps_list %}
+            {% set is_completed = step.id in completed_steps %}
+            {% set is_current = step.id == current_step_id %}
+            <li class="step
+                {% if is_current %}step-primary{% endif %}
+                {% if is_completed and not is_current %}step-primary {{ 'cursor-pointer' if step.url != '#' else '' }}"
+                    {% if step.url != '#' %}
+                        onclick="window.location.href='{{ step.url if is_completed else '#' }}'"
+                        title="Go to {{ step.name }} (Completed)"
+                    {% endif %}
+                {% elif is_completed and is_current %}step-primary"
+                {% else %}{{ 'cursor-not-allowed' if not is_completed and not is_current else '' }}"
+                    {% if not is_completed and not is_current %} title="{{ step.name }} (Not yet accessible)" {% endif %}
+                {% endif %}
+            >
+                <span class="text-xs sm:text-sm">{{ step.name }}</span>
+            </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+
+    <div class="bg-base-200 p-6 sm:p-8 rounded-xl shadow-xl">
+        {% block setup_content %}
+        <!-- Specific setup step content goes here -->
+        {% endblock setup_content %}
+    </div>
+
+    <div class_comment="my-6 text-center">
+        {# Optional: Previous/Next buttons, usually part of individual step forms #}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const steps = document.querySelectorAll('.steps .step');
+        let currentFound = false;
+        let allPreviousCompleted = true; 
+
+        steps.forEach(stepElement => {
+            const isCompleted = stepElement.classList.contains('step-primary') && stepElement.title && stepElement.title.includes('(Completed)');
+            const isCurrent = stepElement.classList.contains('step-primary') && !(stepElement.title && stepElement.title.includes('(Completed)'));
+
+            if (isCurrent) {
+                currentFound = true;
+            } else if (!isCompleted && !currentFound) { // A previous step that is not completed
+                allPreviousCompleted = false;
+            }
+        });
+
+        currentFound = false; 
+
+        steps.forEach(stepElement => {
+            const isCompleted = stepElement.classList.contains('step-primary') && stepElement.title && stepElement.title.includes('(Completed)');
+            const isCurrent = stepElement.classList.contains('step-primary') && !(stepElement.title && stepElement.title.includes('(Completed)'));
+
+            if (isCurrent) {
+                currentFound = true;
+            } else if (isCompleted) {
+                // Clickable if completed (handled by onclick attribute in HTML)
+            } else { // Future steps
+                if (!currentFound || !allPreviousCompleted) { 
+                    stepElement.classList.add('step-disabled', 'cursor-not-allowed');
+                    stepElement.classList.remove('cursor-pointer');
+                    stepElement.onclick = (e) => e.preventDefault(); 
+                    if (!(stepElement.title && stepElement.title.includes('(Not yet accessible)'))) {
+                       stepElement.title = (stepElement.textContent || stepElement.innerText || "").trim() + ' (Not yet accessible)';
+                    }
+                } else {
+                    if (!stepElement.classList.contains('cursor-pointer')) { // If not already made clickable by completion
+                        stepElement.classList.add('step-disabled-future', 'cursor-default');
+                        stepElement.classList.remove('cursor-pointer');
+                        stepElement.onclick = (e) => e.preventDefault();
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

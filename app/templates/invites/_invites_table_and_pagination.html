@@ -1,0 +1,143 @@
+{# File: app/templates/invites/_invites_table_and_pagination.html #}
+{# Expects 'invites' (pagination object) and 'available_libraries' in context #}
+
+{% if invites and invites.items %}
+    <div class="overflow-x-auto bg-base-200 shadow-lg rounded-lg">
+        <table class="table table-zebra w-full">
+            <thead>
+                <tr>
+                    <th>Invite Link / Path</th>
+                    <th class="hidden md:table-cell">Granted Libraries</th>
+                    <th>Uses</th>
+                    <th class="hidden sm:table-cell">Expires</th>
+                    <th>Status</th>
+                    <th class="text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invite in invites.items %}
+                <tr id="invite-row-{{ invite.id }}" class="hover">
+                    <td>
+                        <div class="font-semibold hover:underline" title="Full URL: {{ invite.get_full_url(g.app_base_url) }}">
+                            <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank">
+                                /invite/{{ invite.custom_path or ('token/' ~ (invite.token[:12] ~ '...')) }}
+                                <i class="fa-solid fa-external-link-alt fa-xs ml-1"></i>
+                            </a>
+                        </div>
+                        <button class="btn btn-xs btn-ghost text-info p-0"
+                                onclick="copyToClipboard('{{ invite.get_full_url(g.app_base_url) }}', 'Invite link copied!')"
+                                title="Copy invite link">
+                            <i class="fa-regular fa-copy fa-sm"></i> Copy Link
+                        </button>
+                        <div class="text-xs opacity-60">Created: {{ invite.created_at | time_ago }}</div>
+                    </td>
+                    <td class="hidden md:table-cell text-xs">
+                        {% set granted_ids = invite.grant_library_ids or [] %} {# Ensure it's a list #}
+                        {% if granted_ids|length > 0 %}
+                            <div class="flex flex-col space-y-0.5 max-h-16 overflow-y-auto">
+                            {# CORRECTED SLICING BELOW #}
+                            {% for lib_id in granted_ids[:2] %} 
+                                {% set lib_name = available_libraries.get(lib_id, 'Lib ID ' ~ lib_id) %}
+                                <span class="badge badge-xs badge-outline" title="{{ lib_name }}">{{ lib_name | truncate(25, True) }}</span>
+                            {% endfor %}
+                            {% if granted_ids|length > 2 %}
+                                <span class="text-xs opacity-70">+ {{ granted_ids|length - 2 }} more</span>
+                            {% endif %}
+                            </div>
+                        {% else %} {# This means grant_library_ids was explicitly empty (or None), signifying all libraries #}
+                            <span class="badge badge-xs badge-outline badge-success">All Libraries</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-sm">
+                        {{ invite.current_uses }} / {{ invite.max_uses or '∞' }}
+                    </td>
+                    <td class="hidden sm:table-cell text-sm" title="{{ invite.expires_at | format_datetime_human if invite.expires_at else 'Never expires' }}">
+                        {{ invite.expires_at | time_ago if invite.expires_at else 'Never' }}
+                        {% if invite.expires_at and not invite.is_expired %}
+                            <div class="text-xs opacity-60">({{ invite.expires_at | format_datetime_human(include_time=False) }})</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not invite.is_active %} <span class="badge badge-error">Deactivated</span>
+                        {% elif invite.is_expired %} <span class="badge badge-warning">Expired</span>
+                        {% elif invite.has_reached_max_uses %} <span class="badge badge-warning">Max Uses</span>
+                        {% else %} <span class="badge badge-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <div class="flex items-center justify-center space-x-1">
+                            <button class="btn btn-xs btn-ghost text-info hover:bg-info/10" title="View Usages"
+                                    hx-get="{{ url_for('invites.view_invite_usages', invite_id=invite.id) }}"
+                                    hx-target="#invite_usages_modal_content_div"
+                                    hx-swap="innerHTML"
+                                    onclick="invite_usages_modal.showModal(); document.getElementById('invite_usages_modal_content_div').innerHTML = '<div class=text-center p-8><span class=loading loading-lg loading-spinner></span></div>';">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                            <button class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Delete Invite"
+                                    hx-confirm="Are you sure you want to delete this invite? Users who have already accepted it will retain access."
+                                    hx-delete="{{ url_for('invites.delete_invite', invite_id=invite.id) }}"
+                                    hx-target="#invite-row-{{ invite.id }}"
+                                    hx-swap="outerHTML swap:0.5s"
+                                    hx-indicator="this">
+                                <i class="fa-solid fa-trash-can htmx-indicator-hide"></i>
+                                <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if invites.pages > 1 %}
+    <div class="join my-8 flex justify-center">
+        {% set prev_args = request.args.to_dict() %}{% set _ = prev_args.update({'page': invites.prev_num}) %}
+        <a {% if invites.has_prev %}
+               hx-get="{{ url_for('invites.list_invites_partial', **prev_args) }}" 
+               hx-target="#invites-list-table-container" 
+               hx-swap="innerHTML" 
+               hx-push-url="true" 
+           {% else %}
+               href="#" disabled
+           {% endif %}
+           class="join-item btn {{ 'btn-disabled' if not invites.has_prev else '' }}"><i class="fa-solid fa-arrow-left"></i></a>
+        
+        {% for page_num in invites.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+            {% if page_num %}
+                {% set page_args = request.args.to_dict() %}{% set _ = page_args.update({'page': page_num}) %}
+                {% if invites.page == page_num %}
+                    <button class="join-item btn btn-primary btn-active">{{ page_num }}</button>
+                {% else %}
+                    <a hx-get="{{ url_for('invites.list_invites_partial', **page_args) }}"
+                       hx-target="#invites-list-table-container"
+                       hx-swap="innerHTML"
+                       hx-push-url="true"
+                       class="join-item btn">{{ page_num }}</a>
+                {% endif %}
+            {% else %}<button class="join-item btn btn-disabled">...</button>{% endif %}
+        {% endfor %}
+        
+        {% set next_args = request.args.to_dict() %}{% set _ = next_args.update({'page': invites.next_num}) %}
+        <a {% if invites.has_next %}
+               hx-get="{{ url_for('invites.list_invites_partial', **next_args) }}"
+               hx-target="#invites-list-table-container"
+               hx-swap="innerHTML"
+               hx-push-url="true"
+           {% else %}
+               href="#" disabled
+           {% endif %}
+           class="join-item btn {{ 'btn-disabled' if not invites.has_next else '' }}"><i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+    {% endif %}
+
+{% else %}
+    <div class="text-center py-10 bg-base-200 rounded-lg shadow">
+        <i class="fa-solid fa-ticket-slash fa-3x text-base-content/30 mb-4"></i>
+        <p class="text-xl text-base-content/70">No invites found matching your criteria.</p>
+        {% if request.args.get('filter', 'all') != 'all' or request.args.get('search_path') %}
+            <a href="{{ url_for('invites.list_invites') }}" class="btn btn-sm btn-outline mt-4">Clear Filters</a>
+        {% endif %}
+    </div>
+{% endif %}

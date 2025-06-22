@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Active Streams{% endblock %}
+
+{% block head_extra %}
+<style>
+    #countdown-circle-progress {
+        stroke-dasharray: 251.2; /* Circumference of a circle with r=40: 2 * PI * 40 ~= 251.2 */
+        stroke-dashoffset: 0; /* Start with full circle */
+        transition: stroke-dashoffset 0.5s linear; /* Smooth transition for the progress */
+        transform: rotate(-90deg); /* Start drawing from the top */
+        transform-origin: 50% 50%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-2">
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-3">
+        <div class="flex items-center space-x-2">
+            <h1 class="text-3xl font-bold">Streams</h1>
+            <span id="streaming-auto-refresh-loader" class="htmx-indicator loading loading-spinner loading-sm text-primary ml-2"></span>
+        </div>
+        <div class="flex items-center space-x-2 mt-4 sm:mt-0">
+            {# Countdown Timer Div #}
+            <div id="countdown-timer-container" class="relative w-10 h-10" title="Time until next auto-refresh">
+                <svg class="w-full h-full" viewBox="0 0 100 100">
+                    <!-- Background Circle -->
+                    <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="10" fill="transparent"
+                            class="text-base-content opacity-20"></circle>
+                    <!-- Progress Circle -->
+                    <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="10" fill="transparent"
+                            id="countdown-circle-progress"
+                            class="text-secondary"></circle>
+                </svg>
+                <span id="countdown-timer-text" 
+                      class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-base-content">
+                    {{ streaming_refresh_interval | default(15) }}
+                </span>
+            </div>
+
+            <button class="btn btn-secondary btn-sm"
+                    hx-get="{{ url_for('dashboard.streaming_sessions_partial') }}"
+                    hx-target="#streaming-sessions-container"
+                    hx-swap="innerHTML"
+                    hx-indicator="#streaming-manual-refresh-loader"
+                    id="manual-refresh-button"> {# Added ID for JS interaction #}
+                <span id="streaming-manual-refresh-loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                <i class="fa-solid fa-sync mr-1 htmx-indicator-hide"></i> Refresh Now
+            </button>
+        </div>
+    </div>
+
+    <div id="streaming-sessions-container" 
+         hx-get="{{ url_for('dashboard.streaming_sessions_partial') }}" 
+         hx-trigger="load, every {{ streaming_refresh_interval | default(15) }}s"
+         hx-swap="innerHTML"
+         hx-indicator="#streaming-auto-refresh-loader"> {# Point to the new persistent loader #}
+        
+        {# Initial loading message - this will be replaced on first load #}
+        <div id="streaming-initial-loader-msg-content"> {# Renamed to avoid conflict if selector used elsewhere #}
+            <div class="text-sm text-base-content/80 mb-3 pb-3 border-b border-base-300/40">
+                <i class="fa-solid fa-server fa-fw mr-1"></i>
+                <strong>Activity:</strong> <span class="loading loading-dots loading-xs"></span>
+            </div>
+            <div class="text-center py-6"> {# Reduced py-10 to py-6 #}
+                <span class="loading loading-lg loading-spinner text-primary"></span>
+                <p class="text-lg text-base-content/70 mt-2">Loading active streams...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Terminate Session Modal -->
+<dialog id="terminate_session_modal" class="modal modal-bottom sm:modal-middle">
+  <div class="modal-box">
+    <form method="dialog">
+      <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" type="button" onclick="terminate_session_modal.close()">✕</button>
+    </form>
+    <h3 class="font-bold text-lg text-error"><i class="fa-solid fa-ban mr-2"></i>Terminate Session</h3>
+    <p class="py-2 text-sm">Are you sure you want to terminate the session for <strong id="terminate-user-name">user</strong> playing <strong id="terminate-media-title">media</strong>?</p>
+    
+    <form id="confirmTerminateForm" 
+          hx-post="{{ url_for('api.terminate_plex_session_route') }}"
+          hx-target="#terminate-status-message" {# For messages within the modal #}
+          hx-swap="innerHTML"
+          hx-indicator="#terminate-session-loader">
+          
+        <input type="hidden" name="session_key" id="terminate_session_key_input">
+        {# CSRF token will be added by app.js htmx:configRequest if not exempt #}
+        {# Or add <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> if API route is not exempt #}
+
+        <div class="form-control mt-4">
+          <label class="label" for="terminate_message_input">
+            <span class="label-text">Optional message for user:</span>
+          </label>
+          <textarea id="terminate_message_input" name="message" class="textarea textarea-bordered h-20" placeholder="e.g., Server maintenance starting soon."></textarea>
+        </div>
+
+        <div id="terminate-status-message" class="text-xs my-2 min-h-[1em]"></div>
+
+        <div class="modal-action mt-4">
+          <button type="button" class="btn btn-ghost" onclick="terminate_session_modal.close()">Cancel</button>
+          <button type="submit" class="btn btn-error">
+            <span id="terminate-session-loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
+            Confirm Termination
+          </button>
+        </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+
+function openTerminateSessionModal(sessionKey, userName, mediaTitle) {
+    const modal = document.getElementById('terminate_session_modal');
+    const sessionKeyInput = document.getElementById('terminate_session_key_input');
+    const userNameSpan = document.getElementById('terminate-user-name');
+    const mediaTitleSpan = document.getElementById('terminate-media-title');
+    const messageInput = document.getElementById('terminate_message_input');
+    const statusMessageDiv = document.getElementById('terminate-status-message');
+    const terminateForm = document.getElementById('confirmTerminateForm');
+
+    if (terminateForm) {
+        terminateForm.addEventListener('htmx:afterRequest', function(event) {
+            const xhr = event.detail.xhr;
+            const targetDiv = document.getElementById('terminate-status-message');
+            
+            try {
+                const responseJson = JSON.parse(xhr.responseText);
+                if (event.detail.successful && responseJson.success) {
+                    if (typeof window.showToast === 'function') {
+                        window.showToast(responseJson.message || 'Session termination initiated!', 'success');
+                    }
+                    document.getElementById('terminate_session_modal').close();
+                    // Trigger a refresh of the streaming sessions list
+                    htmx.trigger('#streaming-sessions-container', 'load'); // Or target the manual refresh button's HTMX action
+                } else {
+                    const errorMsg = responseJson.error || 'Failed to terminate session. Please try again.';
+                    if (targetDiv) {
+                         targetDiv.innerHTML = `<div class='alert alert-error text-xs p-2'>${errorMsg}</div>`;
+                    }
+                    if (typeof window.showToast === 'function') {
+                        window.showToast(errorMsg, 'error');
+                    }
+                }
+            } catch (e) {
+                 if (targetDiv) {
+                    targetDiv.innerHTML = "<div class='alert alert-error text-xs p-2'>Error processing response.</div>";
+                 }
+                 console.error("Error parsing terminate session response:", e, xhr.responseText);
+            }
+        });
+    }
+
+    if (modal && sessionKeyInput && userNameSpan && mediaTitleSpan && messageInput && statusMessageDiv) {
+        sessionKeyInput.value = sessionKey;
+        userNameSpan.textContent = userName || 'Unknown User';
+        mediaTitleSpan.textContent = mediaTitle || 'Unknown Media';
+        messageInput.value = ''; // Clear previous message
+        statusMessageDiv.innerHTML = ''; // Clear previous status
+        modal.showModal();
+    } else {
+        console.error("Could not find all elements for terminate session modal.");
+        if (typeof window.showToast === 'function') {
+            window.showToast('Error: Modal elements not found.', 'error');
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const refreshIntervalSeconds = parseInt("{{ streaming_refresh_interval | default(15) }}");
+    const countdownTextElement = document.getElementById('countdown-timer-text');
+    const countdownCircleElement = document.getElementById('countdown-circle-progress');
+    const manualRefreshButton = document.getElementById('manual-refresh-button');
+    const streamingContainer = document.getElementById('streaming-sessions-container');
+    
+    let countdownTimer;
+    let currentCountdownValue = refreshIntervalSeconds;
+    const circleCircumference = 2 * Math.PI * 40; // Assuming r=40 for the circle
+
+    function updateCountdownDisplay() {
+        if (countdownTextElement) {
+            countdownTextElement.textContent = currentCountdownValue;
+        }
+        if (countdownCircleElement) {
+            const progress = ((refreshIntervalSeconds - currentCountdownValue) / refreshIntervalSeconds) * circleCircumference;
+            // We want the circle to "fill up" as time passes, so offset decreases
+            countdownCircleElement.style.strokeDashoffset = progress;
+        }
+    }
+
+    function resetAndStartCountdown() {
+        clearInterval(countdownTimer); // Clear any existing timer
+        currentCountdownValue = refreshIntervalSeconds;
+        updateCountdownDisplay(); // Show initial full value
+
+        countdownTimer = setInterval(function () {
+            currentCountdownValue--;
+            if (currentCountdownValue < 0) {
+                // This happens right after an HTMX refresh. Reset to full.
+                currentCountdownValue = refreshIntervalSeconds; 
+            }
+            updateCountdownDisplay();
+        }, 1000); // Update every second
+    }
+
+    // Initial setup
+    if (countdownTextElement && countdownCircleElement) {
+        countdownCircleElement.style.strokeDasharray = circleCircumference;
+        resetAndStartCountdown();
+    }
+
+    // Listen for HTMX afterSettle event on the container to reset the countdown
+    // after an auto-refresh or manual refresh completes.
+    if (streamingContainer) {
+        streamingContainer.addEventListener('htmx:afterSettle', function() {
+            // HTMX request has completed and content is settled.
+            // This is a good time to reset our JS countdown to sync up.
+            console.log("HTMX settled, resetting countdown.");
+            resetAndStartCountdown();
+        });
+    }
+    
+    // If manual refresh button is clicked, we also want to reset the countdown
+    // immediately to give visual feedback, HTMX will handle the actual refresh.
+    if(manualRefreshButton) {
+        manualRefreshButton.addEventListener('click', function() {
+            console.log("Manual refresh clicked, resetting countdown.");
+            // The htmx:afterSettle will also fire, so this provides immediate feedback
+            // and the afterSettle ensures it's correctly synced post-refresh.
+            currentCountdownValue = refreshIntervalSeconds; // Visually reset
+            updateCountdownDisplay();
+            // No need to call resetAndStartCountdown() here as afterSettle will handle it
+        });
+    }
+});
+</script>
+{% endblock %}

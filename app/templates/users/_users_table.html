@@ -1,0 +1,139 @@
+<!-- File: app/templates/users/_users_table.html -->
+{# Expects 'users' (pagination object), 'available_libraries', and 'mass_edit_form' in context #}
+<div class="overflow-x-auto bg-base-200 shadow-lg rounded-lg">
+    <table class="table table-zebra w-full table-sm md:table-md">
+        <thead>
+            <tr>
+                <th class="w-10 text-center">
+                    <label title="Select all visible">
+                        <input type="checkbox" class="checkbox checkbox-primary checkbox-xs sm:checkbox-sm" id="select_all_users_table" />
+                    </label>
+                </th>
+                <th>User</th>
+                <th class="hidden lg:table-cell">Email</th>
+                <th class="hidden md:table-cell">Status</th>
+                <th class="hidden xl:table-cell">Libraries</th>
+                <th class="hidden sm:table-cell">Last Streamed</th>
+                <th class="text-center">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users.items %}
+            <tr id="user-row-{{ user.id }}" class="hover">
+                <td class="text-center">
+                    <input type="checkbox" class="checkbox checkbox-primary checkbox-xs sm:checkbox-sm user-select-checkbox" data-user-id="{{ user.id }}">
+                </td>
+                <td>
+                    <div class="flex items-center space-x-3">
+                        <div class="avatar">
+                            <div class="mask mask-squircle w-10 h-10 sm:w-12 sm:h-12">
+                                <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';" />
+                            </div>
+                        </div>
+                        <div>
+                            <div class="font-bold truncate max-w-[150px] sm:max-w-xs" title="{{ user.plex_username }}">{{ user.plex_username }}</div>
+                            <div class="text-xs opacity-50 sm:hidden" title="{{ user.plex_email or 'No email' }}">{{ user.plex_email or 'No email' | truncate(20, True) }}</div>
+                            <div class="text-xs opacity-50">ID: {{ user.plex_user_id or user.id }}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="hidden lg:table-cell text-sm truncate max-w-xs" title="{{ user.plex_email or 'No email' }}">{{ user.plex_email or 'N/A' }}</td>
+                <td class="hidden md:table-cell">
+                    {% if user.is_home_user %}<span class="badge badge-primary badge-sm" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</span>{% endif %}
+                    {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</span>{% endif %}
+                    {% if user.is_plex_friend is defined and user.is_plex_friend %}<span class="badge badge-accent badge-sm mt-1" title="Plex Friend"><i class="fa-solid fa-user-friends mr-1"></i> Friend</span>{% endif %}
+                    {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Discord</span>{% endif %}
+                    {% set has_any_special_badge = user.is_home_user or user.shares_back or (user.is_plex_friend is defined and user.is_plex_friend) or user.discord_user_id %}
+                    {% if not has_any_special_badge %}
+                        <span class="text-xs opacity-60">Standard</span>
+                    {% endif %}
+                </td>
+                <td class="hidden xl:table-cell text-xs" data-user-id-for-libs="{{ user.id }}"> {# Unique identifier for this user's library cell #}
+                    {% if user.allowed_library_ids %} {# This should now always be a list from user_service #}
+                        <div class="flex flex-col space-y-0.5">
+                        {% set initially_visible_count = 3 %} {# Define how many to show initially #}
+                        {% for lib_id in user.allowed_library_ids %}
+                            {% set lib_name = available_libraries.get(lib_id | string, 'Lib ID ' ~ (lib_id | string)) %}
+                            <span 
+                                class="badge badge-xs badge-outline library-badge-for-user-{{ user.id }} {{ 'extra-library-badge hidden' if loop.index0 >= initially_visible_count else '' }}" 
+                                title="{{ lib_name }}">
+                                {{ lib_name | truncate(25, True) }} {# Increased truncate length slightly #}
+                            </span>
+                        {% endfor %}
+
+                        {% if user.allowed_library_ids|length > initially_visible_count %}
+                            <button type="button" 
+                                    class="btn btn-xs btn-ghost text-accent p-0 mt-1 show-more-libs-button" 
+                                    data-target-user-id="{{ user.id }}"
+                                    data-visible-count="{{ initially_visible_count }}">
+                                + {{ user.allowed_library_ids|length - initially_visible_count }} more
+                            </button>
+                        {% endif %}
+                        </div>
+                    {% else %}
+                        <span class="opacity-60">No libraries specifically shared.</span>
+                    {% endif %}
+                </td>
+                <td class="hidden sm:table-cell text-sm" title="{{ user.last_streamed_at | format_datetime_human if user.last_streamed_at else 'Never' }}">
+                    <div title="{{ user.last_streamed_at | format_datetime_human if user.last_streamed_at else 'Never streamed' }}">
+                        {{ user.last_streamed_at | time_ago if user.last_streamed_at else 'Never' }}
+                    </div>
+                    <div class="text-xs opacity-50" title="Added {{ user.created_at | format_datetime_human if user.created_at else 'N/A' }}">
+                        Added: {{ user.created_at | time_ago if user.created_at else 'N/A' }}
+                    </div>
+                    {% if user.access_expires_at %}
+                        <div class="text-xs text-warning mt-0.5" title="Access expires on {{ user.access_expires_at | format_datetime_human }}">
+                            <i class="fa-solid fa-hourglass-end fa-fw"></i> Expires: {{ user.access_expires_at | time_ago }}
+                        </div>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    <div class="flex items-center justify-center space-x-1">
+                        <a href="{{ url_for('users.edit_user', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" class="btn btn-xs btn-ghost text-primary hover:bg-primary/10" title="Edit User">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </a>
+                        <button class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Remove User"
+                                hx-confirm="Are you sure you want to remove '{{ user.plex_username }}' from PUM and Plex Server?"
+                                hx-delete="{{ url_for('users.delete_user', user_id=user.id) }}"
+                                hx-target="#user-row-{{ user.id }}" 
+                                hx-swap="outerHTML swap:0.5s"
+                                hx-indicator="this">
+                            <i class="fa-solid fa-trash-can htmx-indicator-hide"></i>
+                            <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+// Script for select all in table view (needs to be re-run if table is swapped by HTMX)
+function initializeTableSelectAll() {
+    const selectAllCheckboxTable = document.getElementById('select_all_users_table');
+    const userCheckboxesTable = document.querySelectorAll('#user-list-container .user-select-checkbox'); // Be more specific if needed
+
+    if (selectAllCheckboxTable) {
+        selectAllCheckboxTable.addEventListener('change', function() {
+            userCheckboxesTable.forEach(checkbox => {
+                if (checkbox.offsetParent !== null) { // Only affect visible checkboxes
+                    checkbox.checked = this.checked;
+                    // Manually trigger change event for each checkbox to update Set and Mass Edit button
+                    const event = new Event('change', { bubbles: true });
+                    checkbox.dispatchEvent(event);
+                }
+            });
+        });
+    }
+}
+
+// Call it once if the table is loaded initially, or ensure it's called after HTMX swaps.
+// The main list.html's 'htmx:afterSwap' listener can call this.
+if (document.getElementById('select_all_users_table')) {
+    initializeTableSelectAll();
+}
+// Also, ensure user-select-checkbox event listeners from list.html are re-applied or cover this.
+// The `updateUserSelection()` function in list.html should ideally handle this if called on `htmx:afterSwap`.
+</script>

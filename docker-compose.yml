@@ -1,55 +1,30 @@
 version: '3.8' # Specifies the Docker Compose file format version
 
 services:
-  # Defines the main application service
-  pum: # Service name (short for Plex User Manager, can be anything)
-    container_name: pum # A friendly name for the running container
-    
-    # build: tells Docker Compose how to build the image for this service
+  pum: # Service name (Plex User Manager)
+    container_name: pum8
     build:
-      context: . # Use the current directory (where this docker-compose.yml is) as the build context
-      dockerfile: Dockerfile # Explicitly state the Dockerfile name (though Dockerfile is default)
-      # args: # Optional: Build-time arguments can be passed to Dockerfile
-        # - SOME_BUILD_ARG=value 
-    
-    # restart: defines the restart policy for the container
-    restart: unless-stopped # Restart unless manually stopped or Docker daemon stops
-    
+      context: . # The build context is the current directory
+      dockerfile: Dockerfile # Specifies the Dockerfile to use
+    restart: unless-stopped # Restart policy
     ports:
-      # Maps port 5699 on your host machine to port 5000 inside the container.
-      # Gunicorn inside the container will listen on port 5000 (as per Dockerfile CMD).
-      # You will access the application in your browser via http://localhost:5690.
-      - "5699:5000" 
-    
+      - "5699:5000" # Maps port 5699 on the host to port 5000 in the container
+                    # Gunicorn will run on port 5000 inside the container
     volumes:
-      - ./PUM:/app/instance
-    
+      # Mounts the ./PUM directory on the host to /app/instance in the container.
+      # This is used for persistent data like the SQLite database.
+      - ./plexusermanager:/app/instance
     environment:
-      
-      # Timezone for the container (good practice for consistent logging and scheduling)
-      - TZ=America/New_York # Change to your local timezone
+      # Set the timezone for the container.
+      # It's good practice for logging and scheduled tasks.
+      # Users should change this to their local timezone.
+      - TZ=America/New_York
 
-      # Flask specific environment variables (FLASK_APP is set in Dockerfile)
-      # FLASK_DEBUG is also set to 0 in Dockerfile for production-like Gunicorn.
-      # For local debugging with Flask's dev server, you might override it here or in Dockerfile.
-      - FLASK_DEBUG=1 
+      # DEBUG: For fine-grained information, typically of interest only when diagnosing problems.
+      # INFO: For general operational information (startup, successful operations, etc.).
+      - FLASK_LOG_LEVEL=DEBUG
 
-      - LOG_LEVEL=DEBUG
-
-      # SECRET_KEY: Crucial for session security, CSRF protection.
-      # It's best to set a strong, unique key for any real use.
-      # The app has a default in config.py, but this can override it.
-      # For local dev, the default might be fine, but for any sharing/staging, set a strong one.
-      #- SECRET_KEY=your_local_dev_secret_key_make_this_unique_if_sharing # Example
-      
-      # DATABASE_URL: The app's config.py defaults to 'sqlite:////app/instance/app.db'.
-      # This environment variable can override it if you need to point to a different DB
-      # location or type (though for SQLite with volume mapping, the default is usually fine).
-      # - DATABASE_URL=sqlite:////app/instance/my_other_app.db
-    
-    logging:
-      # Configures Docker container logging for easier debugging.
-      driver: "json-file" # Standard Docker logging driver
-      options:
-        max-size: "10m" # Max size of a log file before it's rotated
-        max-file: "3"   # Max number of log files to keep
+      # Add any other environment variables your app might need at runtime
+      # For example, if you decide to pass some secrets or configurations this way:
+      # - FLASK_ENV=production # Handled by .flaskenv or run.py for production
+      # - SECRET_KEY=your_very_secret_key # Will be handled via .env and app config

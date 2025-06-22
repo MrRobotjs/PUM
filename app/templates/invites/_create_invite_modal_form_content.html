@@ -1,0 +1,171 @@
+{# File: app/templates/invites/_create_invite_modal_form_content.html #}
+{# This partial is used by HTMX to re-render the form with validation errors #}
+{# It expects 'form' and 'available_libraries' in context #}
+
+<div id="create-invite-form-fields-wrapper">
+
+    {{ form.hidden_tag() }}
+
+    <div class="form-control mb-3">
+        {{ form.custom_path.label(class="label") }}
+        {{ form.custom_path(class="input input-bordered " + ("input-error" if form.custom_path.errors else ""), placeholder="e.g., 'besties' or 'vip_access'") }}
+        {% if form.custom_path.errors %}<span class="label-text-alt text-error mt-1 text-xs block">{{ form.custom_path.errors[0] }}</span>
+        {% else %}<span class="label-text-alt text-xs block">{{ form.custom_path.description }}</span>{% endif %}
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+        <div class="form-control">
+            {{ form.expires_in_days.label(class="label") }}
+            {{ form.expires_in_days(class="input input-bordered " + ("input-error" if form.expires_in_days.errors else ""), type="number", min="0", id="expires_in_days_input") }}
+            {% if form.expires_in_days.errors %}<span class="label-text-alt text-error mt-1 text-xs">{{ form.expires_in_days.errors[0] }}</span>
+            {% else %}<span class="label-text-alt text-xs">Calculated Expiry: <strong id="calculated_expiry_date">N/A</strong></span>{% endif %}
+        </div>
+        <div class="form-control">
+            {{ form.number_of_uses.label(class="label") }}
+            {{ form.number_of_uses(class="input input-bordered " + ("input-error" if form.number_of_uses.errors else ""), type="number", min="0") }}
+            {% if form.number_of_uses.errors %}<span class="label-text-alt text-error mt-1 text-xs">{{ form.number_of_uses.errors[0] }}</span>
+            {% else %}<span class="label-text-alt text-xs">{{ form.number_of_uses.description }}</span>{% endif %}
+        </div>
+    </div>
+
+    <div class="form-control mb-3">
+        {{ form.membership_duration_days.label(class="label") }}
+        {{ form.membership_duration_days(class="input input-bordered " + ("input-error" if form.membership_duration_days.errors else ""), type="number", min="1", id="membership_duration_days_input") }} 
+        {% if form.membership_duration_days.errors %}
+            <label class="label py-0 mt-1">
+                <span class="label-text-alt text-error whitespace-normal">{{ form.membership_duration_days.errors[0] }}</span>
+            </label>
+        {% else %}
+             {# Span to display calculated membership expiry #}
+            <span class="label-text-alt mt-1 text-xs block">Membership Expires On: <strong id="calculated_membership_expiry_date">Permanent (if blank/invalid)</strong></span>
+        {% endif %}
+        <label class="label pt-1"><span class="label-text-alt whitespace-normal text-xs">{{ form.membership_duration_days.description }}</span></label>
+    </div>
+
+    <div class="form-control mb-3">
+        <label class="label">
+            <span class="label-text">{{ form.libraries.label.text }}</span>
+            <span class="label-text-alt">
+                <button type="button" id="create_modal_select_all_libs_partial" class="btn btn-xs btn-ghost">All</button> |
+                <button type="button" id="create_modal_deselect_all_libs_partial" class="btn btn-xs btn-ghost">None</button>
+            </span>
+        </label>
+        <div class="max-h-60 overflow-y-auto p-2 border border-base-300 rounded-md bg-base-100/30 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+            {# REMOVED THE PROBLEMATIC {% if not form.libraries.choices %} BLOCK #}
+            {# The form passed to this partial should ALREADY have its choices populated by the Python route #}
+            
+            {% for value, label in form.libraries.choices %} {# Assuming form.libraries.choices is always populated by the route #}
+                <label class="label cursor-pointer justify-start py-1">
+                    <input type="checkbox" name="{{ form.libraries.name }}" value="{{ value }}"
+                        class="checkbox checkbox-primary checkbox-sm mr-2 create-modal-library-checkbox-partial"
+                        {% if form.libraries.data and value in form.libraries.data %}checked{% endif %}>
+                    <span class="label-text" title="{{ label }}">{{ label | truncate(30, True) }}</span>
+                </label>
+            {% endfor %}
+        </div>
+        <span class="label-text-alt mt-1">{{ form.libraries.description }}</span>
+        {% if form.libraries.errors %}<span class="label-text-alt text-error mt-1">{{ form.libraries.errors[0] }}</span>{% endif %}
+    </div>
+
+    <div class="form-control mb-4">
+        <label class="label cursor-pointer justify-start">
+            {{ form.allow_downloads(class="toggle toggle-accent mr-3") }}
+            <span class="label-text font-medium">{{ form.allow_downloads.label.text }}</span>
+        </label>
+        {% if form.allow_downloads.errors %}
+            <label class="label py-0 mt-1">
+                <span class="label-text-alt text-error">{{ form.allow_downloads.errors[0] }}</span>
+            </label>
+        {% endif %}
+        <p class="text-xs text-base-content/60 mt-0.5 pl-12">{{ form.allow_downloads.description }}</p>
+    </div>
+
+    <div class="modal-action mt-6">
+        <button type="button" class="btn btn-ghost" onclick="
+            const modal = document.getElementById('create_invite_modal'); 
+            if(modal) modal.close(); 
+            const formToReset = document.getElementById('createInviteForm'); 
+            if(formToReset) formToReset.reset();
+            const expiryDateEl = document.getElementById('calculated_expiry_date');
+            if(expiryDateEl) expiryDateEl.textContent = 'N/A (if days > 0)';
+        ">Cancel</button>
+        {{ form.submit(class="btn btn-primary") }}
+        <span id="create_invite_loader_span" class="htmx-indicator loading loading-spinner loading-md"></span> {# Ensure this ID matches the hx-indicator #}
+    </div>
+
+</div>
+
+{# Re-initialize JS for this partial, especially if it's swapped in with errors #}
+{# The ID for expires_in_days_input should be unique if this partial is used multiple times without full page reload,
+   or the JS should target within the current form context.
+   The current JS in list.html already tries to re-initialize via initializeModalFormJS(event.detail.target)
+   if event.detail.target.id === 'createInviteForm'. That should handle this.
+#}
+<script>
+    (function() { 
+        const currentForm = document.currentScript.closest('form') || document.getElementById('createInviteForm');
+        if (!currentForm) {
+            return;
+        }
+
+
+        // --- Link Expiry Calculation (seems to be working, kept for completeness) ---
+        const linkExpiresInDaysInput = currentForm.querySelector('#expires_in_days_input');
+        const calculatedLinkExpiryDateSpan = currentForm.querySelector('#calculated_link_expiry_date');
+        
+        function updateCalculatedLinkExpiry() {
+            if (!linkExpiresInDaysInput || !calculatedLinkExpiryDateSpan) return;
+            const days = parseInt(linkExpiresInDaysInput.value);
+            // console.log("Link Expiry - Input value:", linkExpiresInDaysInput.value, "Parsed days:", days); // Debug
+            if (!isNaN(days) && days > 0) {
+                const today = new Date();
+                const expiryDate = new Date(new Date().setDate(today.getDate() + days));
+                calculatedLinkExpiryDateSpan.textContent = expiryDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+            } else if (linkExpiresInDaysInput.value === '0' || linkExpiresInDaysInput.value === '') {
+                calculatedLinkExpiryDateSpan.textContent = 'Never';
+            } else {
+                 calculatedLinkExpiryDateSpan.textContent = 'Invalid';
+            }
+        }
+        if (linkExpiresInDaysInput) {
+            linkExpiresInDaysInput.addEventListener('input', updateCalculatedLinkExpiry);
+            updateCalculatedLinkExpiry(); 
+        }
+
+        // --- Membership Expiry Calculation ---
+        const membershipDurationInput = currentForm.querySelector('#membership_duration_days_input');
+        const calculatedMembershipExpiryDateSpan = currentForm.querySelector('#calculated_membership_expiry_date');
+
+        function updateCalculatedMembershipExpiry() {
+            if (!membershipDurationInput || !calculatedMembershipExpiryDateSpan) {
+                return;
+            }
+            const inputValue = membershipDurationInput.value;
+            const days = parseInt(inputValue);
+
+            if (!isNaN(days) && days > 0) {
+                const today = new Date();
+                const expiryDate = new Date(new Date().setDate(today.getDate() + days));
+                calculatedMembershipExpiryDateSpan.textContent = expiryDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+            } else if (inputValue === '') { // Check original inputValue for blank
+                calculatedMembershipExpiryDateSpan.textContent = 'Permanent (if blank)';
+            } else { 
+                calculatedMembershipExpiryDateSpan.textContent = 'Invalid / Permanent'; // Simplified
+            }
+        }
+        if (membershipDurationInput) {
+            membershipDurationInput.addEventListener('input', updateCalculatedMembershipExpiry);
+            // Ensure the initial call happens *after* the form might have been populated by WTForms if re-rendering with errors
+            setTimeout(updateCalculatedMembershipExpiry, 0); // Call after current JS tick
+        } else {
+        }
+
+        // --- Library Select/Deselect All ---
+        // --- Library Select/Deselect All ---
+        const createModalSelectAll = currentForm.querySelector('#create_modal_select_all_libs_partial');
+        const createModalDeselectAll = currentForm.querySelector('#create_modal_deselect_all_libs_partial');
+        const createModalLibCheckboxes = currentForm.querySelectorAll('.create-modal-library-checkbox-partial');
+
+        if(createModalSelectAll) createModalSelectAll.addEventListener('click', () => createModalLibCheckboxes.forEach(cb => cb.checked = true));
+        if(createModalDeselectAll) createModalDeselectAll.addEventListener('click', () => createModalLibCheckboxes.forEach(cb => cb.checked = false));
+    })();
+</script>

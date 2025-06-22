@@ -1,232 +1,287 @@
-# app/__init__.py
+# File: app/__init__.py
 import os
-import threading
-import asyncio
-import atexit
-from flask import Flask, render_template, request 
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_login import LoginManager
-from flask_babel import Babel
-from flask_apscheduler import APScheduler 
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from flask_session import Session
-from flask_wtf.csrf import CSRFProtect, CSRFError
 import logging
-import sys 
+from logging.handlers import RotatingFileHandler
+import secrets
+from datetime import datetime 
 from werkzeug.middleware.proxy_fix import ProxyFix
-from config import Config 
-from app.template_filters import time_ago_filter
+from flask import Flask, g, request, redirect, url_for, current_app, render_template
+from flask_login import current_user
 
-db = SQLAlchemy()
-migrate = Migrate()
-login_manager = LoginManager()
-babel = Babel()
-scheduler = APScheduler() 
-server_session = Session()
-csrf = CSRFProtect()
+from .config import config
+from .extensions import (
+    db,
+    migrate,
+    login_manager,
+    csrf,
+    scheduler,
+    babel, 
+    htmx
+)
+from .models import AdminAccount, Setting
+from .utils import helpers 
 
-bot_instance = None 
-discord_bot_thread = None
-_discord_bot_should_run = threading.Event() 
-_discord_bot_lock = threading.Lock() 
-_app_services_initialized_lock = threading.Lock()
-_app_services_initialized_for_pid = {}
+def get_locale_for_babel():
+    return 'en'
 
-def _apply_scheduler_config_to_app(app_instance):
-    logger = app_instance.logger
-    pid = os.getpid()
-    logger.debug(f"_apply_scheduler_config_to_app: Applying config for app in PID {pid} on instance {id(app_instance)}")
-    with app_instance.app_context():
-        sa_state = app_instance.extensions.get('sqlalchemy')
-        if sa_state and hasattr(sa_state, 'engine') and sa_state.engine is not None:
-            app_instance.config['SCHEDULER_JOBSTORES'] = {'default': SQLAlchemyJobStore(engine=sa_state.engine, tablename='apscheduler_jobs')}
-            logger.debug(f"_apply_scheduler_config_to_app: Configured SCHEDULER_JOBSTORES using instance's engine (PID {pid}).")
-        else:
-            logger.error(f"_apply_scheduler_config_to_app: DB engine not found for instance {id(app_instance)} (PID {pid}). Using URI fallback for JOBSTORES.")
-            app_instance.config['SCHEDULER_JOBSTORES'] = {'default': SQLAlchemyJobStore(url=app_instance.config['SQLALCHEMY_DATABASE_URI'], tablename='apscheduler_jobs')}
-    app_instance.config.setdefault('SCHEDULER_EXECUTORS', {'default': {'type': 'threadpool', 'max_workers': 5}})
-    app_instance.config.setdefault('SCHEDULER_JOB_DEFAULTS', {'coalesce': False, 'max_instances': 1, 'misfire_grace_time': 300})
-    app_instance.config.setdefault('SCHEDULER_API_ENABLED', False)
-    app_instance.config['SCHEDULER_AUTOSTART'] = False # Explicitly False, Gunicorn worker will start it
-    app_instance.config.setdefault('SCHEDULER_CREATE_TABLES', False)
-    logger.debug(f"_apply_scheduler_config_to_app: Final SCHEDULER_EXECUTORS for PID {pid}: {app_instance.config.get('SCHEDULER_EXECUTORS')}")
-    logger.debug(f"_apply_scheduler_config_to_app: SCHEDULER_AUTOSTART set to {app_instance.config.get('SCHEDULER_AUTOSTART')}")
-
-def create_app(config_class=Config):
-    app = Flask(__name__, instance_relative_config=True)
-    app.config.from_object(config_class)
-    pid = os.getpid()
-    if not app.debug and not app.testing: app.logger.setLevel(logging.INFO)
-    else: app.logger.setLevel(logging.DEBUG)
-    app.logger.info(f"Flask app ({app.name}) creating in PID {pid}. Debug mode: {app.debug}. Instance ID: {id(app)}")
-    db.init_app(app) 
-    migrate.init_app(app, db) 
-    _apply_scheduler_config_to_app(app) 
-    scheduler.init_app(app) 
-    app.logger.info(f"Flask-APScheduler initialized for app in PID {pid}. Effective AUTOSTART from config: {app.config.get('SCHEDULER_AUTOSTART')}.")
-    
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-    app.jinja_env.add_extension('jinja2.ext.do'); app.jinja_env.filters['time_ago'] = time_ago_filter
-    try: os.makedirs(app.instance_path, exist_ok=True); os.makedirs(os.path.join(app.instance_path, 'flask_session'), exist_ok=True)
-    except OSError as e: app.logger.critical(f"CRITICAL: Error creating instance path: {e}", exc_info=True)
-    login_manager.init_app(app); babel.init_app(app); server_session.init_app(app); csrf.init_app(app) 
-    aps_logger = logging.getLogger('apscheduler')
-    if not aps_logger.handlers:
-        aps_stream_handler = logging.StreamHandler(sys.stdout); aps_formatter = logging.Formatter('%(asctime)s - apscheduler - %(levelname)s - [PID:%(process)d] - %(message)s'); aps_stream_handler.setFormatter(aps_formatter); aps_logger.addHandler(aps_stream_handler)
-    if app.debug: aps_logger.setLevel(logging.DEBUG); 
-    else: aps_logger.setLevel(logging.WARNING)
-    aps_logger.propagate = False
-
-    # Explicit Scheduler Start Logic for Gunicorn/Werkzeug Workers
-    # SCHEDULER_AUTOSTART in app.config is now False. We control start here.
-    if not scheduler.running:
-        is_gunicorn_worker = "gunicorn" in os.environ.get("SERVER_SOFTWARE", "").lower()
-        is_werkzeug_reloader_worker = "run" in sys.argv and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
-        
-        # These utility CLIs should not start the scheduler in create_app
-        utility_cli_commands = ["db", "shell", "routes", "register_jobs_cli", "start_services_dev"]
-        is_utility_or_dev_start_cli = any(cmd_arg in sys.argv for cmd_arg in utility_cli_commands)
-
-        if (is_gunicorn_worker or is_werkzeug_reloader_worker) and not is_utility_or_dev_start_cli:
-            app.logger.info(f"APScheduler (PID {pid}) in worker context. Attempting explicit start.")
-            try:
-                scheduler.start(paused=False)
-                if scheduler.running: app.logger.info(f"APScheduler (PID {pid}) EXPLICITLY STARTED and is RUNNING in worker.")
-                else: app.logger.error(f"APScheduler (PID {pid}) explicit start() called in worker, but still NOT RUNNING.")
-            except Exception as e_explicit_start:
-                app.logger.error(f"APScheduler (PID {pid}) error on explicit start() in worker: {e_explicit_start}", exc_info=True)
-        else:
-             app.logger.info(f"APScheduler (PID {pid}): Not a Gunicorn/Werkzeug worker OR is a utility/dev_start CLI. Scheduler not started by create_app here.")
-    elif scheduler.running:
-        app.logger.info(f"APScheduler (PID {pid}) IS ALREADY RUNNING (unexpected if AUTOSTART is False and not a worker).")
-
-    from app import scheduler_tasks 
-    app.logger.debug(f"scheduler_tasks.py imported in PID {pid}. Jobs defined by decorator.")
-    
-    login_manager.login_view = 'auth.login'; login_manager.login_message_category = 'info' 
-    from app.routes_main import main_bp; app.register_blueprint(main_bp)
-    from app.auth import bp as auth_bp; app.register_blueprint(auth_bp, url_prefix='/auth')
-    from app.cli import bp as cli_bp; app.register_blueprint(cli_bp)
-    from app.sso_plex import sso_plex_bp; app.register_blueprint(sso_plex_bp, url_prefix='/sso/plex')
-    from app.sso_discord import sso_discord_bp; app.register_blueprint(sso_discord_bp, url_prefix='/sso/discord')
-    from app.routes_setup import setup_bp; app.register_blueprint(setup_bp, url_prefix='/setup') 
-    from app.routes_admin_invites import invites_bp; app.register_blueprint(invites_bp, url_prefix='/admin/invites') 
-    from app.routes_admin_users import users_bp; app.register_blueprint(users_bp, url_prefix='/admin/users') 
-    from app.routes_admin_settings import settings_bp; app.register_blueprint(settings_bp, url_prefix='/admin/settings')
-    @app.errorhandler(CSRFError)
-    def handle_csrf_error(e): app.logger.warning(f"CSRF Error: {e.description}. Path: {request.path if request else 'Unknown'}"); return render_template('errors/csrf_error.html', error_description=e.description), 400
-    @app.errorhandler(404)
-    def not_found_error(error): return render_template('errors/404.html', error=error), 404
-    @app.errorhandler(500)
-    def internal_error(error):
-        try: db.session.rollback()
-        except: pass 
-        app.logger.error(f"Internal Server Error occurred", exc_info=True); return render_template('errors/500.html', error=error), 500
-    @app.context_processor
-    def inject_app_settings_for_template():
-        try: from app.models import get_all_app_settings, get_app_setting; return dict(app_settings=get_all_app_settings(), setup_completed=(get_app_setting('SETUP_COMPLETED') == 'true'))
-        except Exception as e_ctx: app.logger.error(f"Context processor: DB access for settings failed: {e_ctx}", exc_info=True); return dict(app_settings={'APP_NAME':'PUM (DB Err)'}, setup_completed=False)
-    atexit.register(shutdown_app_services); app.logger.info(f"Flask app instance fully created for PID {pid}.")
-    return app
-
-def initialize_app_services(current_app_instance):
-    global _app_services_initialized_for_pid, scheduler
-    logger = current_app_instance.logger; pid = os.getpid()
-    logger.info(f"--- initialize_app_services called for PID {pid} (App ID: {id(current_app_instance)}) ---")
-    with _app_services_initialized_lock:
-        if _app_services_initialized_for_pid.get(pid) and "register_jobs_cli" not in sys.argv:
-            logger.info(f"Services for PID {pid} already marked initialized. Skipping full re-init unless 'register_jobs_cli'.")
+def initialize_settings_from_db(app_instance):
+    engine_conn = None
+    try:
+        engine_conn = db.engine.connect() 
+        if not db.engine.dialect.has_table(engine_conn, Setting.__tablename__):
+            app_instance.logger.warning("Settings table not found during init. Skipping DB config load.")
+            if not app_instance.config.get('SECRET_KEY'): app_instance.config['SECRET_KEY'] = secrets.token_hex(32)
             return
-        logger.info(f"Performing service initialization in PID {pid} (for {sys.argv[1] if len(sys.argv) > 1 else 'app'})...")
-        try:
-            with current_app_instance.app_context(): 
-                _apply_scheduler_config_to_app(current_app_instance)
-                # Ensure the global scheduler is configured with THIS app instance for job registration
-                # This init_app will use the config now present on current_app_instance.config
-                # SCHEDULER_AUTOSTART is False from _apply_scheduler_config_to_app, so no start here.
-                scheduler.init_app(current_app_instance) 
-                logger.info(f"Global scheduler (re)init'd with CLI app instance (PID {pid}) for job registration.")
-                from app.scheduler_tasks import register_all_defined_jobs 
-                register_all_defined_jobs(current_app_instance, scheduler) # Register jobs into DB
-                
-                is_start_services_dev_command = "start_services_dev" in sys.argv
-                if is_start_services_dev_command: # Only for the 'flask start_services_dev' command
-                    if not scheduler.running and not current_app_instance.config.get('TESTING', False):
-                        logger.info(f"CLI 'start_services_dev': Attempting to start APScheduler in PID {pid}...")
-                        try:
-                            scheduler.start(paused=False) 
-                            if scheduler.running: logger.info(f"CLI 'start_services_dev': APScheduler IS RUNNING in PID {pid}!")
-                            else: logger.error(f"CLI 'start_services_dev': APScheduler start() called, but scheduler.running is FALSE.")
-                        except Exception as e_sched_start_cli: 
-                            logger.error(f"CLI 'start_services_dev': Error starting scheduler: {e_sched_start_cli}", exc_info=True)
-                    elif scheduler.running: 
-                        logger.info(f"CLI 'start_services_dev': APScheduler already running in PID {pid}.")
-                    set_bot_run_flag_and_start_thread(current_app_instance)
-        except Exception as e_init_svc: 
-            logger.error(f"Error during initialize_app_services for PID {pid}: {e_init_svc}", exc_info=True)
-        _app_services_initialized_for_pid[pid] = True
-        logger.info(f"--- EXITING initialize_app_services for PID {pid} ---")
-
-# --- Bot and Shutdown Functions ---
-# (These remain the same as your last fully provided correct version)
-def set_bot_run_flag_and_start_thread(flask_app_instance): # ...
-    global _discord_bot_should_run, discord_bot_thread, bot_instance, _discord_bot_lock; from app.models import get_app_setting ; logger = flask_app_instance.logger 
-    if get_app_setting('DISCORD_BOT_ENABLED') == 'true' and get_app_setting('DISCORD_BOT_TOKEN'): _discord_bot_should_run.set() 
-    else:
-        _discord_bot_should_run.clear();
-        if get_app_setting('DISCORD_BOT_ENABLED') == 'true' and not get_app_setting('DISCORD_BOT_TOKEN'): logger.warning("Discord Bot enabled but TOKEN missing.")
-        else: logger.info("Discord bot features disabled.")
-        if bot_instance and not bot_instance.is_closed() and hasattr(bot_instance, 'thread_loop') and bot_instance.thread_loop.is_running(): asyncio.run_coroutine_threadsafe(bot_instance.close(), bot_instance.thread_loop)
-        return 
-    if _discord_bot_should_run.is_set(): 
-        with _discord_bot_lock: 
-            if discord_bot_thread is None or not discord_bot_thread.is_alive(): logger.info("Attempting to start Discord bot thread..."); discord_bot_thread = threading.Thread(target=run_discord_bot_async_loop, args=(flask_app_instance,), daemon=True, name="DiscordBotThread"); discord_bot_thread.start()
-            elif flask_app_instance.debug: logger.debug("Discord bot thread already running or initiation in progress.")
-    else: logger.info("Discord bot run flag is not set. Thread will not be started.")
-def run_discord_bot_async_loop(flask_app_instance): # ...
-    global bot_instance, _discord_bot_should_run ; from app.models import get_app_setting; from app.discord_bot_logic import setup_bot_events_and_commands, discord ; logger = flask_app_instance.logger 
-    if not _discord_bot_should_run.is_set(): logger.info("Discord bot async: Run flag false. Exiting."); return
-    bot_token = get_app_setting('DISCORD_BOT_TOKEN')
-    if not bot_token: _discord_bot_should_run.clear(); logger.error("Discord bot async: Token missing. Exiting."); return
-    bot_app_id_str = get_app_setting('DISCORD_BOT_APP_ID'); bot_app_id = int(bot_app_id_str) if bot_app_id_str and bot_app_id_str.isdigit() else None
-    intents = discord.Intents.default(); intents.members = True; intents.message_content = True 
-    current_bot_obj = discord.ext.commands.Bot(command_prefix=get_app_setting('DISCORD_BOT_PREFIX', '!'), intents=intents, application_id=bot_app_id)
-    current_bot_obj.flask_app = flask_app_instance; setup_bot_events_and_commands(current_bot_obj); bot_instance = current_bot_obj
-    new_loop = asyncio.new_event_loop(); asyncio.set_event_loop(new_loop); setattr(bot_instance, 'thread_loop', new_loop)
-    try: logger.info(f"Discord bot starting event loop in thread {threading.get_ident()}..."); new_loop.run_until_complete(bot_instance.start(bot_token)) 
-    except discord.LoginFailure: logger.error("Discord bot login failed."); _discord_bot_should_run.clear()
-    except Exception as e: logger.error(f"Discord bot loop error: {e}", exc_info=True); _discord_bot_should_run.clear()
+    except Exception as e: 
+        app_instance.logger.error(f"Cannot connect to DB or check settings table in init: {e}")
+        if not app_instance.config.get('SECRET_KEY'): app_instance.config['SECRET_KEY'] = secrets.token_hex(32)
+        return
     finally:
-        if hasattr(bot_instance, 'thread_loop') and bot_instance.thread_loop.is_running(): bot_instance.thread_loop.run_until_complete(bot_instance.thread_loop.shutdown_asyncgens())
-        if hasattr(bot_instance, 'thread_loop'): bot_instance.thread_loop.close()
-        bot_instance = None; logger.info("Discord bot event loop finished and resources cleaned.")
-def shutdown_app_services(): # ...
-    global bot_instance, _discord_bot_should_run, discord_bot_thread, scheduler, _app_services_initialized_for_pid; shutdown_logger = logging.getLogger("app.shutdown")
-    if not shutdown_logger.handlers: handler = logging.StreamHandler(sys.stdout); formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - SHUTDOWN PID:%(process)d: %(message)s'); handler.setFormatter(formatter); shutdown_logger.addHandler(handler); shutdown_logger.setLevel(logging.INFO); shutdown_logger.propagate = False
-    pid = os.getpid(); shutdown_logger.info(f"Application shutdown sequence initiated for PID {pid}.")
-    _discord_bot_should_run.clear() 
-    if bot_instance and hasattr(bot_instance, 'thread_loop') and bot_instance.thread_loop and not bot_instance.is_closed(): 
-        shutdown_logger.info(f"Issuing close to Discord bot from PID {pid}...");
-        if bot_instance.thread_loop.is_running(): 
-            future = asyncio.run_coroutine_threadsafe(bot_instance.close(), bot_instance.thread_loop) 
-            try: future.result(timeout=10); shutdown_logger.info(f"Discord bot close() ack from PID {pid}.")
-            except asyncio.TimeoutError: shutdown_logger.warning(f"Discord bot close() timed out (10s) from PID {pid}.")
-            except Exception as e_bot_close: shutdown_logger.warning(f"Discord bot close() failed from PID {pid}: {e_bot_close}")
-        else: shutdown_logger.warning(f"Discord bot event loop not running in PID {pid}; cannot schedule close.")
-    if discord_bot_thread and discord_bot_thread.is_alive():
-        shutdown_logger.info(f"Waiting for Discord bot thread to join (10s) from PID {pid}...")
-        discord_bot_thread.join(timeout=10) 
-        if discord_bot_thread.is_alive(): shutdown_logger.warning(f"Discord bot thread did not join in time from PID {pid}.")
-        else: shutdown_logger.info(f"Discord bot thread joined successfully from PID {pid}.")
-    is_this_process_scheduler_running = False
-    if scheduler and hasattr(scheduler, 'running') and scheduler.running: is_this_process_scheduler_running = True
-    if is_this_process_scheduler_running:
-        shutdown_logger.info(f"Attempting to shut down APScheduler in PID {pid}...")
-        try: scheduler.shutdown(wait=True); shutdown_logger.info(f"APScheduler shutdown successful in PID {pid}.")
-        except Exception as e_shutdown: shutdown_logger.error(f"Error during APScheduler shutdown in PID {pid}: {e_shutdown}", exc_info=True)
-    else: shutdown_logger.info(f"APScheduler not considered running by this process (PID {pid}). No shutdown by this process.")
-    if pid in _app_services_initialized_for_pid: del _app_services_initialized_for_pid[pid]
-    shutdown_logger.info(f"Application service cleanup process for PID {pid} complete.")
+        if engine_conn: engine_conn.close()
+    try:
+        all_settings = Setting.query.all()
+        settings_dict = {s.key: s.get_value() for s in all_settings}
+        for k, v in settings_dict.items():
+            if k.isupper(): app_instance.config[k] = v
+        db_sk = settings_dict.get('SECRET_KEY')
+        if db_sk: app_instance.config['SECRET_KEY'] = db_sk
+        elif not app_instance.config.get('SECRET_KEY'): 
+            app_instance.config['SECRET_KEY'] = secrets.token_hex(32)
+            app_instance.logger.warning("SECRET_KEY created temporarily. Complete setup.")
+        app_instance.logger.info("Application settings loaded/refreshed from database.")
+    except Exception as e:
+        app_instance.logger.error(f"Error querying settings from database: {e}. Using defaults.")
+        if not app_instance.config.get('SECRET_KEY'): app_instance.config['SECRET_KEY'] = secrets.token_hex(32)
 
-from app import models
+def register_error_handlers(app):
+    @app.errorhandler(403)
+    def forbidden_page(error): return render_template("errors/403.html"), 403
+    @app.errorhandler(404)
+    def page_not_found(error): return render_template("errors/404.html"), 404
+    @app.errorhandler(500)
+    def server_error_page(error): return render_template("errors/500.html"), 500
+    
+def create_app(config_name=None):
+    if config_name is None:
+        config_name = os.environ.get('FLASK_ENV', 'default')
+    
+    app = Flask(__name__, instance_relative_config=True)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    app.jinja_env.add_extension('jinja2.ext.do')
+    
+    app.config.from_object(config[config_name])
+    config[config_name].init_app(app)
+
+    try:
+        if not os.path.exists(app.instance_path):
+            os.makedirs(app.instance_path)
+    except OSError as e:
+        print(f"Init.py - create_app(): Could not create instance path at {app.instance_path}: {e}")
+
+    log_level_name = os.environ.get('FLASK_LOG_LEVEL', 'INFO').upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    app.logger.setLevel(log_level)
+
+    if not app.debug and not app.testing:
+        log_dir = 'logs'
+        if not os.path.exists(log_dir):
+            try: os.mkdir(log_dir)
+            except OSError: app.logger.error(f"Init.py - create_app(): Could not create '{log_dir}' directory for file logging.")
+        
+        if os.path.exists(log_dir): 
+            try:
+                file_handler = RotatingFileHandler(os.path.join(log_dir, 'pum.log'), maxBytes=10240, backupCount=10)
+                file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
+                file_handler.setLevel(log_level) 
+                app.logger.handlers.clear()
+                app.logger.addHandler(file_handler)
+                app.logger.propagate = False
+                app.logger.info(f"Init.py - create_app(): File logging configured. Level: {log_level_name}")
+            except Exception as e_fh:
+                app.logger.error(f"Init.py - create_app(): Failed to configure file logging: {e_fh}")
+    
+    app.logger.info(f'Init.py - create_app(): Plex User Manager starting with log level: {log_level_name}')
+
+    db.init_app(app)
+    migrate.init_app(app, db)
+    login_manager.init_app(app)
+    csrf.init_app(app)
+    htmx.init_app(app)
+    babel.init_app(app, locale_selector=get_locale_for_babel)
+
+    with app.app_context():
+        initialize_settings_from_db(app)
+
+    if app.config.get('SCHEDULER_API_ENABLED', True):
+        if not scheduler.running:
+            try:
+                scheduler.init_app(app)
+                scheduler.start(paused=app.config.get('SCHEDULER_PAUSED_ON_START', False))
+                app.logger.info("Init.py - create_app(): APScheduler successfully started.")
+                
+                is_werkzeug_main_process = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+                should_schedule_tasks = False
+
+                if is_werkzeug_main_process:
+                    should_schedule_tasks = True
+                    app.logger.debug("Init.py - Task Scheduling Check: Running with Flask reloader (WERKZEUG_RUN_MAIN=true). Will attempt to schedule.")
+                elif not app.testing: # Not Flask's reloader, and not testing (e.g., Gunicorn worker or direct python run.py)
+                    should_schedule_tasks = True
+                    app.logger.debug("Init.py - Task Scheduling Check: Not Werkzeug main process and not testing. Will attempt to schedule.")
+                else: 
+                    app.logger.debug("Init.py - Task Scheduling Check: In testing mode or other non-scheduling context. Skipping task scheduling.")
+
+                app.logger.debug(f"Init.py - Task Scheduling Check - Values: WERKZEUG_RUN_MAIN='{os.environ.get('WERKZEUG_RUN_MAIN')}', app.debug={app.debug}, app.testing={app.testing}")
+                app.logger.debug(f"Init.py - Task Scheduling Check - Decision: should_schedule_tasks = {should_schedule_tasks}")
+
+                if should_schedule_tasks:
+                    app.logger.info("Init.py - Task Scheduling Check: Condition MET. Attempting to schedule tasks.")
+                    with app.app_context():
+                        engine_conn_scheduler = None
+                        try:
+                            engine_conn_scheduler = db.engine.connect()
+                            if db.engine.dialect.has_table(engine_conn_scheduler, Setting.__tablename__):
+                                from .services import task_service 
+                                task_service.schedule_all_tasks()
+                                app.logger.info("Init.py - Successfully called task_service.schedule_all_tasks().")
+                            else:
+                                app.logger.warning("Init.py - Settings table not found when trying to schedule tasks; task scheduling that depends on DB settings is skipped.")
+                        except Exception as e_task_sched:
+                             app.logger.error(f"Init.py - Error during task scheduling DB interaction or call: {e_task_sched}", exc_info=True)
+                        finally:
+                            if engine_conn_scheduler:
+                                engine_conn_scheduler.close()
+                else:
+                    app.logger.info("Init.py - Task Scheduling Check: Condition NOT MET. Skipping call to task_service.schedule_plex_session_monitoring().")
+
+            except Exception as e_scheduler_init:
+                app.logger.error(f"Init.py - Failed to initialize/start APScheduler or prepare for task scheduling: {e_scheduler_init}", exc_info=True)
+        else:
+            app.logger.info("Init.py - create_app(): APScheduler already running (or SCHEDULER_API_ENABLED is false).")
+
+    app.jinja_env.filters['format_datetime_human'] = helpers.format_datetime_human
+    app.jinja_env.filters['time_ago'] = helpers.time_ago
+
+    @app.context_processor
+    def inject_current_year():
+        return {'current_year': datetime.utcnow().year}
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        # Ensure table exists before querying, critical during first `flask db upgrade`
+        try:
+            with app.app_context(): # Ensure context for db operations if called early
+                engine_conn_lu = db.engine.connect()
+                table_exists = db.engine.dialect.has_table(engine_conn_lu, AdminAccount.__tablename__)
+                engine_conn_lu.close()
+                if table_exists:
+                    return AdminAccount.query.get(int(user_id))
+                return None
+        except Exception as e_load_user:
+            app.logger.error(f"Init.py - load_user(): Error checking/loading user: {e_load_user}")
+            return None
+
+
+    @app.before_request
+    def before_request_tasks():
+        g.app_name = current_app.config.get('APP_NAME', 'Plex User Manager')
+        g.plex_url = None; g.app_base_url = None
+        g.discord_oauth_enabled_for_invite = False; g.setup_complete = False 
+
+        current_app.logger.debug(f"Init.py - before_request_tasks(): Endpoint: {request.endpoint}, Path: {request.path if request else 'No request object'}")
+
+        try:
+            engine_conn_br = None; settings_table_exists = False; admin_table_exists = False
+            try:
+                engine_conn_br = db.engine.connect()
+                settings_table_exists = db.engine.dialect.has_table(engine_conn_br, Setting.__tablename__)
+                admin_table_exists = db.engine.dialect.has_table(engine_conn_br, AdminAccount.__tablename__)
+            except Exception as e_db_check:
+                current_app.logger.warning(f"Init.py - before_request_tasks(): DB connection/table check error: {e_db_check}")
+            finally:
+                if engine_conn_br: engine_conn_br.close()
+
+            if settings_table_exists:
+                g.app_name = Setting.get('APP_NAME', current_app.config.get('APP_NAME', 'Plex User Manager'))
+                g.plex_url = Setting.get('PLEX_URL')
+                g.app_base_url = Setting.get('APP_BASE_URL')
+                discord_setting_val = Setting.get('DISCORD_OAUTH_ENABLED', False)
+                g.discord_oauth_enabled_for_invite = discord_setting_val if isinstance(discord_setting_val, bool) else str(discord_setting_val).lower() == 'true'
+
+                admin_account_present = AdminAccount.query.first() is not None if admin_table_exists else False
+                plex_config_done = bool(g.plex_url and Setting.get('PLEX_TOKEN')) 
+                pum_config_done = bool(g.app_base_url)
+                g.setup_complete = admin_account_present and plex_config_done and pum_config_done
+                current_app.logger.debug(f"Init.py - before_request_tasks(): Setup status: admin={admin_account_present}, plex={plex_config_done}, pum={pum_config_done} -> Overall setup_complete={g.setup_complete}")
+            else: 
+                g.setup_complete = False
+                current_app.logger.debug("Init.py - before_request_tasks(): Settings table not found. g.setup_complete forced to False.")
+        except Exception as e_g_hydrate:
+            current_app.logger.error(f"Init.py - before_request_tasks(): Error hydrating g values: {e_g_hydrate}", exc_info=True)
+        
+        current_app.config['SETUP_COMPLETE'] = g.setup_complete
+
+        if not g.setup_complete and \
+           request.endpoint and \
+           not request.endpoint.startswith('setup.') and \
+           not request.endpoint == 'auth.logout_setup' and \
+           not request.endpoint.startswith('static') and \
+           not request.endpoint == 'api.test_plex_connection': # Allow API test during setup
+            
+            current_app.logger.debug(f"Init.py - before_request_tasks(): Setup not complete, current endpoint '{request.endpoint}' requires redirect to setup.")
+            try:
+                # Re-check table existence for redirection logic, as it's critical
+                engine_conn_sr, admin_table_exists_sr_redir, settings_table_exists_sr_redir = None, False, False
+                try:
+                    engine_conn_sr = db.engine.connect()
+                    admin_table_exists_sr_redir = db.engine.dialect.has_table(engine_conn_sr, AdminAccount.__tablename__)
+                    settings_table_exists_sr_redir = db.engine.dialect.has_table(engine_conn_sr, Setting.__tablename__)
+                finally:
+                    if engine_conn_sr: engine_conn_sr.close()
+
+                if not (admin_table_exists_sr_redir and AdminAccount.query.first()):
+                    if request.endpoint != 'setup.account_setup' and request.endpoint != 'setup.plex_sso_callback_setup_admin':
+                        current_app.logger.info(f"Init.py - before_request_tasks(): Redirecting to account_setup (no admin).")
+                        return redirect(url_for('setup.account_setup'))
+                elif not (settings_table_exists_sr_redir and Setting.get('PLEX_URL') and Setting.get('PLEX_TOKEN')):
+                    if request.endpoint != 'setup.plex_config':
+                        current_app.logger.info(f"Init.py - before_request_tasks(): Redirecting to plex_config.")
+                        return redirect(url_for('setup.plex_config'))
+                elif not (settings_table_exists_sr_redir and Setting.get('APP_BASE_URL')):
+                    if request.endpoint != 'setup.pum_config':
+                        current_app.logger.info(f"Init.py - before_request_tasks(): Redirecting to pum_config.")
+                        return redirect(url_for('setup.pum_config'))
+                # If all core setup DB settings seem present but g.setup_complete is still false,
+                # This indicates a potential logic mismatch in g.setup_complete calculation or a new required step.
+                # Defaulting to account_setup if unsure.
+                elif request.endpoint != 'setup.account_setup' and \
+                     request.endpoint != 'setup.plex_config' and \
+                     request.endpoint != 'setup.pum_config' and \
+                     request.endpoint != 'setup.discord_config' and \
+                     request.endpoint != 'setup.finish_setup':
+                     current_app.logger.warning(f"Init.py - before_request_tasks(): g.setup_complete is False but basic settings seem present. Endpoint: {request.endpoint}. Redirecting to account_setup as a fallback.")
+                     # return redirect(url_for('setup.account_setup'))
+                     pass # Or consider what the safest action is here to avoid redirect loops
+            except Exception as e_setup_redirect:
+                current_app.logger.error(f"Init.py - before_request_tasks(): DB error during setup redirection logic: {e_setup_redirect}", exc_info=True)
+                if request.endpoint != 'setup.account_setup':
+                     pass # Avoid redirect loop if account_setup itself errors
+
+
+    # Register blueprints
+    from .routes.auth import bp as auth_bp
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    from .routes.setup import bp as setup_bp
+    app.register_blueprint(setup_bp, url_prefix='/setup')
+    from .routes.dashboard import bp as dashboard_bp
+    app.register_blueprint(dashboard_bp) # Root blueprint
+    from .routes.users import bp as users_bp
+    app.register_blueprint(users_bp, url_prefix='/users')
+    from .routes.invites import bp as invites_bp
+    app.register_blueprint(invites_bp) # url_prefix='/invites' is handled in invites.py itself for public link
+    from .routes.api import bp as api_bp
+    app.register_blueprint(api_bp, url_prefix='/api')
+
+    register_error_handlers(app)
+
+    return app

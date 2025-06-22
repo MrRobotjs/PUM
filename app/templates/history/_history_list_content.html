@@ -1,0 +1,124 @@
+{# File: app/templates/history/_history_list_content.html #}
+{# Expects 'logs' (pagination object) and 'current_per_page' in context #}
+{# Optionally 'event_types' if the filter dropdown for event types is part of this partial #}
+
+{% if logs and logs.items %}
+    <div class="overflow-x-auto bg-base-200 shadow-lg rounded-lg">
+        <table class="table table-zebra w-full table-sm md:table-md">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Event</th>
+                    <th>Message</th>
+                    <th class="hidden md:table-cell">Details</th>
+                    <th class="hidden sm:table-cell">Actor/Subject</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs.items %}
+                <tr class="hover">
+                    <td class="whitespace-nowrap" title="{{ log.timestamp | format_datetime_human }}">
+                        {{ log.timestamp | time_ago }}
+                        <div class="text-xs opacity-60 lg:hidden">{{ log.timestamp | format_datetime_human(include_time=False) }}</div>
+                    </td>
+                    <td>
+                        <span class="badge badge-sm badge-outline inline-block whitespace-nowrap badge-{{ log.event_type.name | lower | replace('_', '-') }}">{{ log.event_type.name | title | replace('_', ' ') }}</span>
+                    </td>
+                    <td class="max-w-xs lg:max-w-md">
+                        <p class="truncate-2-lines text-sm" title="{{ log.message }}">{{ log.message }}</p>
+                    </td>
+                    <td class="hidden md:table-cell text-xs">
+                        {% if log.details and log.details|length > 0 %}
+                            <div class="dropdown dropdown-hover dropdown-left">
+                                <label tabindex="0" class="btn btn-xs btn-ghost"><i class="fa-solid fa-circle-info"></i> View</label>
+                                <div tabindex="0" class="dropdown-content z-[1] card card-compact w-64 p-2 shadow bg-base-100 text-base-content max-h-48 overflow-y-auto"> {# Changed text-primary-content to text-base-content #}
+                                    <div class="card-body p-2 text-xs">
+                                    {% for key, value in log.details.items() %}
+                                        <p><strong>{{ key|replace('_', ' ')|title }}:</strong> {{ value | string | truncate(50, True) }}</p> {# Added string filter and truncate #}
+                                    {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <span class="text-base-content/50">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td class="hidden sm:table-cell text-sm">
+                        {% if log.admin %}
+                            <div title="Admin: {{ log.admin.username or log.admin.plex_username }}">
+                                <i class="fa-solid fa-user-shield fa-fw mr-1"></i> {{ log.admin.username or log.admin.plex_username | truncate(20) }}
+                            </div>
+                        {% elif log.affected_user %}
+                             <div title="Plex User: {{ log.affected_user.plex_username }}">
+                                <i class="fa-solid fa-user fa-fw mr-1"></i> {{ log.affected_user.plex_username | truncate(20) }}
+                             </div>
+                        {% elif log.related_invite %}
+                            <div title="Invite: {{ log.related_invite.custom_path or log.related_invite.token }}">
+                                <i class="fa-solid fa-ticket fa-fw mr-1"></i> Invite {{ log.related_invite.custom_path or log.related_invite.token | truncate(15) }}
+                            </div>
+                        {% else %}
+                            <span class="text-base-content/50">System</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if logs.pages > 1 %}
+    <div class="join my-8 flex justify-center">
+        {# Previous Page Link #}
+        {% set prev_link_args = request.args.to_dict() %}{% set _ = prev_link_args.update({'page': logs.prev_num}) %}
+        <a {% if logs.has_prev %}
+               hx-get="{{ url_for('dashboard.history_partial', **prev_link_args) }}" 
+               hx-target="#history_table_container" 
+               hx-swap="innerHTML" 
+               hx-push-url="true" 
+           {% else %}
+               href="#" disabled
+           {% endif %}
+           class="join-item btn {{ 'btn-disabled' if not logs.has_prev else '' }}"><i class="fa-solid fa-arrow-left"></i></a>
+
+        {# Page Number Links #}
+        {% for page_num in logs.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=3) %}
+            {% if page_num %}
+                {% set page_link_args = request.args.to_dict() %}{% set _ = page_link_args.update({'page': page_num}) %}
+                {% if logs.page == page_num %}
+                    <button class="join-item btn btn-primary btn-active">{{ page_num }}</button>
+                {% else %}
+                    <a hx-get="{{ url_for('dashboard.history_partial', **page_link_args) }}"
+                       hx-target="#history_table_container"
+                       hx-swap="innerHTML"
+                       hx-push-url="true"
+                       class="join-item btn">{{ page_num }}</a>
+                {% endif %}
+            {% else %}
+                <button class="join-item btn btn-disabled">...</button>
+            {% endif %}
+        {% endfor %}
+
+        {# Next Page Link #}
+        {% set next_link_args = request.args.to_dict() %}{% set _ = next_link_args.update({'page': logs.next_num}) %}
+        <a {% if logs.has_next %}
+               hx-get="{{ url_for('dashboard.history_partial', **next_link_args) }}"
+               hx-target="#history_table_container"
+               hx-swap="innerHTML"
+               hx-push-url="true"
+           {% else %}
+               href="#" disabled
+           {% endif %}
+           class="join-item btn {{ 'btn-disabled' if not logs.has_next else '' }}"><i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+    {% endif %}
+
+{% else %}
+    <div class="text-center py-10 bg-base-200 rounded-lg shadow">
+        <i class="fa-solid fa-file-lines fa-3x text-base-content/30 mb-4"></i>
+        <p class="text-xl text-base-content/70">No history logs found.</p>
+        {% if request.args.get('search_message') or request.args.get('event_type') or request.args.get('related_user') or request.args.get('per_page') %}
+             <a href="{{ url_for('dashboard.history') }}" class="btn btn-sm btn-outline mt-4">Clear Filters</a>
+        {% endif %}
+    </div>
+{% endif %}

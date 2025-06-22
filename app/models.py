@@ -1,168 +1,206 @@
-# app/models.py
-from app import db, login_manager
+import enum
+import json
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
-from datetime import datetime, timezone # Ensure timezone is imported
-from cachetools import cached, TTLCache
+from sqlalchemy.types import TypeDecorator, TEXT
+from sqlalchemy.ext.mutable import MutableDict, MutableList
+from app.extensions import db # Removed login_manager, not used here
+import secrets
 from flask import current_app 
-import logging
 
-class User(UserMixin, db.Model):
-    __tablename__ = 'user'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True, unique=True, nullable=True) 
-    email = db.Column(db.String(120), index=True, unique=True, nullable=True) 
-    password_hash = db.Column(db.String(256), nullable=True) 
-    is_admin = db.Column(db.Boolean, default=False)
-    plex_thumb_url = db.Column(db.String(255), nullable=True)
+# (JSONEncodedDict, SettingValueType, EventType enums as before - no changes needed there yet for bot)
+class JSONEncodedDict(TypeDecorator): # ... (as before)
+    impl = TEXT
+    def process_bind_param(self, value, dialect):
+        if value is not None: return json.dumps(value)
+        return value
+    def process_result_value(self, value, dialect):
+        if value is not None: return json.loads(value)
+        return value
 
-    plex_user_id = db.Column(db.Integer, unique=True, nullable=True) 
-    plex_username = db.Column(db.String(80), index=True, unique=True, nullable=True) 
-    plex_email = db.Column(db.String(120), index=True, unique=True, nullable=True) 
-    discord_id = db.Column(db.String(80), index=True, unique=True, nullable=True)
-    discord_username = db.Column(db.String(100), nullable=True) 
-    
-    # This field remains but will no longer be updated by the removed scheduled task.
-    # It will default to None for new users.
-    last_streamed_at = db.Column(db.DateTime(timezone=True), nullable=True) 
-    
-    joined_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    invite_link_id = db.Column(db.Integer, db.ForeignKey('invite_link.id'), nullable=True)
-    shares_back = db.Column(db.Boolean, default=False, nullable=False) 
-    is_plex_home_user = db.Column(db.Boolean, default=False, nullable=False) 
-    is_purge_whitelisted = db.Column(db.Boolean, default=False, nullable=False)
+class SettingValueType(enum.Enum): # ... (as before)
+    STRING = "string"; INTEGER = "integer"; BOOLEAN = "boolean"; JSON = "json"; SECRET = "secret"
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+class EventType(enum.Enum): # ... (as before, will add bot-specific events later)
+    APP_STARTUP = "APP_STARTUP"; APP_SHUTDOWN = "APP_SHUTDOWN"; SETTING_CHANGE = "SETTING_CHANGE"
+    ADMIN_LOGIN_SUCCESS = "ADMIN_LOGIN_SUCCESS"; ADMIN_LOGIN_FAIL = "ADMIN_LOGIN_FAIL"; ADMIN_LOGOUT = "ADMIN_LOGOUT"
+    ADMIN_PASSWORD_CHANGE = "ADMIN_PASSWORD_CHANGE"; PLEX_CONFIG_TEST_SUCCESS = "PLEX_CONFIG_TEST_SUCCESS"
+    PLEX_CONFIG_TEST_FAIL = "PLEX_CONFIG_TEST_FAIL"; PLEX_CONFIG_SAVE = "PLEX_CONFIG_SAVE"
+    PLEX_SYNC_USERS_START = "PLEX_SYNC_USERS_START"; PLEX_SYNC_USERS_COMPLETE = "PLEX_SYNC_USERS_COMPLETE"
+    PLEX_USER_ADDED = "PLEX_USER_ADDED_TO_SERVER"; PLEX_USER_REMOVED = "PLEX_USER_REMOVED_FROM_SERVER"
+    PLEX_USER_LIBS_UPDATED = "PLEX_USER_LIBS_UPDATED_ON_SERVER"; PLEX_SESSION_DETECTED = "PLEX_SESSION_DETECTED"
+    PUM_USER_ADDED_FROM_PLEX = "PUM_USER_ADDED_FROM_PLEX"
+    PUM_USER_REMOVED_MISSING_IN_PLEX = "PUM_USER_REMOVED_MISSING_IN_PLEX"
+    PUM_USER_LIBRARIES_EDITED = "PUM_USER_LIBRARIES_EDITED"
+    PUM_USER_DELETED_FROM_PUM = "PUM_USER_DELETED_FROM_PUM"; INVITE_CREATED = "INVITE_CREATED"
+    INVITE_DELETED = "INVITE_DELETED"; INVITE_VIEWED = "INVITE_VIEWED"
+    INVITE_USED_SUCCESS_PLEX = "INVITE_USED_SUCCESS_PLEX"
+    INVITE_USED_SUCCESS_DISCORD = "INVITE_USED_SUCCESS_DISCORD"
+    INVITE_USED_ACCOUNT_LINKED = "INVITE_USED_ACCOUNT_LINKED"
+    INVITE_USER_ACCEPTED_AND_SHARED = "INVITE_USER_ACCEPTED_AND_SHARED"; INVITE_EXPIRED = "INVITE_EXPIRED"
+    INVITE_MAX_USES_REACHED = "INVITE_MAX_USES_REACHED"; DISCORD_CONFIG_SAVE = "DISCORD_CONFIG_SAVE"
+    DISCORD_ADMIN_LINK_SUCCESS = "DISCORD_ADMIN_LINK_SUCCESS"
+    DISCORD_ADMIN_UNLINK = "DISCORD_ADMIN_UNLINK"; ERROR_GENERAL = "ERROR_GENERAL"
+    ERROR_PLEX_API = "ERROR_PLEX_API"; ERROR_DISCORD_API = "ERROR_DISCORD_API"
+    DISCORD_BOT_START = "DISCORD_BOT_START"
+    DISCORD_BOT_STOP = "DISCORD_BOT_STOP"
+    DISCORD_BOT_ERROR = "DISCORD_BOT_ERROR"
+    DISCORD_BOT_USER_LEFT_SERVER = "DISCORD_BOT_USER_LEFT_SERVER" # User left Discord
+    DISCORD_BOT_USER_REMOVED_FROM_PLEX = "DISCORD_BOT_USER_REMOVED_FROM_PLEX" # Bot removed user from Plex
+    DISCORD_BOT_ROLE_ADDED_INVITE_SENT = "DISCORD_BOT_ROLE_ADDED_INVITE_SENT" # Bot sent invite due to role add
+    DISCORD_BOT_ROLE_REMOVED_USER_REMOVED = "DISCORD_BOT_ROLE_REMOVED_USER_REMOVED" # Bot removed user due to role removal
+    DISCORD_BOT_PURGE_DM_SENT = "DISCORD_BOT_PURGE_DM_SENT" # DM sent for app-initiated purge
+    DISCORD_BOT_GUILD_MEMBER_CHECK_FAIL = "DISCORD_BOT_GUILD_MEMBER_CHECK_FAIL" # Failed guild check on invite page
+    # Add Bot Specific Event Types Later, e.g., BOT_USER_PURGED, BOT_INVITE_SENT
 
-    def check_password(self, password):
-        if not self.password_hash:
-            return False
-        return check_password_hash(self.password_hash, password)
-
-    def __repr__(self):
-        if self.is_admin:
-            return f'<AdminUser {self.username or self.id}>'
-        return f'<PlexUser {self.plex_username or self.plex_email or self.id}>'
-
-class InviteLink(db.Model):
-    __tablename__ = 'invite_link'
-    id = db.Column(db.Integer, primary_key=True)
-    custom_path = db.Column(db.String(80), unique=True, nullable=False, index=True)
-    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    current_uses = db.Column(db.Integer, default=0)
-    max_uses = db.Column(db.Integer, nullable=True, default=None)
-    allowed_libraries = db.Column(db.String(500), nullable=True)
-    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
-    users_invited = db.relationship('User', backref='used_invite_link_ref', lazy='selectin') # Or 'select'
-
-    def is_valid(self):
-        now_utc = datetime.now(timezone.utc)
-        if self.expires_at and now_utc > self.expires_at:
-            return False
-        if self.max_uses is not None and self.max_uses > 0 and self.current_uses >= self.max_uses:
-            return False
-        return True
-
-    def __repr__(self):
-        return f'<InviteLink {self.custom_path}>'
-
-class AppSetting(db.Model):
-    __tablename__ = 'app_setting'
-    id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(80), unique=True, nullable=False, index=True)
-    value = db.Column(db.String(500), nullable=True)
-
-    def __repr__(self):
-        display_value = self.value
-        if self.key and ('TOKEN' in self.key.upper() or 'SECRET' in self.key.upper()) and self.value:
-            display_value = "[SENSITIVE]"
-        elif self.value and len(self.value) > 30:
-            display_value = self.value[:30] + "..."
-        return f'<AppSetting {self.key}={display_value}>'
-
-class HistoryLog(db.Model):
-    __tablename__ = 'history_log'
-    id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
-    event_type = db.Column(db.String(50), nullable=False, index=True)
-    plex_username = db.Column(db.String(80), nullable=True)
-    discord_id = db.Column(db.String(80), nullable=True)
-    details = db.Column(db.String(255), nullable=True) 
-
+class Setting(db.Model): # ... (Setting model remains the same structure, new keys will be added via UI/code) ...
+    __tablename__ = 'settings'; id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    value = db.Column(db.Text, nullable=True)
+    value_type = db.Column(db.Enum(SettingValueType), default=SettingValueType.STRING, nullable=False)
+    name = db.Column(db.String(100), nullable=True); description = db.Column(db.Text, nullable=True)
+    is_public = db.Column(db.Boolean, default=False); created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    def __repr__(self): return f'<Setting {self.key}>'
+    def get_value(self):
+        if self.value is None: return None
+        if self.value_type == SettingValueType.INTEGER: return int(self.value)
+        elif self.value_type == SettingValueType.BOOLEAN: return self.value.lower() in ['true', '1', 'yes', 'on']
+        elif self.value_type == SettingValueType.JSON:
+            try: return json.loads(self.value)
+            except json.JSONDecodeError: return None
+        return self.value
     @staticmethod
-    def create(event_type, plex_username=None, discord_id=None, details=None):
-        logger = current_app.logger if current_app else logging.getLogger(__name__)
-        try:
-            entry = HistoryLog(
-                event_type=event_type,
-                plex_username=plex_username,
-                discord_id=discord_id,
-                details=str(details)[:254] if details else None 
-            )
-            db.session.add(entry)
-            db.session.commit() 
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error logging history event '{event_type}': {e}", exc_info=True)
-    
-    def __repr__(self):
-        return f'<HistoryLog {self.timestamp.strftime("%Y-%m-%d %H:%M")} - {self.event_type}>'
-
-settings_cache = TTLCache(maxsize=128, ttl=300) 
-
-@cached(settings_cache)
-def get_app_setting(key, default=None):
-    logger = current_app.logger if current_app else logging.getLogger(__name__)
-    try:
-        setting = AppSetting.query.filter_by(key=key).first()
-        # Special handling for DISCORD_BOT_ENABLED default if not found
-        if setting is None and key == 'DISCORD_BOT_ENABLED' and default is None:
-            return 'false' # Default to 'false' string if key doesn't exist
-        return setting.value if setting else default
-    except Exception as e: 
-        logger.warning(f"get_app_setting: DB query for '{key}' failed: {str(e)[:100]}. Returning default.")
-        if key == 'DISCORD_BOT_ENABLED' and default is None: return 'false'
+    def get(key_name, default=None):
+        if current_app:
+            engine_conn_setting_get = None
+            try:
+                engine_conn_setting_get = db.engine.connect()
+                if db.engine.dialect.has_table(engine_conn_setting_get, Setting.__tablename__):
+                    setting_obj = Setting.query.filter_by(key=key_name).first()
+                    if setting_obj: return setting_obj.get_value()
+            except Exception as e: current_app.logger.debug(f"Setting.get({key_name}): DB query failed: {e}")
+            finally:
+                if engine_conn_setting_get: engine_conn_setting_get.close()
+            if key_name in current_app.config: return current_app.config.get(key_name, default)
         return default
+    @staticmethod
+    def set(key_name, value, v_type=SettingValueType.STRING, name=None, description=None, is_public=False):
+        setting = Setting.query.filter_by(key=key_name).first()
+        if not setting: setting = Setting(key=key_name); db.session.add(setting)
+        setting.value_type = v_type; setting.name = name or setting.name; setting.description = description or setting.description; setting.is_public = is_public
+        if v_type == SettingValueType.JSON and not isinstance(value, str): setting.value = json.dumps(value)
+        elif isinstance(value, bool) and v_type == SettingValueType.BOOLEAN: setting.value = 'true' if value else 'false'
+        elif isinstance(value, int) and v_type == SettingValueType.INTEGER: setting.value = str(value)
+        elif value is None: setting.value = None # Allow unsetting/nulling a value
+        else: setting.value = str(value)
+        db.session.commit()
+        if current_app and key_name.isupper(): current_app.config[key_name] = setting.get_value()
+        return setting
+    @staticmethod
+    def get_bool(key_name, default=False):
+        val_str = Setting.get(key_name) # Setting.get already handles defaults and app.config fallback
+        if val_str is None: # If Setting.get returned None (meaning not found and no default from .get itself)
+            return default
+        if isinstance(val_str, bool): # If Setting.get somehow returned a bool already
+            return val_str
+        return str(val_str).lower() in ['true', '1', 'yes', 'on']
+    # --- END OF get_bool ---
 
-@cached(settings_cache) 
-def get_all_app_settings():
-    logger = current_app.logger if current_app else logging.getLogger(__name__)
-    try:
-        return {s.key: s.value for s in AppSetting.query.all()}
-    except Exception as e:
-        logger.warning(f"get_all_app_settings: DB query failed: {str(e)[:100]}. Returning empty dict.")
-        return {}
+class AdminAccount(db.Model, UserMixin): # ... (no changes needed for bot feature yet) ...
+    __tablename__ = 'admin_accounts'; id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=True, index=True)
+    password_hash = db.Column(db.String(256), nullable=True)
+    plex_uuid = db.Column(db.String(255), unique=True, nullable=True); plex_username = db.Column(db.String(255), nullable=True)
+    plex_thumb = db.Column(db.String(512), nullable=True); email = db.Column(db.String(120), unique=True, nullable=True)
+    is_plex_sso_only = db.Column(db.Boolean, default=False); created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+    discord_user_id = db.Column(db.String(255), unique=True, nullable=True); discord_username = db.Column(db.String(255), nullable=True)
+    discord_avatar_hash = db.Column(db.String(255), nullable=True); discord_access_token = db.Column(db.String(255), nullable=True)
+    discord_refresh_token = db.Column(db.String(255), nullable=True); discord_token_expires_at = db.Column(db.DateTime, nullable=True)
+    def set_password(self, password): self.password_hash = generate_password_hash(password)
+    def check_password(self, password): return check_password_hash(self.password_hash, password) if self.password_hash else False
+    def __repr__(self): return f'<AdminAccount {self.username or self.plex_username}>'
 
-def update_app_setting(key, value):
-    logger = current_app.logger if current_app else logging.getLogger(__name__)
-    setting = AppSetting.query.filter_by(key=key).first()
-    valueChanged = False
-    if setting:
-        if setting.value != value: 
-            setting.value = value
-            db.session.add(setting) 
-            valueChanged = True
-    else: 
-        setting = AppSetting(key=key, value=value)
-        db.session.add(setting)
-        valueChanged = True
-    
-    if valueChanged:
-        try:
-            db.session.commit()
-            settings_cache.clear() 
-            logger.info(f"AppSetting '{key}' updated to '{value}'.")
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error updating app setting '{key}': {e}", exc_info=True)
-            raise 
 
-@login_manager.user_loader
-def load_user(user_id):
-    logger = current_app.logger if current_app else logging.getLogger(__name__)
-    try:
-        return User.query.get(int(user_id))
-    except ValueError: 
-        logger.warning(f"load_user: Invalid user_id format received: {user_id}")
-        return None
+class User(db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True) 
+    plex_user_id = db.Column(db.Integer, unique=True, nullable=True, index=True)
+    plex_username = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    plex_email = db.Column(db.String(255), nullable=True)
+    plex_thumb_url = db.Column(db.String(512), nullable=True) 
+    plex_uuid = db.Column(db.String(255), unique=True, nullable=False, index=True) 
+    is_home_user = db.Column(db.Boolean, default=False, nullable=False) # Added nullable=False
+    shares_back = db.Column(db.Boolean, default=False, nullable=False) # Added nullable=False
+    is_plex_friend = db.Column(db.Boolean, default=False, nullable=False) # For Req related to "friends" specifically
+
+    allowed_library_ids = db.Column(MutableList.as_mutable(JSONEncodedDict), default=list)
+    allowed_servers = db.Column(MutableList.as_mutable(JSONEncodedDict), default=list) 
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow) 
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_synced_with_plex = db.Column(db.DateTime, nullable=True)
+    last_streamed_at = db.Column(db.DateTime, nullable=True)
+    access_expires_at = db.Column(db.DateTime, nullable=True, index=True) # When this user's access (from an invite) expires
+
+    used_invite_id = db.Column(db.Integer, db.ForeignKey('invites.id'), nullable=True)
+    invite = db.relationship('Invite', back_populates='redeemed_users')
+
+    discord_user_id = db.Column(db.String(255), unique=True, nullable=True) 
+    discord_username = db.Column(db.String(255), nullable=True)
+    discord_avatar_hash = db.Column(db.String(255), nullable=True)
+
+    # New fields for Bot and Purge Whitelisting
+    is_discord_bot_whitelisted = db.Column(db.Boolean, default=False, nullable=False) # Req #13
+    is_purge_whitelisted = db.Column(db.Boolean, default=False, nullable=False)      # Req #16
+
+    def __repr__(self): return f'<User {self.plex_username}>'
+    def get_avatar(self, fallback='/static/img/default_avatar.png'): return self.plex_thumb_url or fallback
+
+# (Invite, InviteUsage, HistoryLog models as before - no immediate changes for bot setup yet)
+class Invite(db.Model): # ... (as before)
+    __tablename__ = 'invites'; id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True, default=lambda: secrets.token_urlsafe(32))
+    custom_path = db.Column(db.String(100), unique=True, nullable=True, index=True); expires_at = db.Column(db.DateTime, nullable=True)
+    max_uses = db.Column(db.Integer, nullable=True); current_uses = db.Column(db.Integer, default=0, nullable=False) # Added nullable=False
+    grant_library_ids = db.Column(MutableList.as_mutable(JSONEncodedDict), default=list)
+    allow_downloads = db.Column(db.Boolean, default=False, nullable=False)
+    created_by_admin_id = db.Column(db.Integer, db.ForeignKey('admin_accounts.id')); admin_creator = db.relationship('AdminAccount')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow); updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True); redeemed_users = db.relationship('User', back_populates='invite') # Added nullable=False
+    invite_usages = db.relationship('InviteUsage', back_populates='invite', cascade="all, delete-orphan")
+    membership_duration_days = db.Column(db.Integer, nullable=True) # Duration in days set at invite creation
+    def __repr__(self): return f'<Invite {self.custom_path or self.token}>'
+    @property
+    def is_expired(self): return self.expires_at and datetime.utcnow() > self.expires_at
+    @property
+    def has_reached_max_uses(self): return self.max_uses is not None and self.current_uses >= self.max_uses
+    @property
+    def is_usable(self): return self.is_active and not self.is_expired and not self.has_reached_max_uses
+    def get_full_url(self, app_base_url):
+        if not app_base_url: return "#INVITE_URL_NOT_CONFIGURED"
+        path_part = self.custom_path if self.custom_path else f"token/{self.token}"
+        return f"{app_base_url.rstrip('/')}/invite/{path_part}"
+
+class InviteUsage(db.Model): # ... (as before)
+    __tablename__ = 'invite_usages'; id = db.Column(db.Integer, primary_key=True)
+    invite_id = db.Column(db.Integer, db.ForeignKey('invites.id'), nullable=False); invite = db.relationship('Invite', back_populates='invite_usages')
+    used_at = db.Column(db.DateTime, default=datetime.utcnow); ip_address = db.Column(db.String(45), nullable=True)
+    plex_user_uuid = db.Column(db.String(255), nullable=True); plex_username = db.Column(db.String(255), nullable=True)
+    plex_email = db.Column(db.String(120), nullable=True); plex_thumb = db.Column(db.String(512), nullable=True)
+    plex_auth_successful = db.Column(db.Boolean, default=False, nullable=False); discord_user_id = db.Column(db.String(255), nullable=True) # Added nullable=False
+    discord_username = db.Column(db.String(255), nullable=True); discord_auth_successful = db.Column(db.Boolean, default=False, nullable=False) # Added nullable=False
+    pum_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True); pum_user = db.relationship('User')
+    accepted_invite = db.Column(db.Boolean, default=False, nullable=False); status_message = db.Column(db.String(255), nullable=True) # Added nullable=False
+
+class HistoryLog(db.Model): # ... (as before)
+    __tablename__ = 'history_logs'; id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    event_type = db.Column(db.Enum(EventType), nullable=False, index=True); message = db.Column(db.Text, nullable=False)
+    details = db.Column(MutableDict.as_mutable(JSONEncodedDict), nullable=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admin_accounts.id'), nullable=True); admin = db.relationship('AdminAccount')
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True); affected_user = db.relationship('User')
+    invite_id = db.Column(db.Integer, db.ForeignKey('invites.id'), nullable=True); related_invite = db.relationship('Invite')
+    def __repr__(self): return f'<HistoryLog {self.timestamp} [{self.event_type.name}]: {self.message[:50]}>'

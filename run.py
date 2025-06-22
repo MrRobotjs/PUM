@@ -1,57 +1,65 @@
-from app import create_app, db # Import create_app and db instance
-from app.models import User, AppSetting, InviteLink, HistoryLog # Import models for shell context
-from app.__init__ import initialize_app_services # Import the explicit service initializer
+import os
+from app import create_app, db
+from app.models import Setting, AdminAccount # Import models that might be needed for initial checks or commands
+from flask_migrate import Migrate
 
-# Get the Flask app instance from the factory
+# Determine if the app is running inside Docker
+# This can be useful for certain configurations, though not strictly needed for this setup yet
+# IS_DOCKER = os.environ.get('IS_DOCKER', False)
+
+# Create the Flask app instance.
+# The configuration will be loaded from app.config module first,
+# then potentially overridden by database settings once the app is initialized.
 app = create_app()
+migrate = Migrate(app, db)
 
-# Optional: Make db and models available in `flask shell` for easier debugging
 @app.shell_context_processor
 def make_shell_context():
+    """
+    Makes additional variables available in the Flask shell context.
+    Useful for debugging and managing the app via `flask shell`.
+    """
     return {
-        'db': db, 
-        'User': User, 
-        'AppSetting': AppSetting,
-        'InviteLink': InviteLink,
-        'HistoryLog': HistoryLog
+        'db': db,
+        'Setting': Setting,
+        'AdminAccount': AdminAccount,
+        # Add other models here as you create them and find them useful in the shell
+        # 'User': User,
+        # 'Invite': Invite,
     }
 
+@app.cli.command("init-db")
+def init_db_command():
+    """
+    Initializes the database: creates tables.
+    This is an alternative to using Flask-Migrate for the very first setup,
+    though migrations are preferred for ongoing schema changes.
+    """
+    db.create_all()
+    print("Initialized the database.")
+
+@app.cli.command("seed-initial-settings")
+def seed_initial_settings_command():
+    """
+    Seeds initial default settings into the database if they don't exist.
+    This should be run after `init-db` or migrations.
+    """
+    # Example of how you might seed a default setting if needed.
+    # Most settings will be created through the setup UI.
+    # initial_theme = Setting.query.filter_by(key='DEFAULT_THEME').first()
+    # if not initial_theme:
+    #     default_theme_setting = Setting(key='DEFAULT_THEME', value='light', value_type='string', is_public=True)
+    #     db.session.add(default_theme_setting)
+    #     db.session.commit()
+    #     print("Seeded initial default theme setting.")
+    # else:
+    #     print("Default theme setting already exists.")
+    print("Seed initial settings command - implement as needed.")
+
+
 if __name__ == '__main__':
-    # When running directly with `python run.py`:
-    # 1. Ensure database migrations are applied.
-    # 2. Initialize and start background services.
-    # 3. Run the Flask development server.
-
-    with app.app_context(): # Operations like db upgrade need an app context
-        from flask_migrate import upgrade
-        
-        # Apply database migrations
-        # This assumes 'migrations' folder exists and is configured.
-        # For the very first run, 'flask db init' and 'flask db migrate' must have been done.
-        try:
-            print("Applying database migrations (if any)...")
-            upgrade() # Equivalent to `flask db upgrade`
-            print("Database migrations applied.")
-        except Exception as e:
-            print(f"Error applying database migrations: {e}")
-            print("Please ensure migrations are initialized ('flask db init') and generated ('flask db migrate').")
-            # Optionally, exit if migrations fail critically, or let app try to start.
-
-        # Initialize and start background services (scheduler, Discord bot)
-        # This is called after potential migrations.
-        print("Initializing application services (scheduler, Discord bot)...")
-        initialize_app_services(app) # Pass the current app instance
-        print("Application services initialization triggered.")
-
-    # use_reloader=True is good for development but can cause issues with
-    # threaded background tasks or schedulers starting twice.
-    # For the Discord bot and APScheduler running in threads, it's often better
-    # to set use_reloader=False when testing them, or be aware of potential double-starts.
-    # If use_reloader=True, the main process starts, then a child process reloads.
-    # Our __init__.py tries to handle this for the bot thread, but it can be tricky.
-    # The Docker environment will not use the reloader with Gunicorn.
-    print("Starting Flask development server...")
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
-    # Setting use_reloader=False is generally safer when you have background threads
-    # like the Discord bot and APScheduler managed by the main Flask process.
-    # If you need reloader, test carefully.
+    # This is for running with `python run.py` (Flask's development server)
+    # For production, Gunicorn is used as defined in the Dockerfile/docker-compose.yml
+    # The host '0.0.0.0' makes it accessible externally if not in Docker,
+    # or to the mapped port if in Docker.
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

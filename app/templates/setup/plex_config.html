@@ -1,0 +1,229 @@
+<!-- File: app/templates/setup/plex_config.html -->
+{% extends "setup/layout.html" %}
+
+{% set setup_step_title = "Plex Configuration" %}
+{% set setup_page_title = "Configure Plex Server" %}
+{% set setup_page_subtitle = "Enter your Plex server details. A successful connection test is required." %}
+{% set current_step_id = 'plex' %} {# For stepper highlighting #}
+
+{% block setup_content %}
+<form method="POST" action="{{ url_for('setup.plex_config') }}" id="plexConfigForm">
+    {{ form.hidden_tag() }} {# CSRF token #}
+    {{ form.connection_tested_successfully(id="connection_tested_successfully") }}
+
+    <div class="form-control w-full mb-4">
+        {{ form.plex_url.label(class="label required") }}
+        {# REMOVED name="plex_url" from here #}
+        {{ form.plex_url(class="input input-bordered " + ("input-error" if form.plex_url.errors else ""), placeholder="e.g., https://plex.example.com or http://localhost:32400", id="plex_url") }}
+        {% if form.plex_url.errors %}
+            {% for error in form.plex_url.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ error }}</span>
+                </label>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="form-control w-full mb-4">
+        {{ form.plex_token.label(class="label required") }}
+        {# REMOVED name="plex_token" from here #}
+        {{ form.plex_token(class="input input-bordered " + ("input-error" if form.plex_token.errors else ""), placeholder="Your Plex X-Plex-Token", id="plex_token") }}
+        {% if form.plex_token.errors %}
+            {% for error in form.plex_token.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ error }}</span>
+                </label>
+            {% endfor %}
+        {% else %}
+            <label class="label">
+                <span class="label-text-alt">
+                    How to get your Plex token:
+                    <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noopener noreferrer" class="link link-hover link-primary">
+                        View Plex Support Article <i class="fa-solid fa-external-link-alt fa-xs"></i>
+                    </a>
+                </span>
+            </label>
+        {% endif %}
+    </div>
+
+    <div class="form-control mt-6 mb-2">
+        <button type="button" id="test_connection_button" class="btn btn-accent w-full sm:w-auto"
+                hx-post="{{ url_for('api.test_plex_connection') }}"  {# Still pointing to debug route #}
+                hx-include="#plex_url, #plex_token"
+                hx-target="#connection_status_message"
+                hx-swap="innerHTML"
+                hx-indicator="#test_connection_loader">
+            <span id="test_connection_loader" class="htmx-indicator loading loading-spinner loading-xs mr-2"></span>
+            <i class="fa-solid fa-plug mr-2"></i> Test Connection (Debug Headers)
+        </button>
+    </div>
+
+    <div id="connection_status_message" class="min-h-[2rem] mb-6 text-sm">
+        <!-- Connection status will be loaded here by HTMX -->
+    </div>
+
+    <div class="form-control mt-6">
+        {{ form.submit(class="btn btn-primary w-full sm:w-auto", id="save_plex_config_button", disabled=True) }}
+    </div>
+
+    <div class="mt-6 text-sm">
+        <p><strong>Info:</strong> The "Save Plex Configuration" button will be enabled only after a successful connection test.</p>
+    </div>
+</form>
+
+{% if error_message %} 
+<div role="alert" class="alert alert-error mt-6">
+    <i class="fa-solid fa-circle-xmark fa-fw text-xl mr-3"></i>
+    <span>{{ error_message }}</span>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    console.log("Plex Config Page JS: DOMContentLoaded fired.");
+
+    const saveButton = document.getElementById('save_plex_config_button');
+    const connectionTestedSuccessfullyInput = document.getElementById('connection_tested_successfully');
+    const plexUrlInput = document.getElementById('plex_url');
+    const plexTokenInput = document.getElementById('plex_token');
+    const connectionStatusMessageDiv = document.getElementById('connection_status_message');
+    const testConnectionButton = document.getElementById('test_connection_button'); // For the actual test button
+
+    // Log if elements are found
+    console.log("Save Button:", saveButton);
+    console.log("Connection Tested Input (DOMContentLoaded):", connectionTestedSuccessfullyInput);
+    console.log("Plex URL Input:", plexUrlInput);
+    console.log("Plex Token Input:", plexTokenInput);
+    console.log("Connection Status Message Div:", connectionStatusMessageDiv);
+    console.log("Test Connection Button:", testConnectionButton);
+
+
+    function updateSaveButtonState() {
+        console.log("updateSaveButtonState called. Hidden input current value:", connectionTestedSuccessfullyInput ? connectionTestedSuccessfullyInput.value : 'HIDDEN INPUT NOT FOUND');
+        if (saveButton && connectionTestedSuccessfullyInput) { 
+            if (connectionTestedSuccessfullyInput.value === "true") {
+                saveButton.disabled = false;
+                saveButton.classList.remove('btn-disabled'); // For DaisyUI visual disabling
+                console.log("SAVE BUTTON STATUS: ENABLED");
+            } else {
+                saveButton.disabled = true;
+                saveButton.classList.add('btn-disabled');
+                console.log("SAVE BUTTON STATUS: DISABLED (or remains disabled)");
+            }
+        } else {
+            console.warn("updateSaveButtonState: Critical elements (saveButton or connectionTestedSuccessfullyInput) not found.");
+        }
+    }
+    
+    // Initial state check for the save button
+    if (saveButton && connectionTestedSuccessfullyInput) {
+        updateSaveButtonState(); 
+    }
+
+    // MutationObserver to watch for changes in the hidden input's value attribute
+    if (connectionTestedSuccessfullyInput) { 
+        const observer = new MutationObserver(function(mutationsList, observerInstance) {
+            // We only care about the 'value' attribute changing
+            for(let mutation of mutationsList) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+                    console.log("MutationObserver FIRED: Hidden input 'value' attribute changed to:", connectionTestedSuccessfullyInput.value);
+                    updateSaveButtonState(); // Update save button state based on new value
+                    break; 
+                }
+            }
+        });
+        observer.observe(connectionTestedSuccessfullyInput, { 
+            attributes: true, 
+            attributeFilter: ['value'], // Only observe changes to the 'value' attribute
+        });
+        console.log("MutationObserver attached to hidden input:", connectionTestedSuccessfullyInput);
+    } else {
+        console.warn("Hidden input 'connection_tested_successfully' not found. Save button logic will be impaired.");
+    }
+
+
+    // Function to reset connection status if URL or Token changes after a successful test
+    function resetConnectionStatus() {
+        console.log("resetConnectionStatus called (due to URL/Token input).");
+        if (connectionTestedSuccessfullyInput && connectionTestedSuccessfullyInput.value === "true") { 
+            console.log("Resetting connection status from 'true' to 'false'.");
+            connectionTestedSuccessfullyInput.value = "false"; // This change should trigger the MutationObserver
+            if (connectionStatusMessageDiv) { 
+                connectionStatusMessageDiv.innerHTML = '<div class="alert alert-warning text-sm p-2"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Plex URL or Token changed. Please re-test the connection.</div>';
+            }
+            // updateSaveButtonState(); // No longer needed here, MutationObserver handles it
+        }
+    }
+
+    if (plexUrlInput) {
+        plexUrlInput.addEventListener('input', resetConnectionStatus);
+    } else {
+        console.warn("Plex URL input ('plex_url') not found for event listener.");
+    }
+    if (plexTokenInput) {
+        plexTokenInput.addEventListener('input', resetConnectionStatus);
+    } else {
+        console.warn("Plex Token input ('plex_token') not found for event listener.");
+    }
+
+    // HTMX event listener for after content is swapped into the target
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        console.log("HTMX afterSwap event triggered. Event Target ID:", event.detail.target.id);
+        const targetElement = event.detail.target; // This is the div where content was swapped
+
+        // Ensure this matches the ID of your connection status message div
+        const relevantTargetId = 'connection_status_message'; 
+
+        if (targetElement && targetElement.id === relevantTargetId) {
+            console.log("HTMX afterSwap: Target IS 'connection_status_message'. Swapped content:", targetElement.innerHTML.trim());
+            
+            const statusElement = targetElement.querySelector('[data-connection-status]');
+            console.log("HTMX afterSwap: statusElement (from querySelector('[data-connection-status]')):", statusElement);
+
+            if (statusElement && connectionTestedSuccessfullyInput) { 
+                const newStatusValue = (statusElement.dataset.connectionStatus === 'success') ? "true" : "false";
+                console.log("HTMX afterSwap: Updating hidden input 'connection_tested_successfully' to value:", newStatusValue);
+                // Directly setting .value might not always trigger MutationObserver if value doesn't "change" from JS perspective sometimes.
+                // To be absolutely sure observer fires, or as a fallback:
+                if (connectionTestedSuccessfullyInput.value !== newStatusValue) {
+                    connectionTestedSuccessfullyInput.value = newStatusValue;
+                } else {
+                    // If value is already what it's being set to, observer might not fire.
+                    // Manually call updateSaveButtonState in this case if needed.
+                    console.log("HTMX afterSwap: Hidden input value already matched new status. Manually updating save button state.");
+                    updateSaveButtonState();
+                }
+            } else {
+                console.warn("HTMX afterSwap: 'data-connection-status' element NOT FOUND in swapped content, OR 'connectionTestedSuccessfullyInput' is null.");
+                if (!statusElement) console.warn(" -> Reason: statusElement from querySelector was null.");
+                if (!connectionTestedSuccessfullyInput) console.warn(" -> Reason: connectionTestedSuccessfullyInput (from outer scope) became null.");
+                
+                // If status is unclear from response, assume failure for safety
+                if (connectionTestedSuccessfullyInput && connectionTestedSuccessfullyInput.value !== "false") {
+                     connectionTestedSuccessfullyInput.value = "false";
+                } else if (connectionTestedSuccessfullyInput) {
+                    updateSaveButtonState(); // Update based on current "false" state
+                }
+            }
+        } else if (targetElement) {
+            console.log("HTMX afterSwap: Target was NOT '" + relevantTargetId + "'. Actual Target ID:", targetElement.id);
+        } else {
+            console.log("HTMX afterSwap: Target element in event.detail was null.");
+        }
+    });
+
+    // Optional: Direct click listener on test button for initial confirmation (can be removed later)
+    if (testConnectionButton) {
+        testConnectionButton.addEventListener('click', function() {
+            console.log("'Test Connection' button clicked (JS direct listener). HTMX should handle the POST.");
+        });
+    } else {
+        console.warn("Test Connection button ('test_connection_button') not found for JS click listener.");
+    }
+});
+</script>
+{% endblock %}

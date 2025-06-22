@@ -1,0 +1,137 @@
+<!-- File: app/templates/setup/account_setup.html -->
+{% extends "setup/layout.html" %}
+
+{% set setup_step_title = "Admin Account Setup" %}
+{% set setup_page_title = "Create Administrator Account" %}
+{% set setup_page_subtitle = "Choose how you'll log in to manage this application." %}
+{% set current_step_id = 'account' %} {# For stepper highlighting #}
+
+{% block setup_content %}
+<form method="POST" action="{{ url_for('setup.account_setup') }}" id="accountSetupForm" hx-boost="false">
+    {{ form.hidden_tag() }} {# CSRF token #}
+
+    <div class="form-control w-full mb-6">
+        {{ form.login_method.label(class="label") }}
+        {{ form.login_method(class="select select-bordered " + ("select-error" if form.login_method.errors else "")) }}
+        {% if form.login_method.errors %}
+            {% for error in form.login_method.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ error }}</span>
+                </label>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <!-- Fields for Username/Password -->
+    <div id="username_password_fields" style="display: none;"> {# JS will toggle display #}
+        <div class="form-control w-full mb-4">
+            {{ form.username.label(class="label " + ("required" if form.login_method.data == 'username_password' else "")) }}
+            {{ form.username(class="input input-bordered " + ("input-error" if form.username.errors else ""), placeholder="Enter a username") }}
+            {% if form.username.errors %}
+                {% for error in form.username.errors %}
+                    <label class="label">
+                        <span class="label-text-alt text-error">{{ error }}</span>
+                    </label>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="form-control w-full mb-4">
+            {{ form.password.label(class="label " + ("required" if form.login_method.data == 'username_password' else "")) }}
+            {{ form.password(class="input input-bordered " + ("input-error" if form.password.errors else ""), placeholder="Enter a strong password") }}
+            {% if form.password.errors %}
+                {% for error in form.password.errors %}
+                    <label class="label">
+                        <span class="label-text-alt text-error">{{ error }}</span>
+                    </label>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="form-control w-full mb-6">
+            {{ form.confirm_password.label(class="label " + ("required" if form.login_method.data == 'username_password' else "")) }}
+            {{ form.confirm_password(class="input input-bordered " + ("input-error" if form.confirm_password.errors else ""), placeholder="Confirm your password") }}
+            {% if form.confirm_password.errors %}
+                {% for error in form.confirm_password.errors %}
+                    <label class="label">
+                        <span class="label-text-alt text-error">{{ error }}</span>
+                    </label>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="form-control mt-8">
+        <!-- This button is for Username/Password submission -->
+        <button type="submit" name="submit_type" value="username_password" id="submit_username_password_button" class="btn btn-primary" style="display: none;">
+            <i class="fa-solid fa-user-plus mr-2"></i> Create Admin Account
+        </button>
+
+        <!-- This button is for Plex SSO initiation -->
+        <!-- It could submit the form with a different value, or JS could change form action, or it could be a link styled as a button -->
+        <a href="{{ url_for('setup.account_setup', submit_type='plex_sso') }}" id="submit_plex_sso_button_link" class="btn btn-primary bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black" style="display: none;">
+            <i class="fa-brands fa-plex fa-lg mr-2"></i> Continue with Plex (Link Test)
+        </a>
+    </div>
+</form>
+
+{% if error_message %}
+<div role="alert" class="alert alert-error mt-6">
+    <i class="fa-solid fa-circle-xmark fa-fw text-xl mr-3"></i>
+    <span>{{ error_message }}</span>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// This script relies on function toggleAccountSetupFields in app/static/js/app.js
+// It ensures the correct fields and submit button are shown based on the selected login method.
+// Call it on page load to set initial state.
+if (typeof toggleAccountSetupFields === 'function') {
+    // If the app.js function exists, it would need modification to know about the link too.
+    // For this test, let's assume we are using the fallback or we'll modify the fallback.
+    console.warn('toggleAccountSetupFields from app.js might not be aware of the link version of the button.');
+    // You might need to call the original and then specifically handle the link here,
+    // or just use the fallback logic below for the test.
+    // toggleAccountSetupFields(); // Call original if you want its other effects
+}
+// Fallback basic toggle (MODIFIED FOR THE LINK TEST)
+const loginMethodSelect = document.getElementById('login_method');
+const usernamePasswordFields = document.getElementById('username_password_fields');
+const submitUsernamePasswordButton = document.getElementById('submit_username_password_button');
+const submitPlexSSOLink = document.getElementById('submit_plex_sso_button_link'); // <-- Changed to get the link
+
+function updateVisibilityForTest() { // Renamed to avoid conflict if app.js one is also trying to run
+    if (!loginMethodSelect || !usernamePasswordFields || !submitUsernamePasswordButton || !submitPlexSSOLink) { // <-- Check link
+        console.error("One or more elements for visibility toggle not found.");
+        if (!loginMethodSelect) console.error("login_method select not found");
+        if (!usernamePasswordFields) console.error("username_password_fields div not found");
+        if (!submitUsernamePasswordButton) console.error("submit_username_password_button not found");
+        if (!submitPlexSSOLink) console.error("submit_plex_sso_button_link (the <a> tag) not found");
+        return;
+    }
+    if (loginMethodSelect.value === 'username_password') {
+        usernamePasswordFields.style.display = '';
+        submitUsernamePasswordButton.style.display = '';
+        submitPlexSSOLink.style.display = 'none'; // <-- Hide link
+    } else { // plex_sso or other
+        usernamePasswordFields.style.display = 'none';
+        submitUsernamePasswordButton.style.display = 'none';
+        submitPlexSSOLink.style.display = ''; // <-- Show link
+    }
+}
+
+if(loginMethodSelect) {
+    loginMethodSelect.addEventListener('change', updateVisibilityForTest);
+    updateVisibilityForTest(); // Initial call
+} else {
+    console.error("login_method select not found, cannot initialize visibility toggle for test.");
+}
+
+// Dynamically add/remove 'required' class text for labels based on selection
+// ... (this logic remains the same) ...
+</script>
+{% endblock %}

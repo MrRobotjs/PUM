@@ -1,0 +1,145 @@
+<!-- File: app/templates/settings/index.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Application Settings{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-2">
+    <h1 class="text-3xl font-bold mb-8">Application Settings</h1>
+
+    <div class="tabs tabs-lifted tabs-lg mb-6">
+        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'general' else '' }}"
+           href="{{ url_for('dashboard.settings_general') }}">
+           <i class="fa-solid fa-sliders mr-2"></i> General
+        </a>
+        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'plex' else '' }}"
+           href="{{ url_for('dashboard.settings_plex') }}">
+           <i class="fa-solid fa-network-wired mr-2"></i> Plex
+        </a>
+        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'discord' else '' }}"
+           href="{{ url_for('dashboard.settings_discord') }}">
+           <i class="fa-brands fa-discord mr-2"></i> Discord
+        </a>
+        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'advanced' else '' }}"
+           href="{{ url_for('dashboard.settings_advanced') }}">
+           <i class="fa-solid fa-cogs mr-2"></i> Advanced
+        </a>
+    </div>
+
+    <div class="bg-base-200 shadow-xl rounded-lg p-6 sm:p-8">
+        {% if active_tab == 'general' %}
+            {% include 'settings/_general_settings.html' %}
+        {% elif active_tab == 'plex' %}
+            {% include 'settings/_plex_settings.html' %}
+        {% elif active_tab == 'discord' %}
+            {% include 'settings/_discord_settings.html' %}
+        {% elif active_tab == 'advanced' %}
+            {% include 'settings/_advanced_settings.html' %}
+        {% else %}
+            <p>Select a settings category above.</p>
+        {% endif %}
+    </div>
+
+    {# Section to display current saved settings from DB (read-only) - Could be part of advanced or a separate tab #}
+    {% if active_tab == 'advanced' and all_db_settings %}
+    <div class="mt-10">
+        <h2 class="text-2xl font-semibold mb-4">Current Saved Settings (from Database - Read Only)</h2>
+        <div class="bg-base-200 shadow-lg rounded-lg p-6 max-h-96 overflow-y-auto">
+            <table class="table table-sm table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Value</th>
+                        <th>Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for setting in all_db_settings %}
+                    <tr>
+                        <td class="font-mono text-xs">{{ setting.key }}</td>
+                        <td class="text-xs break-all">
+                            {% if setting.value_type == 'secret' and setting.value %}
+                                <span class="italic text-base-content/50" title="Secret value is hidden">********</span>
+                            {% else %}
+                                {{ setting.value | truncate(100, True) if setting.value else 'Not Set' }}
+                            {% endif %}
+                        </td>
+                        <td class="text-xs"><span class="badge badge-ghost badge-sm">{{ setting.value_type.value }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# Scripts specific to settings pages, e.g., for Plex connection test or Discord admin link #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Plex Settings Connection Test (similar to setup page)
+    const plexSettingsSaveButton = document.getElementById('save_plex_settings_button'); // Assuming this ID in _plex_settings.html
+    const plexSettingsConnTestedInput = document.getElementById('plex_settings_connection_tested_successfully'); // Assuming this ID
+    const plexUrlInput = document.getElementById('plex_settings_plex_url'); // Assuming this ID
+    const plexTokenInput = document.getElementById('plex_settings_plex_token'); // Assuming this ID
+
+    function updatePlexSettingsSaveButtonState() {
+        if (!plexSettingsSaveButton || !plexSettingsConnTestedInput) return;
+        if (plexSettingsConnTestedInput.value === "true") {
+            plexSettingsSaveButton.disabled = false;
+            plexSettingsSaveButton.classList.remove('btn-disabled');
+        } else {
+            plexSettingsSaveButton.disabled = true;
+            plexSettingsSaveButton.classList.add('btn-disabled');
+        }
+    }
+
+    if (plexSettingsSaveButton && plexSettingsConnTestedInput) {
+        updatePlexSettingsSaveButtonState(); // Initial state
+
+        const observer = new MutationObserver(function(mutationsList, observer) {
+            for(let mutation of mutationsList) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+                    updatePlexSettingsSaveButtonState();
+                }
+            }
+        });
+        observer.observe(plexSettingsConnTestedInput, { attributes: true });
+
+        function resetPlexSettingsConnectionStatus() {
+            if (plexSettingsConnTestedInput.value === "true") {
+                plexSettingsConnTestedInput.value = "false";
+                const statusMsgElement = document.getElementById('plex_settings_connection_status_message'); // Assuming this ID
+                if (statusMsgElement) {
+                    statusMsgElement.innerHTML = '<div class="alert alert-warning text-sm p-2"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Plex URL or Token changed. Please re-test the connection.</div>';
+                }
+                updatePlexSettingsSaveButtonState();
+            }
+        }
+        if (plexUrlInput) plexUrlInput.addEventListener('input', resetPlexSettingsConnectionStatus);
+        if (plexTokenInput) plexTokenInput.addEventListener('input', resetPlexSettingsConnectionStatus);
+    }
+
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        const targetId = event.detail.target.id;
+        if (targetId === 'plex_settings_connection_status_message') { // Assuming this ID
+            const statusElement = event.detail.target.querySelector('[data-connection-status]');
+            if (statusElement && plexSettingsConnTestedInput) {
+                plexSettingsConnTestedInput.value = (statusElement.dataset.connectionStatus === 'success') ? "true" : "false";
+                updatePlexSettingsSaveButtonState();
+            }
+        }
+        // Handle Discord Admin Link status update if done via HTMX
+        else if (targetId === 'discord_admin_link_status') { // Assuming this ID in _discord_settings.html
+            // Potentially update UI based on the new content of discord_admin_link_status
+            // e.g. change button text or visibility
+        }
+    });
+
+});
+</script>
+{% endblock %}
