@@ -5,6 +5,12 @@
 
 Plex User Manager (PUM) is a web application designed to simplify and enhance the management of users on your Plex Media Server. It provides a user-friendly interface for administrators to handle user invitations, track activity, manage library access, and automate certain user lifecycle tasks.
 
+Dashboard             |  Invites
+:-------------------------:|:-------------------------:
+![image](https://github.com/user-attachments/assets/18db06e2-66c2-4e15-a010-59dc5499761d)  |  ![image](https://github.com/user-attachments/assets/dcb72d92-94f1-4246-aa81-e6163e3ff763)
+Users             |  Streaming
+![image](https://github.com/user-attachments/assets/77c35536-62fd-44e3-9356-5cd6156fcf26)  |  ![image](https://github.com/user-attachments/assets/755f6dec-c839-4145-9d08-67c2de91303d)
+
 ## Features
 
 *   **User Management:**
