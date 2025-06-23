@@ -67,7 +67,7 @@
             </div>
 
             <div class="form-control w-full mb-1">
-                {{ form.access_expires_in_days.label(class="label font-medium") }}
+                {{ form.access_expires_in_days.label(class="label font-medium whitespace-normal") }}
                 {{ form.access_expires_in_days(id="user_edit_access_expires_in_days_input", class="input input-bordered " + ("input-error" if form.access_expires_in_days.errors else ""), type="number", min="1") }}
                 {% if form.access_expires_in_days.errors %}
                     {% for error in form.access_expires_in_days.errors %}
@@ -75,7 +75,7 @@
                     {% endfor %}
                 {% else %}
                     <label class="label py-0 mt-1">
-                        <span class="label-text-alt">Calculated New Expiry: <strong id="user_edit_calculated_new_expiry_date">No change (if blank/invalid)</strong></span>
+                        <span class="label-text-alt whitespace-normal">Calculated New Expiry: <strong id="user_edit_calculated_new_expiry_date">No change (if blank/invalid)</strong></span>
                     </label>
                 {% endif %}
             </div>
@@ -84,7 +84,7 @@
             <div class="form-control w-full mb-6">
                 <label class="label cursor-pointer justify-start">
                     {{ form.clear_access_expiration(class="checkbox checkbox-warning checkbox-sm mr-2", id="user_edit_clear_access_expiration_checkbox") }}
-                    <span class="label-text font-medium">{{ form.clear_access_expiration.label.text }}</span>
+                    <span class="label-text font-medium whitespace-normal">{{ form.clear_access_expiration.label.text }}</span>
                 </label>
                 <p class="text-xs text-base-content/60 pl-8">{{ form.clear_access_expiration.description }}</p>
                  {% if form.clear_access_expiration.errors %}{% for e in form.clear_access_expiration.errors %}<p class="text-error text-xs mt-1 pl-8">{{e}}</p>{% endfor %}{% endif %}
