@@ -2,7 +2,7 @@
 <form method="POST" action="{{ url_for('dashboard.settings_discord') }}" id="mainDiscordSettingsForm">
     {{ form.hidden_tag() }}
     <h2 class="text-xl font-semibold mb-2">Discord Integration Settings</h2>
-    <p class="text-sm text-base-content/70 mb-6">Configure Discord OAuth for invitees and optionally enable advanced Discord Bot features.</p>
+    <p class="text-sm text-base-content/70 mb-6">Configure Discord OAuth for invitees, admin linking, optional server membership checks, and advanced Discord Bot features.</p>
 
     <div class="space-y-6">
         {# --- Section 1: OAuth for Invitees & Admin Link --- #}
@@ -22,7 +22,7 @@
                 </p>
             </div>
             
-            {# This div's content (OAuth fields) will be shown/hidden by JS based on the toggle above #}
+            {# OAuth Dependent Fields Container #}
             <div id="discord_oauth_dependent_fields" class="{{ '' if form.enable_discord_oauth.data or initial_discord_enabled_state else 'hidden' }} space-y-4 mt-3">
                 <p class="text-xs text-base-content/80 mb-1 whitespace-normal">
                     Create a Discord Application in the 
@@ -81,12 +81,20 @@
                     {% if form.discord_require_guild_membership.errors %}{% for e in form.discord_require_guild_membership.errors %}<p class="text-error text-xs mt-1 pl-12">{{e}}</p>{% endfor %}{% endif %}
                 </div>
                 
-                {# Guild ID Field - Now part of OAuth dependent fields, visibility controlled by JS #}
-                <div id="discord_guild_id_field_container" class="form-control w-full pt-3 border-t border-base-300/20 mt-4 {{ 'hidden' if not ( (form.enable_discord_bot.data or form.discord_require_guild_membership.data) and (form.enable_discord_oauth.data or initial_discord_enabled_state) ) else '' }}">
+                {# Guild ID Field - Visibility controlled by JS #}
+                <div id="discord_guild_id_field_container" class="form-control w-full pt-3 border-t border-base-300/20 mt-4">
                     {{ form.discord_guild_id.label(class="label whitespace-normal") }} 
-                    {{ form.discord_guild_id(class="input input-bordered " + ("input-error" if form.discord_guild_id.errors else ""), id="discord_guild_id_input") }} {# Added ID for JS required handling #}
+                    {{ form.discord_guild_id(class="input input-bordered " + ("input-error" if form.discord_guild_id.errors else ""), id="discord_guild_id_input") }}
                     <p class="text-xs text-base-content/60 mt-1">{{ form.discord_guild_id.description }}</p>
                     {% if form.discord_guild_id.errors %}{% for e in form.discord_guild_id.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %}
+                </div>
+
+                {# Discord Server Invite URL Field - Visibility controlled by JS #}
+                <div id="discord_server_invite_url_field_container" class="form-control w-full pt-3 border-t border-base-300/20 mt-4">
+                    {{ form.discord_server_invite_url.label(class="label whitespace-normal") }} 
+                    {{ form.discord_server_invite_url(class="input input-bordered " + ("input-error" if form.discord_server_invite_url.errors else "")) }}
+                    <p class="text-xs text-base-content/60 mt-1">{{ form.discord_server_invite_url.description }}</p>
+                    {% if form.discord_server_invite_url.errors %}{% for e in form.discord_server_invite_url.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %}
                 </div>
             </div>
         </fieldset>
@@ -104,18 +112,12 @@
             </div>
 
             <div id="discord_bot_dependent_fields" class="{{ '' if form.enable_discord_bot.data else 'hidden' }} space-y-4">
-                {# Bot Token #}
+                {# Bot Token, Monitored Role, Thread Channel, Log Channel, Whitelist Sharers #}
+                {# Guild ID and Server Invite URL are now primarily shown in Section 1 if needed #}
                 <div class="form-control w-full"> {{ form.discord_bot_token.label(class="label") }} {{ form.discord_bot_token(class="input input-bordered " + ("input-error" if form.discord_bot_token.errors else ""), placeholder="Enter new token or leave blank if already saved") }} <p class="text-xs text-base-content/60 mt-1">{{ form.discord_bot_token.description }}</p> {% if form.discord_bot_token.errors %}{% for e in form.discord_bot_token.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %} </div>
-                {# Guild ID is now shown in Section 1 if Bot OR Require Guild Membership is ON #}
-                {# Monitored Role ID #}
                 <div class="form-control w-full"> {{ form.discord_monitored_role_id.label(class="label whitespace-normal") }} {{ form.discord_monitored_role_id(class="input input-bordered " + ("input-error" if form.discord_monitored_role_id.errors else "")) }} <p class="text-xs text-base-content/60 mt-1">{{ form.discord_monitored_role_id.description }}</p> {% if form.discord_monitored_role_id.errors %}{% for e in form.discord_monitored_role_id.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %} </div>
-                {# Thread Channel ID #}
                 <div class="form-control w-full"> {{ form.discord_thread_channel_id.label(class="label whitespace-normal") }} {{ form.discord_thread_channel_id(class="input input-bordered " + ("input-error" if form.discord_thread_channel_id.errors else "")) }} <p class="text-xs text-base-content/60 mt-1">{{ form.discord_thread_channel_id.description }}</p> {% if form.discord_thread_channel_id.errors %}{% for e in form.discord_thread_channel_id.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %} </div>
-                {# Bot Log Channel ID #}
                 <div class="form-control w-full"> {{ form.discord_bot_log_channel_id.label(class="label whitespace-normal") }} {{ form.discord_bot_log_channel_id(class="input input-bordered " + ("input-error" if form.discord_bot_log_channel_id.errors else "")) }} <p class="text-xs text-base-content/60 mt-1">{{ form.discord_bot_log_channel_id.description }}</p> {% if form.discord_bot_log_channel_id.errors %}{% for e in form.discord_bot_log_channel_id.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %} </div>
-                {# Server Invite URL #}
-                <div class="form-control w-full"> {{ form.discord_server_invite_url.label(class="label whitespace-normal") }} {{ form.discord_server_invite_url(class="input input-bordered " + ("input-error" if form.discord_server_invite_url.errors else "")) }} <p class="text-xs text-base-content/60 mt-1">{{ form.discord_server_invite_url.description }}</p> {% if form.discord_server_invite_url.errors %}{% for e in form.discord_server_invite_url.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %} </div>
-                {# Whitelist Sharers #}
                 <div class="form-control w-full">
                     <label class="label cursor-pointer justify-start">
                         {{ form.discord_bot_whitelist_sharers(class="toggle toggle-info mr-3") }}
@@ -133,8 +135,9 @@
     </div>
 </form>
 
-{# Admin Account Link Section (remains unchanged structurally, uses `initial_discord_enabled_state` for its outer conditional) #}
-{# ... #}
+{# Admin Account Link Section - Unchanged #}
+<div class="divider mt-8">Admin Discord Account Link</div>
+{# ... (rest of admin link section) ... #}
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -150,17 +153,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const requireGuildMembershipToggle = document.getElementById('discord_require_guild_membership_toggle');
     const guildIdFieldContainer = document.getElementById('discord_guild_id_field_container');
-    const guildIdInput = document.getElementById('discord_guild_id_input'); // For marking required if needed
+    const serverInviteUrlFieldContainer = document.getElementById('discord_server_invite_url_field_container');
 
     function updateDiscordSettingsUI() {
         let isOAuthEnabled = oauthToggle ? oauthToggle.checked : false;
         let isBotEnabled = botToggle ? botToggle.checked : false;
         let isRequireGuildMembershipEnabled = requireGuildMembershipToggle ? requireGuildMembershipToggle.checked : false;
 
-        // If bot is enabled, or if require guild membership is enabled, then OAuth itself must also be enabled.
+        // Rule: If Bot is ON OR Require Guild Membership is ON, then OAuth itself must also be ON.
         if ((isBotEnabled || isRequireGuildMembershipEnabled) && oauthToggle && !oauthToggle.checked) {
-            oauthToggle.checked = true;
-            isOAuthEnabled = true; 
+            oauthToggle.checked = true; // Visually check it
+            isOAuthEnabled = true;      // Update our local flag for subsequent logic
         }
         if (oauthFieldsDiv) oauthFieldsDiv.classList.toggle('hidden', !isOAuthEnabled);
         
@@ -169,43 +172,48 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!isOAuthEnabled) { // If main OAuth is off, this must be off and disabled
                 requireSsoToggle.checked = false;
                 requireSsoToggle.disabled = true;
-            } else if (isBotEnabled) { // Main OAuth is ON (or forced ON), and Bot is ON
+            } else if (isBotEnabled) { // Main OAuth is ON (or forced ON), and Bot is ON -> SSO is forced ON
                 requireSsoToggle.checked = true;
-                requireSsoToggle.disabled = true; // Forced by bot
-            } else { // Main OAuth is ON, Bot is OFF - user can choose
+                requireSsoToggle.disabled = true;
+            } else { // Main OAuth is ON, Bot is OFF -> User can choose
                 requireSsoToggle.disabled = false;
             }
-            // Toggle help text visibility based on bot state
+            // Help text visibility for "Require SSO"
             if (requireSsoHelpDynamic) requireSsoHelpDynamic.classList.toggle('hidden', !(isOAuthEnabled && isBotEnabled));
             if (requireSsoHelpStatic) requireSsoHelpStatic.classList.toggle('hidden', (isOAuthEnabled && isBotEnabled));
         }
 
         // "Require Guild Membership" toggle logic
         if (requireGuildMembershipToggle) {
-            requireGuildMembershipToggle.disabled = !isOAuthEnabled;
-            if (!isOAuthEnabled) {
+            requireGuildMembershipToggle.disabled = !isOAuthEnabled; // Can only require guild membership if OAuth is active
+            if (!isOAuthEnabled) { // If OAuth is off, uncheck and update local flag
                 requireGuildMembershipToggle.checked = false;
-                isRequireGuildMembershipEnabled = false; // Update local flag for guild ID field check
+                isRequireGuildMembershipEnabled = false; 
             }
         }
 
-        // Guild ID field visibility
+        // Guild ID field visibility: Show if OAuth is ON AND (Bot is ON OR Require Guild Membership is ON)
         const showGuildIdField = isOAuthEnabled && (isBotEnabled || isRequireGuildMembershipEnabled);
         if (guildIdFieldContainer) {
             guildIdFieldContainer.classList.toggle('hidden', !showGuildIdField);
         }
-        // You can also add/remove 'required' class to guildIdInput.label here if needed for UI
-        // const guildIdLabel = document.querySelector('label[for="discord_guild_id_input"]');
-        // if (guildIdLabel) guildIdLabel.classList.toggle('required', showGuildIdField);
+
+        // Server Invite URL field visibility: Show if OAuth is ON AND Require Guild Membership is ON
+        const showServerInviteUrlField = isOAuthEnabled && isRequireGuildMembershipEnabled;
+        if (serverInviteUrlFieldContainer) {
+            serverInviteUrlFieldContainer.classList.toggle('hidden', !showServerInviteUrlField);
+        }
         
-        // Bot specific fields container
+        // Bot specific fields container (for fields not already handled above like Guild ID)
         if (botFieldsDiv) botFieldsDiv.classList.toggle('hidden', !isBotEnabled);
     }
 
+    // Attach event listeners
     if (oauthToggle) oauthToggle.addEventListener('change', updateDiscordSettingsUI);
     if (botToggle) botToggle.addEventListener('change', updateDiscordSettingsUI);
     if (requireGuildMembershipToggle) requireGuildMembershipToggle.addEventListener('change', updateDiscordSettingsUI);
+    // requireSsoToggle doesn't need to trigger updateDiscordSettingsUI itself, its state is derived.
 
-    updateDiscordSettingsUI(); // Initial call
+    updateDiscordSettingsUI(); // Call on page load to set initial visibility
 });
 </script>

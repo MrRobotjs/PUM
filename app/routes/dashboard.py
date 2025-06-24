@@ -212,41 +212,25 @@ def settings_plex():
 def settings_discord():
     form = DiscordConfigForm(request.form if request.method == 'POST' else None)
     
-    # --- Construct Redirect URIs using APP_BASE_URL setting directly ---
     app_base_url_from_settings = Setting.get('APP_BASE_URL')
-    
-    invite_callback_path = "/invites/discord_callback"  # Default/fallback path
-    admin_link_callback_path = "/auth/discord_callback_admin" # Default/fallback path
-
-    # Try to generate paths dynamically using url_for without _external=True
-    # This requires an active app context, which should be present in a route.
+    invite_callback_path = "/invites/discord_callback" 
+    admin_link_callback_path = "/auth/discord_callback_admin"
     try:
-        # Using a test_request_context is safer if url_for might be called
-        # in a situation without a full request context, though less likely here.
-        # For simplicity in a route, direct call is usually fine.
-        # with current_app.test_request_context('/'): 
         invite_callback_path = url_for('invites.discord_oauth_callback', _external=False)
         admin_link_callback_path = url_for('auth.discord_callback_admin', _external=False)
     except Exception as e_url_gen:
         current_app.logger.error(f"Error generating relative callback paths for Discord settings display: {e_url_gen}")
-        # Fallbacks are already set above.
 
     if app_base_url_from_settings:
         clean_app_base = app_base_url_from_settings.rstrip('/')
-        # Ensure paths start with a slash if not already
         if not invite_callback_path.startswith('/'): invite_callback_path = '/' + invite_callback_path
         if not admin_link_callback_path.startswith('/'): admin_link_callback_path = '/' + admin_link_callback_path
-        
         discord_invite_redirect_uri_generated = f"{clean_app_base}{invite_callback_path}"
         discord_admin_link_redirect_uri_generated = f"{clean_app_base}{admin_link_callback_path}"
     else:
         discord_invite_redirect_uri_generated = "APP_BASE_URL not set - Cannot generate Invite Redirect URI"
         discord_admin_link_redirect_uri_generated = "APP_BASE_URL not set - Cannot generate Admin Link Redirect URI"
     
-    current_app.logger.debug(f"Generated DISCORD_REDIRECT_URI_INVITE for form/save: {discord_invite_redirect_uri_generated}")
-    current_app.logger.debug(f"Generated DISCORD_REDIRECT_URI_ADMIN_LINK for form/save: {discord_admin_link_redirect_uri_generated}")
-    # --- End Redirect URI construction ---
-
     discord_admin_linked = bool(current_user.discord_user_id)
     discord_admin_user_info = {
         'username': current_user.discord_username, 
@@ -254,24 +238,22 @@ def settings_discord():
         'avatar': current_user.discord_avatar_hash 
     } if discord_admin_linked else None
     
-    # This is for the visibility of the "Admin Account Link" section based on *saved* DISCORD_OAUTH_ENABLED
     initial_oauth_enabled_for_admin_link_section = Setting.get_bool('DISCORD_OAUTH_ENABLED', False)
 
     if request.method == 'POST':
         if form.validate_on_submit():
-            # Get primary toggle states from the form
             enable_oauth_from_form = form.enable_discord_oauth.data
             enable_bot_from_form = form.enable_discord_bot.data
             require_guild_membership_from_form = form.discord_require_guild_membership.data
             require_sso_on_invite_from_form = form.discord_bot_require_sso_on_invite.data
 
             final_enable_oauth = enable_oauth_from_form
-            if enable_bot_from_form and not final_enable_oauth:
+            if (enable_bot_from_form or require_guild_membership_from_form) and not final_enable_oauth:
                 final_enable_oauth = True
-                flash("Discord OAuth (Section 1) was automatically enabled because Bot Features require it.", "info")
-            if require_guild_membership_from_form and not final_enable_oauth:
-                final_enable_oauth = True
-                flash("Discord OAuth (Section 1) was automatically enabled because 'Require Server Membership' needs it.", "info")
+                flash_msg = "Discord OAuth (Section 1) was automatically enabled because "
+                if enable_bot_from_form: flash_msg += "Bot Features require it."
+                elif require_guild_membership_from_form: flash_msg += "'Require Server Membership' needs it."
+                flash(flash_msg, "info")
             
             Setting.set('DISCORD_OAUTH_ENABLED', final_enable_oauth, SettingValueType.BOOLEAN)
             current_app.config['DISCORD_OAUTH_ENABLED'] = final_enable_oauth
@@ -283,8 +265,6 @@ def settings_discord():
                 if form.discord_client_secret.data: 
                     Setting.set('DISCORD_CLIENT_SECRET', form.discord_client_secret.data, SettingValueType.SECRET)
                 Setting.set('DISCORD_OAUTH_AUTH_URL', form.discord_oauth_auth_url.data or Setting.get('DISCORD_OAUTH_AUTH_URL', ""), SettingValueType.STRING)
-                
-                # Save the correctly generated redirect URIs
                 Setting.set('DISCORD_REDIRECT_URI_INVITE', discord_invite_redirect_uri_generated, SettingValueType.STRING)
                 Setting.set('DISCORD_REDIRECT_URI_ADMIN_LINK', discord_admin_link_redirect_uri_generated, SettingValueType.STRING)
 
@@ -292,39 +272,49 @@ def settings_discord():
                     Setting.set('DISCORD_BOT_REQUIRE_SSO_ON_INVITE', True, SettingValueType.BOOLEAN)
                 else: 
                     Setting.set('DISCORD_BOT_REQUIRE_SSO_ON_INVITE', require_sso_on_invite_from_form, SettingValueType.BOOLEAN)
+                
                 Setting.set('DISCORD_REQUIRE_GUILD_MEMBERSHIP', require_guild_membership_from_form, SettingValueType.BOOLEAN)
+                
+                # Save Guild ID and Server Invite URL if OAuth is on and (Bot is ON OR Require Guild Membership is ON)
+                if enable_bot_from_form or require_guild_membership_from_form:
+                    Setting.set('DISCORD_GUILD_ID', form.discord_guild_id.data or Setting.get('DISCORD_GUILD_ID', ""), SettingValueType.STRING)
+                    # Only explicitly save/clear server_invite_url based on require_guild_membership
+                    if require_guild_membership_from_form:
+                        Setting.set('DISCORD_SERVER_INVITE_URL', form.discord_server_invite_url.data or Setting.get('DISCORD_SERVER_INVITE_URL', ""), SettingValueType.STRING)
+                    elif not enable_bot_from_form: # If bot is also off, and require_guild is off, clear it
+                        Setting.set('DISCORD_SERVER_INVITE_URL', "", SettingValueType.STRING) 
+                        # If bot is ON but require_guild is OFF, we might keep server_invite_url if bot uses it independently.
+                        # For now, only tying it to require_guild_membership for saving.
+                else: # OAuth is ON, but Bot is OFF AND Require Guild Membership is OFF
+                    Setting.set('DISCORD_GUILD_ID', "", SettingValueType.STRING)
+                    Setting.set('DISCORD_SERVER_INVITE_URL', "", SettingValueType.STRING)
             else: 
                 Setting.set('DISCORD_CLIENT_ID', "", SettingValueType.STRING)
                 Setting.set('DISCORD_CLIENT_SECRET', "", SettingValueType.SECRET)
                 Setting.set('DISCORD_OAUTH_AUTH_URL', "", SettingValueType.STRING)
-                Setting.set('DISCORD_REDIRECT_URI_INVITE', "", SettingValueType.STRING) # Clear them if OAuth off
+                Setting.set('DISCORD_REDIRECT_URI_INVITE', "", SettingValueType.STRING)
                 Setting.set('DISCORD_REDIRECT_URI_ADMIN_LINK', "", SettingValueType.STRING)
                 Setting.set('DISCORD_BOT_REQUIRE_SSO_ON_INVITE', False, SettingValueType.BOOLEAN)
                 Setting.set('DISCORD_REQUIRE_GUILD_MEMBERSHIP', False, SettingValueType.BOOLEAN)
+                Setting.set('DISCORD_GUILD_ID', "", SettingValueType.STRING)
+                Setting.set('DISCORD_SERVER_INVITE_URL', "", SettingValueType.STRING)
 
             Setting.set('DISCORD_BOT_ENABLED', enable_bot_from_form, SettingValueType.BOOLEAN)
             if enable_bot_from_form:
-                Setting.set('DISCORD_GUILD_ID', form.discord_guild_id.data or Setting.get('DISCORD_GUILD_ID', ""), SettingValueType.STRING)
+                # Guild ID is already handled above as it's needed if bot is ON
                 if form.discord_bot_token.data: Setting.set('DISCORD_BOT_TOKEN', form.discord_bot_token.data, SettingValueType.SECRET)
                 Setting.set('DISCORD_MONITORED_ROLE_ID', form.discord_monitored_role_id.data or Setting.get('DISCORD_MONITORED_ROLE_ID', ""), SettingValueType.STRING)
                 Setting.set('DISCORD_THREAD_CHANNEL_ID', form.discord_thread_channel_id.data or Setting.get('DISCORD_THREAD_CHANNEL_ID', ""), SettingValueType.STRING)
                 Setting.set('DISCORD_BOT_LOG_CHANNEL_ID', form.discord_bot_log_channel_id.data or Setting.get('DISCORD_BOT_LOG_CHANNEL_ID', ""), SettingValueType.STRING)
-                Setting.set('DISCORD_SERVER_INVITE_URL', form.discord_server_invite_url.data or Setting.get('DISCORD_SERVER_INVITE_URL', ""), SettingValueType.STRING)
+                # DISCORD_SERVER_INVITE_URL is now tied more to require_guild_membership if bot is off
+                if not require_guild_membership_from_form: # If bot is on but require_guild is off, bot might still use server_invite_url
+                    Setting.set('DISCORD_SERVER_INVITE_URL', form.discord_server_invite_url.data or Setting.get('DISCORD_SERVER_INVITE_URL', ""), SettingValueType.STRING)
+
                 Setting.set('DISCORD_BOT_WHITELIST_SHARERS', form.discord_bot_whitelist_sharers.data, SettingValueType.BOOLEAN)
                 log_event(EventType.DISCORD_CONFIG_SAVE, "Discord settings updated (Bot Enabled).", admin_id=current_user.id)
             else: 
                 if form.discord_bot_token.data:
                     Setting.set('DISCORD_BOT_TOKEN', "", SettingValueType.SECRET)
-                if require_guild_membership_from_form and final_enable_oauth: # Guild ID still relevant if require_guild is on
-                    Setting.set('DISCORD_GUILD_ID', form.discord_guild_id.data or Setting.get('DISCORD_GUILD_ID', ""), SettingValueType.STRING)
-                elif not (require_guild_membership_from_form and final_enable_oauth): # If neither bot nor require_guild needs it, consider clearing
-                    # Check if Guild ID setting exists and if form field is empty, then clear
-                    if not form.discord_guild_id.data and Setting.get('DISCORD_GUILD_ID'):
-                         Setting.set('DISCORD_GUILD_ID', "", SettingValueType.STRING)
-                    elif form.discord_guild_id.data: # User provided a value, save it
-                         Setting.set('DISCORD_GUILD_ID', form.discord_guild_id.data, SettingValueType.STRING)
-
-
                 Setting.set('DISCORD_BOT_WHITELIST_SHARERS', form.discord_bot_whitelist_sharers.data, SettingValueType.BOOLEAN)
                 log_event(EventType.DISCORD_CONFIG_SAVE, "Discord settings updated (Bot Disabled).", admin_id=current_user.id)
 
@@ -352,12 +342,12 @@ def settings_discord():
             form.discord_require_guild_membership.data = False
             
         form.discord_guild_id.data = Setting.get('DISCORD_GUILD_ID')
+        form.discord_server_invite_url.data = Setting.get('DISCORD_SERVER_INVITE_URL')
         
         if is_bot_enabled_db:
             form.discord_monitored_role_id.data = Setting.get('DISCORD_MONITORED_ROLE_ID')
             form.discord_thread_channel_id.data = Setting.get('DISCORD_THREAD_CHANNEL_ID')
             form.discord_bot_log_channel_id.data = Setting.get('DISCORD_BOT_LOG_CHANNEL_ID')
-            form.discord_server_invite_url.data = Setting.get('DISCORD_SERVER_INVITE_URL')
         form.discord_bot_whitelist_sharers.data = Setting.get_bool('DISCORD_BOT_WHITELIST_SHARERS', False)
             
     return render_template('settings/index.html', 
