@@ -1,4 +1,4 @@
-<!-- File: app/templates/users/_users_table.html -->
+{# File: app/templates/users/_users_table.html #}
 {# Expects 'users' (pagination object), 'available_libraries', and 'mass_edit_form' in context #}
 <div class="overflow-x-auto bg-base-200 shadow-lg rounded-lg">
     <table class="table table-zebra w-full table-sm md:table-md">
@@ -109,31 +109,4 @@
     </table>
 </div>
 
-<script>
-// Script for select all in table view (needs to be re-run if table is swapped by HTMX)
-function initializeTableSelectAll() {
-    const selectAllCheckboxTable = document.getElementById('select_all_users_table');
-    const userCheckboxesTable = document.querySelectorAll('#user-list-container .user-select-checkbox'); // Be more specific if needed
-
-    if (selectAllCheckboxTable) {
-        selectAllCheckboxTable.addEventListener('change', function() {
-            userCheckboxesTable.forEach(checkbox => {
-                if (checkbox.offsetParent !== null) { // Only affect visible checkboxes
-                    checkbox.checked = this.checked;
-                    // Manually trigger change event for each checkbox to update Set and Mass Edit button
-                    const event = new Event('change', { bubbles: true });
-                    checkbox.dispatchEvent(event);
-                }
-            });
-        });
-    }
-}
-
-// Call it once if the table is loaded initially, or ensure it's called after HTMX swaps.
-// The main list.html's 'htmx:afterSwap' listener can call this.
-if (document.getElementById('select_all_users_table')) {
-    initializeTableSelectAll();
-}
-// Also, ensure user-select-checkbox event listeners from list.html are re-applied or cover this.
-// The `updateUserSelection()` function in list.html should ideally handle this if called on `htmx:afterSwap`.
-</script>
+{# The SCRIPT block has been removed from this file. #}

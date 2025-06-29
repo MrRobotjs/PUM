@@ -16,16 +16,17 @@
             <label class="label"><span class="label-text-alt whitespace-normal">The public name for this application.</span></label>
         </div>
 
-        {# Add more general settings here as they are defined in GeneralSettingsForm #}
-        {# Example:
         <div class="form-control w-full max-w-md">
-            {{ form.some_other_setting.label(class="label") }}
-            {{ form.some_other_setting(class="input input-bordered " + ("input-error" if form.some_other_setting.errors else "")) }}
-            {% if form.some_other_setting.errors %}
-                <label class="label"><span class="label-text-alt text-error">{{ form.some_other_setting.errors[0] }}</span></label>
+            {{ form.app_base_url.label(class="label required") }}
+            {{ form.app_base_url(class="input input-bordered " + ("input-error" if form.app_base_url.errors else ""), placeholder="https://plex.example.com") }}
+            {% if form.app_base_url.errors %}
+                {% for error in form.app_base_url.errors %}
+                <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+                {% endfor %}
+            {% else %}
+                 <label class="label"><span class="label-text-alt whitespace-normal">{{ form.app_base_url.description }}</span></label>
             {% endif %}
         </div>
-        #}
 
         <div class="form-control mt-8">
             {{ form.submit(class="btn btn-primary") }}

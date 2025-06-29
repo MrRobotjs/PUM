@@ -160,9 +160,9 @@ class User(db.Model):
     def get_avatar(self, fallback='/static/img/default_avatar.png'): return self.plex_thumb_url or fallback
 
 # (Invite, InviteUsage, HistoryLog models as before - no immediate changes for bot setup yet)
-class Invite(db.Model): # ... (as before)
+class Invite(db.Model):
     __tablename__ = 'invites'; id = db.Column(db.Integer, primary_key=True)
-    token = db.Column(db.String(64), unique=True, nullable=False, index=True, default=lambda: secrets.token_urlsafe(32))
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True, default=lambda: secrets.token_urlsafe(8))
     custom_path = db.Column(db.String(100), unique=True, nullable=True, index=True); expires_at = db.Column(db.DateTime, nullable=True)
     max_uses = db.Column(db.Integer, nullable=True); current_uses = db.Column(db.Integer, default=0, nullable=False) # Added nullable=False
     grant_library_ids = db.Column(MutableList.as_mutable(JSONEncodedDict), default=list)
@@ -172,6 +172,10 @@ class Invite(db.Model): # ... (as before)
     is_active = db.Column(db.Boolean, default=True, nullable=False, index=True); redeemed_users = db.relationship('User', back_populates='invite') # Added nullable=False
     invite_usages = db.relationship('InviteUsage', back_populates='invite', cascade="all, delete-orphan")
     membership_duration_days = db.Column(db.Integer, nullable=True) # Duration in days set at invite creation
+    force_discord_auth = db.Column(db.Boolean, nullable=True)
+    force_guild_membership = db.Column(db.Boolean, nullable=True)
+    grant_purge_whitelist = db.Column(db.Boolean, nullable=True, default=False)
+    grant_bot_whitelist = db.Column(db.Boolean, nullable=True, default=False)
     def __repr__(self): return f'<Invite {self.custom_path or self.token}>'
     @property
     def is_expired(self): return self.expires_at and datetime.utcnow() > self.expires_at
@@ -181,7 +185,7 @@ class Invite(db.Model): # ... (as before)
     def is_usable(self): return self.is_active and not self.is_expired and not self.has_reached_max_uses
     def get_full_url(self, app_base_url):
         if not app_base_url: return "#INVITE_URL_NOT_CONFIGURED"
-        path_part = self.custom_path if self.custom_path else f"token/{self.token}"
+        path_part = self.custom_path if self.custom_path else self.token
         return f"{app_base_url.rstrip('/')}/invite/{path_part}"
 
 class InviteUsage(db.Model): # ... (as before)

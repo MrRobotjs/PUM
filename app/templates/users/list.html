@@ -161,63 +161,16 @@
         </button>
     </div>
 
+    {# The user list will be loaded into this container by HTMX. This container is STABLE. #}
     <div id="user-list-container">
-        {% if users and users.items %}
-        {% if current_view == 'table' %}
-        {% include 'users/_users_table.html' with context %} {# Pass full context to partials #}
-        {% else %}
-        {% include 'users/_users_cards.html' with context %} {# Pass full context to partials #}
-        {% endif %}
-
-        <!-- Pagination -->
-        {% if users.pages > 1 %}
-        <div class="join my-8 flex justify-center">
-            {# Previous Page Link #}
-            {% set prev_link_args = request.args.to_dict() %}{% set _ = prev_link_args.update({'page': users.prev_num})
-            %}
-            <a href="{{ url_for(request.endpoint, **prev_link_args) if users.has_prev else '#' }}"
-                class="join-item btn {{ 'btn-disabled' if not users.has_prev else '' }}"><i
-                    class="fa-solid fa-arrow-left"></i></a>
-
-            {# Page Number Links #}
-            {% for page_num in users.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=3) %} {#
-            Adjusted iter_pages for better look #}
-            {% if page_num %}
-            {% set page_link_args = request.args.to_dict() %}{% set _ = page_link_args.update({'page': page_num}) %}
-            {% if users.page == page_num %}
-            <button class="join-item btn btn-primary btn-active">{{ page_num }}</button>
-            {% else %}
-            <a href="{{ url_for(request.endpoint, **page_link_args) }}" class="join-item btn">{{ page_num }}</a>
-            {% endif %}
-            {% else %}
-            <button class="join-item btn btn-disabled">...</button>
-            {% endif %}
-            {% endfor %}
-
-            {# Next Page Link #}
-            {% set next_link_args = request.args.to_dict() %}{% set _ = next_link_args.update({'page': users.next_num})
-            %}
-            <a href="{{ url_for(request.endpoint, **next_link_args) if users.has_next else '#' }}"
-                class="join-item btn {{ 'btn-disabled' if not users.has_next else '' }}"><i
-                    class="fa-solid fa-arrow-right"></i></a>
+        <!-- The content from _users_list_content.html will be swapped in here -->
+        <!-- We use HTMX to fetch and render the initial state too -->
+        <div hx-get="{{ url_for('users.list_users', **request.args.to_dict()) }}" hx-trigger="load" hx-swap="innerHTML">
+            <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading users...</p></div>
         </div>
-        {% endif %}
-        {% else %}
-        <div class="text-center py-10 bg-base-200 rounded-lg shadow">
-            <i class="fa-solid fa-users-slash fa-3x text-base-content/30 mb-4"></i>
-            <p class="text-xl text-base-content/70">No users found matching your criteria.</p>
-            {% if request.args.get('search') or request.args.get('filter_type') or request.args.get('sort_by') !=
-            'username_asc' or request.args.get('per_page') %}
-            <p class="mt-2 text-sm">Try adjusting your filters or search term.</p>
-            <a href="{{ url_for('users.list_users', view=current_view) }}" class="btn btn-sm btn-outline mt-4">Clear
-                Filters</a>
-            {% else %}
-            <p class="mt-2 text-sm">Consider syncing with Plex to populate the user list.</p>
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
 </div>
+
 <!-- Mass Edit Modal -->
 <dialog id="mass_edit_modal" class="modal modal-bottom sm:modal-middle">
     <div class="modal-box max-w-2xl">
@@ -226,7 +179,8 @@
         <form id="massEditForm" method="POST"
             hx-post="{{ url_for('users.mass_edit_users', **request.args.to_dict(flat=False)) }}" {# Pass current query
             args to preserve filters on refresh #} hx-target="#user-list-container" hx-swap="innerHTML"
-            hx-indicator="#mass_edit_loader">
+            hx-indicator="#mass_edit_loader"
+            hx-on::after-request="if (event.detail.successful) { mass_edit_modal.close(); }">
             {{ mass_edit_form.hidden_tag() }}
             {{ mass_edit_form.user_ids(id="mass_edit_user_ids") }}
             <div class="form-control mb-4">
@@ -305,157 +259,113 @@
 {% block scripts %}
 {{ super() }}
 <script>
-    // --- Define helper functions in a broader scope ---
-    const selectedUserIds = new Set(); // Global for this page's script
+    document.addEventListener('DOMContentLoaded', function () {
+        /****************************************************************************
+         * REFACTORED USER SELECTION LOGIC USING EVENT DELEGATION
+         * This is more efficient as it uses a single listener on the parent
+         * container and works automatically for content loaded via HTMX.
+         ****************************************************************************/
 
-    function updateMassEditButtonVisibilityAndCount() {
+        const selectedUserIds = new Set();
+        const userListContainer = document.getElementById('user-list-container');
         const massEditContainer = document.getElementById('mass-edit-container');
         const selectedUsersCountSpan = document.getElementById('selected-users-count');
         const massEditUserIdsInput = document.getElementById('mass_edit_user_ids');
 
-        if (!selectedUsersCountSpan || !massEditUserIdsInput || !massEditContainer) {
-            // console.warn("Mass edit UI elements not all found for update.");
-            return;
+        // Function to update the mass edit button's visibility and user count
+        function updateMassEditUI() {
+            if (!massEditContainer || !selectedUsersCountSpan || !massEditUserIdsInput) return;
+            const count = selectedUserIds.size;
+            selectedUsersCountSpan.textContent = count;
+            massEditUserIdsInput.value = Array.from(selectedUserIds).join(',');
+            massEditContainer.classList.toggle('hidden', count === 0);
         }
-        const count = selectedUserIds.size;
-        selectedUsersCountSpan.textContent = count;
-        massEditUserIdsInput.value = Array.from(selectedUserIds).join(',');
-        massEditContainer.classList.toggle('hidden', count === 0);
-    }
 
-    function handleUserCheckboxChange(checkboxElement) {
-        const userId = checkboxElement.dataset.userId;
-        if (checkboxElement.checked) {
-            selectedUserIds.add(userId);
-        } else {
-            selectedUserIds.delete(userId);
-        }
-        updateMassEditButtonVisibilityAndCount();
-    }
+        // --- Event Delegation Listeners on the main container ---
 
-    function handleCardClick(event) {
-        if (event.target.closest('.card-action-button, .user-select-checkbox, a[href], button:not(.user-card-clickable)')) {
-            return;
-        }
-        const card = event.currentTarget;
-        const userId = card.dataset.userIdForCard;
-        let checkbox = card.querySelector(`.user-select-checkbox[data-user-id="${userId}"]`); // More robust selector within the card
-        
-        if (checkbox) {
-            checkbox.checked = !checkbox.checked;
-            const changeEvent = new Event('change', { bubbles: true });
-            checkbox.dispatchEvent(changeEvent);
-        } else {
-            console.warn("Could not find checkbox in card for user ID:", userId);
-        }
-    }
+        if (userListContainer) {
+            // 1. Delegated CHANGE listener for all checkboxes
+            userListContainer.addEventListener('change', function(event) {
+                const target = event.target;
 
-    function handleSelectAllTableChange() { // 'this' refers to the selectAllCheckboxTable
-        const isChecked = this.checked;
-        const userListContainer = document.getElementById('user-list-container');
-        if (!userListContainer) return;
-
-        userListContainer.querySelectorAll('.user-select-checkbox').forEach(checkbox => {
-            if (checkbox.closest('table') && checkbox.offsetParent !== null) { 
-                const userId = checkbox.dataset.userId;
-                if (isChecked) {
-                    selectedUserIds.add(userId);
-                } else {
-                    selectedUserIds.delete(userId);
+                // Handle individual user checkbox clicks
+                if (target.matches('.user-select-checkbox') && target.dataset.userId) {
+                    const userId = target.dataset.userId;
+                    if (target.checked) {
+                        selectedUserIds.add(userId);
+                    } else {
+                        selectedUserIds.delete(userId);
+                    }
+                    updateMassEditUI();
                 }
-                checkbox.checked = isChecked;
-            }
-        });
-        updateMassEditButtonVisibilityAndCount();
-    }
 
-    function initializeTableSelectAll() {
-        const selectAllTableCheckbox = document.getElementById('select_all_users_table');
-        if (selectAllTableCheckbox) {
-            selectAllTableCheckbox.removeEventListener('change', handleSelectAllTableChange);
-            selectAllTableCheckbox.addEventListener('change', handleSelectAllTableChange);
-        }
-    }
-
-    function attachEventListenersToUserElements() {
-        const userListContainer = document.getElementById('user-list-container');
-        if (!userListContainer) {
-            // console.warn("attachEventListenersToUserElements: user-list-container not found.");
-            return;
-        }
-        // console.log("attachEventListenersToUserElements: Attaching listeners...");
-
-        userListContainer.querySelectorAll('.user-select-checkbox').forEach(checkbox => {
-            checkbox.removeEventListener('change', (e) => handleUserCheckboxChange(e.target));
-            checkbox.addEventListener('change', (e) => handleUserCheckboxChange(e.target));
-        });
-
-        userListContainer.querySelectorAll('.user-card-clickable').forEach(card => {
-            card.removeEventListener('click', handleCardClick);
-            card.addEventListener('click', handleCardClick);
-        });
-    }
-
-    function initializeShowMoreLibraries() {
-        const userListContainer = document.getElementById('user-list-container');
-        if (!userListContainer) return;
-
-        function toggleExtraLibrariesForUser(event) {
-            const button = event.currentTarget;
-            const userId = button.dataset.targetUserId;
-            const initiallyVisibleCount = parseInt(button.dataset.visibleCount) || 3;
-            // Query within userListContainer to ensure correct scope after HTMX swaps
-            const allBadgesForThisUser = userListContainer.querySelectorAll(`.library-badge-for-user-${userId}.extra-library-badge`);
-            
-            if (allBadgesForThisUser.length === 0) { // Only consider "extra" badges
-                button.style.display = 'none'; // No extra badges to toggle
-                return;
-            }
-
-            let currentlyShownExtraCount = 0;
-            allBadgesForThisUser.forEach(badge => {
-                badge.classList.toggle('hidden');
-                if (!badge.classList.contains('hidden')) {
-                    currentlyShownExtraCount++;
+                // Handle "Select All" checkbox in table view
+                if (target.matches('#select_all_users_table')) {
+                    const isChecked = target.checked;
+                    userListContainer.querySelectorAll('.user-select-checkbox').forEach(cb => {
+                        if (cb.id !== 'select_all_users_table') {
+                            const userId = cb.dataset.userId;
+                            cb.checked = isChecked;
+                            if (isChecked) {
+                                selectedUserIds.add(userId);
+                            } else {
+                                selectedUserIds.delete(userId);
+                            }
+                        }
+                    });
+                    updateMassEditUI();
                 }
             });
-            
-            const totalExtraBadges = allBadgesForThisUser.length;
-            if (currentlyShownExtraCount === 0) { // All extras are now hidden
-                button.innerHTML = `+ ${totalExtraBadges} more`;
-            } else { // Some or all extras are shown
-                button.innerHTML = `- Show less`;
-            }
-        }
-        
-        userListContainer.querySelectorAll('.show-more-libs-button').forEach(button => {
-            button.removeEventListener('click', toggleExtraLibrariesForUser); 
-            button.addEventListener('click', toggleExtraLibrariesForUser);
-        });
-    }
-    // --- End of helper function definitions ---
 
+            // 2. Delegated CLICK listener for user cards
+            userListContainer.addEventListener('click', function(event) {
+                const card = event.target.closest('.user-card-clickable');
+                if (!card) return; // Exit if the click was not on a card
 
-    // Make page-specific re-initialization function globally available for app.js
-    window.reinitializeUserListFeatures = function() {
-        console.log("JS Users List: reinitializeUserListFeatures() called");
-        attachEventListenersToUserElements();
-        initializeTableSelectAll();
-        initializeShowMoreLibraries();    
-        
-        selectedUserIds.clear(); 
-        const userListContainer = document.getElementById('user-list-container');
-        if(userListContainer){
-            userListContainer.querySelectorAll('.user-select-checkbox:checked').forEach(checkbox => {
-                selectedUserIds.add(checkbox.dataset.userId);
+                // Ignore clicks on buttons, links, or the checkbox itself inside the card
+                if (event.target.closest('a, button, .user-select-checkbox, .card-action-button')) {
+                    return;
+                }
+
+                // This is a valid click on the card body
+                const checkbox = card.querySelector('.user-select-checkbox');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    // Dispatch a 'change' event so the listener above can handle the logic
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+
+            // 3. Delegated CLICK listener for expanding libraries in table view
+            userListContainer.addEventListener('click', function(event) {
+                const button = event.target.closest('.show-more-libs-button');
+                if (!button) return;
+
+                const userId = button.dataset.targetUserId;
+                const allBadgesForThisUser = userListContainer.querySelectorAll(`.library-badge-for-user-${userId}.extra-library-badge`);
+                
+                let areAnyHidden = Array.from(allBadgesForThisUser).some(badge => badge.classList.contains('hidden'));
+
+                allBadgesForThisUser.forEach(badge => {
+                    badge.classList.toggle('hidden', !areAnyHidden);
+                });
+
+                button.innerHTML = areAnyHidden ? `- Show less` : `+ ${allBadgesForThisUser.length} more`;
             });
         }
-        updateMassEditButtonVisibilityAndCount(); 
-    };
+        
+        // --- HTMX Event Listener for list updates ---
+        // This is now much simpler. We only need to clear the selection.
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if (event.detail.target.id === 'user-list-container') {
+                console.log("User list was updated. Clearing current selection set.");
+                selectedUserIds.clear();
+                updateMassEditUI();
+            }
+        });
 
-    document.addEventListener('DOMContentLoaded', function () {
-        console.log("JS Users List: DOMContentLoaded fired.");
-        // --- Purge Modal Logic ---
+
+        // --- Purge Modal Logic (Remains the same) ---
         const confirmPurgeModal = document.getElementById('confirm_purge_modal');
         if (confirmPurgeModal) {
             confirmPurgeModal.addEventListener('close', () => {
@@ -466,7 +376,7 @@
             });
         }
 
-        // --- Mass Edit Modal Specific Logic ---
+        // --- Mass Edit Modal Specific Logic (Remains the same) ---
         const massEditActionSelect = document.getElementById('mass_edit_action_select');
         const librariesSection = document.getElementById('mass_edit_libraries_section');
         const deleteConfirmSection = document.getElementById('mass_edit_delete_confirmation_section');
@@ -501,10 +411,6 @@
         const massEditFormEl = document.getElementById('massEditForm');
         if (massEditFormEl) {
             massEditFormEl.addEventListener('htmx:afterSwap', function (evt) { 
-                // console.log("JS Users List: htmx:afterSwap on massEditForm (user list reloaded).");
-                if (typeof window.reinitializeUserListFeatures === 'function') {
-                    window.reinitializeUserListFeatures(); 
-                }
                 const modal = document.getElementById('mass_edit_modal');
                 if (modal && typeof modal.close === 'function' && evt.detail.successful) {
                     modal.close();
@@ -512,41 +418,14 @@
             });
         }
 
-        // --- Listener for custom event to open the SYNC RESULTS MODAL ---
+        // --- Sync Results Modal Listener (Remains the same) ---
         document.body.addEventListener('openSyncResultsModal', function(evt) {
-            console.log("JS Users List: openSyncResultsModal event received. Detail:", evt.detail);
             const modal = document.getElementById('sync_results_modal');
-            console.log("JS Users List: Modal element for sync results:", modal);
-
-            if (modal) {
-                console.log("JS Users List: typeof modal.showModal:", typeof modal.showModal);
-                if (typeof modal.showModal === 'function') {
-                    console.log("JS Users List: Attempting to call modal.showModal() for sync_results_modal");
-                    try {
-                        modal.showModal();
-                        console.log("JS Users List: sync_results_modal.showModal() called successfully.");
-                    } catch (e) {
-                        console.error("JS Users List: Error calling sync_results_modal.showModal():", e);
-                    }
-                } else {
-                    console.error("JS Users List: sync_results_modal.showModal is not a function. Modal HTML:", modal.outerHTML.substring(0,200) + "...");
-                    if (typeof window.showToast === 'function') {
-                         window.showToast('UI Error: Could not display sync results modal.', 'error');
-                    }
-                }
-            } else {
-                console.error("JS Users List: Sync results modal element (#sync_results_modal) not found in DOM.");
-                if (typeof window.showToast === 'function') {
-                     window.showToast('UI Error: Could not find sync results modal element.', 'error');
-                }
+            if (modal && typeof modal.showModal === 'function') {
+                modal.showModal();
             }
         });
-        // --- End listener for sync results modal ---
 
-        // --- Initial Setup on Page Load ---
-        if (typeof window.reinitializeUserListFeatures === 'function') {
-            window.reinitializeUserListFeatures(); 
-        }
     });
 </script>
 {% endblock %}

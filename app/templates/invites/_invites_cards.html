@@ -1,0 +1,84 @@
+{# File: app/templates/invites/_invites_cards.html #}
+{# Expects invites (pagination) and available_libraries in context #}
+{% if invites and invites.items %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    {% for invite in invites.items %}
+    <div class="card bg-base-200 shadow-lg hover:shadow-xl transition-shadow duration-200 ease-in-out relative group" id="invite-row-{{ invite.id }}">
+        <div class="card-body p-4">
+            <div class="mb-3">
+                <div class="font-semibold text-primary truncate" title="Full URL: {{ invite.get_full_url(g.app_base_url) }}">
+                    <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank" class="link link-hover">
+                        {{ invite.custom_path or invite.token[:12] }}
+                    </a>
+                </div>
+            </div>
+
+            <div class="text-xs space-y-1 mb-3">
+                <p><i class="fa-solid fa-calendar-plus fa-fw mr-1 text-info"></i> Created: {{ invite.created_at | time_ago if invite.created_at else 'N/A' }}</p>
+                <p><i class="fa-solid fa-clock fa-fw mr-1 {{ 'text-error' if invite.is_expired else 'text-success' }}"></i> Expires: {{ invite.expires_at | time_ago if invite.expires_at else 'Never' }}</p>
+                <p><i class="fa-solid fa-users-line fa-fw mr-1 text-info"></i> Uses: {{ invite.current_uses }} / {{ invite.max_uses or '∞' }}</p>
+            </div>
+            
+            <div class="mb-3">
+                <p class="text-xs font-semibold mb-1">Access:</p>
+                <div class="flex flex-wrap gap-1">
+                    {% set granted_ids = invite.grant_library_ids or [] %}
+                    {% if granted_ids|length == 0 %}
+                        <span class="badge badge-sm badge-outline badge-success">All Libraries</span>
+                    {% else %}
+                        <span class="badge badge-sm badge-outline">{{ granted_ids|length }} Specific Libraries</span>
+                    {% endif %}
+                    
+                    {% if invite.allow_downloads %}
+                        <span class="badge badge-sm badge-outline badge-accent">Downloads</span>
+                    {% endif %}
+                    
+                    {% if invite.membership_duration_days %}
+                        <span class="badge badge-sm badge-outline badge-warning" title="Membership Duration">{{ invite.membership_duration_days }}-day access</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <p class="text-xs font-semibold mb-1">Status:</p>
+                 <div class="flex flex-wrap gap-1">
+                    {% if not invite.is_active %} <span class="badge badge-error">Deactivated</span>
+                    {% elif invite.is_expired %} <span class="badge badge-warning">Expired</span>
+                    {% elif invite.has_reached_max_uses %} <span class="badge badge-warning">Max Uses</span>
+                    {% else %} <span class="badge badge-success badge-xs">Active</span>
+                    {% endif %}
+                    {# Override indicators from table view #}
+                    {% if invite.force_discord_auth is not none %}<span class="badge badge-info badge-xs" title="Auth Rule Set">Auth Rule</span>{% endif %}
+                    {% if invite.force_guild_membership is not none %}<span class="badge badge-warning badge-xs" title="Guild Rule Set">Guild Rule</span>{% endif %}
+                </div>
+            </div>
+            
+            <div class="card-actions justify-end mt-auto pt-3 border-t border-base-300/90">
+                <button class="btn btn-xs btn-ghost text-primary hover:bg-primary/10" title="Edit Invite"
+                        hx-get="{{ url_for('invites.get_edit_invite_form', invite_id=invite.id) }}"
+                        hx-target="#edit_invite_modal_content_div"
+                        hx-swap="innerHTML"
+                        onclick="edit_invite_modal.showModal()">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button class="btn btn-xs btn-ghost text-info hover:bg-info/10" title="View Usages" hx-get="{{ url_for('invites.view_invite_usages', invite_id=invite.id) }}" hx-target="#invite_usages_modal_content_div" hx-swap="innerHTML" onclick="invite_usages_modal.showModal(); document.getElementById('invite_usages_modal_content_div').innerHTML = '<div class=text-center p-8><span class=loading loading-lg loading-spinner></span></div>';">
+                    <i class="fa-solid fa-eye"></i>
+                </button>
+                <button class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Delete Invite" hx-confirm="Are you sure you want to delete this invite?" hx-delete="{{ url_for('invites.delete_invite', invite_id=invite.id) }}" hx-target="#invite-row-{{ invite.id }}" hx-swap="outerHTML swap:0.5s" hx-indicator="this">
+                    <i class="fa-solid fa-trash-can htmx-indicator-hide"></i>
+                    <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+    <div class="text-center py-10 bg-base-200 rounded-lg shadow">
+        <i class="fa-solid fa-ticket-slash fa-3x text-base-content/30 mb-4"></i>
+        <p class="text-xl text-base-content/70">No invites found matching your criteria.</p>
+        {% if request.args.get('filter', 'all') != 'all' or request.args.get('search_path') %}
+            <a href="{{ url_for('invites.list_invites') }}" class="btn btn-sm btn-outline mt-4">Clear Filters</a>
+        {% endif %}
+    </div>
+{% endif %}

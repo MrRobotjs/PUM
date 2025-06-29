@@ -2,9 +2,9 @@
 from flask import Blueprint, request, current_app, render_template, Response, abort, jsonify
 from flask_login import login_required, current_user
 import requests
-from app.models import EventType
+from app.models import EventType, Invite 
 from app.utils.helpers import log_event
-from app.extensions import csrf
+from app.extensions import csrf, db
 from app.services import plex_service # Ensure plex_service is imported
 
 bp = Blueprint('api', __name__)
@@ -13,7 +13,6 @@ bp = Blueprint('api', __name__)
 @login_required  
 @csrf.exempt 
 def test_plex_connection():
-    # ... same logic as before ...
     current_app.logger.info(f"API Test Connection: current_user.is_authenticated = {current_user.is_authenticated}")
     url = request.form.get('plex_url'); token = request.form.get('plex_token')
     timeout = current_app.config.get('PLEX_TIMEOUT', 10); message = ""; status = "failure"; html_response = "" 
@@ -129,3 +128,33 @@ def terminate_plex_session_route():
         current_app.logger.error(f"API terminate_plex_session: Exception: {e}", exc_info=True)
         # Provide the error message from the service layer if available
         return jsonify(success=False, error=str(e)), 500
+    
+@bp.route('/check_guild_invites', methods=['GET'])
+@login_required
+@csrf.exempt
+def check_guild_invites():
+    """
+    Checks for active, usable invites that don't have a specific override
+    to disable guild membership checking. These are the invites that would be
+    affected if the global 'Require Guild Membership' setting is turned off.
+    """
+    now = db.func.now()
+    affected_invites = Invite.query.filter(
+        Invite.is_active == True,
+        (Invite.expires_at == None) | (Invite.expires_at > now),
+        (Invite.max_uses == None) | (Invite.current_uses < Invite.max_uses),
+        Invite.force_guild_membership.is_(None)
+    ).all()
+
+    if not affected_invites:
+        return jsonify(affected=False, invites=[])
+
+    invites_data = [
+        {
+            "id": invite.id,
+            "path": invite.custom_path or invite.token,
+            "created_at": invite.created_at.isoformat()
+        } for invite in affected_invites
+    ]
+    
+    return jsonify(affected=True, invites=invites_data)

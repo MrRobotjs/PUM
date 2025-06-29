@@ -29,11 +29,11 @@ class PlexConfigForm(FlaskForm):
     connection_tested_successfully = HiddenField(default="false")
     submit = SubmitField('Save Plex Configuration')
 
-class AppBaseUrlForm(FlaskForm):
+# ... The old AppBaseUrlForm is now redundant, but we can leave it for now ...
+class AppBaseUrlForm(FlaskForm): # This form is no longer used on a dedicated page
     app_base_url = StringField('Application Base URL', validators=[DataRequired(message="This URL is required."), URL(message="Invalid URL. Must be full public URL (e.g., https://pum.example.com).")], description="Full public URL where this application is accessible.")
     submit = SubmitField('Save Application URL')
 
-# --- Updated DiscordConfigForm ---
 class DiscordConfigForm(FlaskForm):
     # --- Section 1: OAuth Settings & Invite Page Options ---
     enable_discord_oauth = BooleanField(
@@ -77,7 +77,6 @@ class DiscordConfigForm(FlaskForm):
         validators=[Optional(), URL(message="Must be a valid URL if provided.")],
         description="A general, non-expiring public invite link to your Discord server. Shown on Plex invite page if guild membership is required and user is not a member."
     )
-
     # --- Section 2: Bot Feature Settings ---
     enable_discord_bot = BooleanField(
         'Enable Discord Bot Features', 
@@ -104,79 +103,38 @@ class DiscordConfigForm(FlaskForm):
         validators=[Optional(), Regexp(r'^\d{17,20}$', message="Must be a valid Discord Channel ID.")],
         description="If provided, the bot will log significant actions to this channel."
     )
-    # Server Invite URL is now primarily associated with "Require Guild Membership" in Section 1.
-    # It could also be used by the bot, but its primary UI placement is with the OAuth invite options.
     discord_bot_whitelist_sharers = BooleanField(
         'Bot: Whitelist Users Who Share Plex Servers Back?', 
         default=False,
         description="If checked, users detected as sharing their own Plex server(s) back will be immune to automated removal by the Discord Bot."
     )
-    
     submit = SubmitField('Save Discord Settings')
-
-    def validate(self, extra_validators=None):
-        if not super().validate(extra_validators):
-            return False 
-
+    def validate(self, extra_validators=None): # ... (no change to validation logic)
+        if not super().validate(extra_validators): return False
         is_oauth_enabled_form = self.enable_discord_oauth.data
         is_bot_enabled_form = self.enable_discord_bot.data
         is_require_guild_form = self.discord_require_guild_membership.data
-
-        # Determine if OAuth functionality is truly needed/active based on toggles
         oauth_functionality_should_be_active = is_oauth_enabled_form or is_bot_enabled_form or is_require_guild_form
-        
-        # Rule 1: If Bot is ON, OAuth must be ON.
-        if is_bot_enabled_form and not is_oauth_enabled_form:
-            self.enable_discord_oauth.errors.append("Enable 'Discord OAuth' (Section 1) if 'Bot Features' (Section 2) are enabled.")
-        
-        # Rule 2: If "Require Guild Membership" is ON, OAuth must be ON.
-        if is_require_guild_form and not is_oauth_enabled_form:
-            self.enable_discord_oauth.errors.append("Enable 'Discord OAuth' (Section 1) if 'Require Discord Server Membership' is checked.")
-
-        # Rule 3: If "Make Discord Login Mandatory on Invite" is ON, OAuth must be ON.
-        if self.discord_bot_require_sso_on_invite.data and not is_oauth_enabled_form:
-            self.enable_discord_oauth.errors.append("Enable 'Discord OAuth' (Section 1) if 'Make Discord Login Mandatory' is checked.")
-
-        # Validations for fields that are dependent on OAuth functionality being active
+        if is_bot_enabled_form and not is_oauth_enabled_form: self.enable_discord_oauth.errors.append("Enable 'Discord OAuth' (Section 1) if 'Bot Features' (Section 2) are enabled.")
+        if is_require_guild_form and not is_oauth_enabled_form: self.enable_discord_oauth.errors.append("Enable 'Discord OAuth' (Section 1) if 'Require Discord Server Membership' is checked.")
+        if self.discord_bot_require_sso_on_invite.data and not is_oauth_enabled_form: self.enable_discord_oauth.errors.append("Enable 'Discord OAuth' (Section 1) if 'Make Discord Login Mandatory' is checked.")
         if oauth_functionality_should_be_active:
-            if not self.discord_client_id.data and not Setting.get('DISCORD_CLIENT_ID'):
-                 self.discord_client_id.errors.append("OAuth Client ID is required if any Discord linking/bot feature is enabled and no ID is currently saved.")
-            if not self.discord_client_secret.data and not Setting.get('DISCORD_CLIENT_SECRET'):
-                 self.discord_client_secret.errors.append("OAuth Client Secret is required if any Discord linking/bot feature is enabled and no secret is currently saved.")
-            if not self.discord_oauth_auth_url.data and not Setting.get('DISCORD_OAUTH_AUTH_URL'):
-                self.discord_oauth_auth_url.errors.append("Discord OAuth Authorization URL is required if any Discord linking/bot feature is enabled and no URL is currently saved.")
-            elif self.discord_oauth_auth_url.data: # Validate scopes if URL is provided
+            if not self.discord_client_id.data and not Setting.get('DISCORD_CLIENT_ID'): self.discord_client_id.errors.append("OAuth Client ID is required if any Discord linking/bot feature is enabled and no ID is currently saved.")
+            if not self.discord_client_secret.data and not Setting.get('DISCORD_CLIENT_SECRET'): self.discord_client_secret.errors.append("OAuth Client Secret is required if any Discord linking/bot feature is enabled and no secret is currently saved.")
+            if not self.discord_oauth_auth_url.data and not Setting.get('DISCORD_OAUTH_AUTH_URL'): self.discord_oauth_auth_url.errors.append("Discord OAuth Authorization URL is required if any Discord linking/bot feature is enabled and no URL is currently saved.")
+            elif self.discord_oauth_auth_url.data:
                 try:
-                    parsed_url = urllib.parse.urlparse(self.discord_oauth_auth_url.data.lower())
-                    query_params = urllib.parse.parse_qs(parsed_url.query)
-                    scopes_in_url = query_params.get('scope', [''])[0].split()
-                    required_scopes = ["identify", "email", "guilds"]
+                    parsed_url = urllib.parse.urlparse(self.discord_oauth_auth_url.data.lower()); query_params = urllib.parse.parse_qs(parsed_url.query)
+                    scopes_in_url = query_params.get('scope', [''])[0].split(); required_scopes = ["identify", "email", "guilds"]
                     missing_scopes = [s for s in required_scopes if s not in scopes_in_url]
-                    if missing_scopes:
-                        self.discord_oauth_auth_url.errors.append(f"OAuth URL is missing required scope(s): {', '.join(missing_scopes)}. Must include 'identify', 'email', and 'guilds'.")
-                except Exception:
-                    self.discord_oauth_auth_url.errors.append("Could not parse scopes from the OAuth Authorization URL. Ensure it's well-formed.")
-
-        # Validations for Guild ID based on Bot or Require Guild Membership
+                    if missing_scopes: self.discord_oauth_auth_url.errors.append(f"OAuth URL is missing required scope(s): {', '.join(missing_scopes)}. Must include 'identify', 'email', and 'guilds'.")
+                except Exception: self.discord_oauth_auth_url.errors.append("Could not parse scopes from the OAuth Authorization URL. Ensure it's well-formed.")
         if (is_bot_enabled_form or is_require_guild_form) and oauth_functionality_should_be_active:
-            if not self.discord_guild_id.data and not Setting.get('DISCORD_GUILD_ID'):
-                self.discord_guild_id.errors.append("'Your Discord Server ID' is required if 'Bot Features' or 'Require Guild Membership' is enabled (and OAuth is active) and no ID is currently saved.")
-        
-        # If "Require Guild Membership" is checked, a server invite URL is good practice but not strictly enforced here
-        # (can be a runtime warning on the invite page if missing).
-
-        # Validations specific to Bot Features being enabled
+            if not self.discord_guild_id.data and not Setting.get('DISCORD_GUILD_ID'): self.discord_guild_id.errors.append("'Your Discord Server ID' is required if 'Bot Features' or 'Require Guild Membership' is enabled (and OAuth is active) and no ID is currently saved.")
         if is_bot_enabled_form:
-            required_bot_fields_when_active = {
-                'Bot Token': (self.discord_bot_token, 'DISCORD_BOT_TOKEN'),
-                # Guild ID already covered above
-                'Monitored Role ID': (self.discord_monitored_role_id, 'DISCORD_MONITORED_ROLE_ID'),
-                'Thread Channel ID': (self.discord_thread_channel_id, 'DISCORD_THREAD_CHANNEL_ID')
-            }
+            required_bot_fields_when_active = {'Bot Token': (self.discord_bot_token, 'DISCORD_BOT_TOKEN'), 'Monitored Role ID': (self.discord_monitored_role_id, 'DISCORD_MONITORED_ROLE_ID'), 'Thread Channel ID': (self.discord_thread_channel_id, 'DISCORD_THREAD_CHANNEL_ID')}
             for field_label, (field_instance, setting_key) in required_bot_fields_when_active.items():
-                if not field_instance.data and not Setting.get(setting_key):
-                    field_instance.errors.append(f"{field_label} is required when Discord Bot is enabled and no value is currently saved.")
-        
+                if not field_instance.data and not Setting.get(setting_key): field_instance.errors.append(f"{field_label} is required when Discord Bot is enabled and no value is currently saved.")
         has_errors = any(field.errors for field_name, field in self._fields.items())
         return not has_errors
 
@@ -226,26 +184,74 @@ class MassUserEditForm(FlaskForm): # As updated
     submit = SubmitField('Apply Changes')
 
 # --- InviteCreateForm ---
-class InviteCreateForm(FlaskForm): # As before
+class InviteCreateForm(FlaskForm):
     custom_path = StringField('Custom Invite Path (Optional)', validators=[Optional(), Length(min=3, max=100), Regexp(r'^[a-zA-Z0-9_-]*$', message="Letters, numbers, hyphens, underscores only.")], description="e.g., 'friends' -> /invite/friends")
     expires_in_days = IntegerField('Expires in (days)', validators=[Optional(), NumberRange(min=0)], default=0, description="0 for no expiry.")
     number_of_uses = IntegerField('Number of Uses', validators=[Optional(), NumberRange(min=0)], default=0, description="0 for unlimited uses.")
     libraries = SelectMultipleField('Grant Access to Libraries', coerce=str, validators=[Optional()], description="Default: all libraries.")
-    submit = SubmitField('Create Invite')
     allow_downloads = BooleanField('Enable Downloads (Allow Sync)', default=False, description="Allow the invited user to download/sync content from shared libraries.")
     membership_duration_days = IntegerField(
         'Membership Duration (days)', 
         validators=[Optional(), NumberRange(min=1, message="Must be at least 1 day, or leave blank for permanent access from this invite.")], 
-        default=None, # Explicitly None to allow placeholder to show
+        default=None,
         render_kw={"placeholder": "e.g., 30 or 365 (blank = permanent)"},
         description="Access duration for the user after accepting. Blank for permanent (until manually removed)."
     )
+    override_force_discord_auth = BooleanField(
+        "Override 'Make Discord Login Mandatory'",
+        default=False, # The route will set the default based on global settings
+        description="Override the global setting for requiring Discord login for this specific invite."
+    )
+    override_force_guild_membership = BooleanField(
+        "Override 'Require Discord Server Membership'",
+        default=False, # The route will set the default based on global settings
+        description="Override the global setting for requiring server membership for this specific invite."
+    )
+    grant_purge_whitelist = BooleanField(
+        'Whitelist user from Inactivity Purge',
+        default=False,
+        description="The created user will be automatically whitelisted from inactivity purges."
+    )
+    grant_bot_whitelist = BooleanField(
+        'Whitelist user from Discord Bot Actions',
+        default=False,
+        description="The created user will be immune to automated Discord Bot actions."
+    )
+    
+    submit = SubmitField('Create Invite')
     
 # --- GeneralSettingsForm, PlexSettingsForm ---
 class GeneralSettingsForm(FlaskForm): # As before
     app_name = StringField("Application Name", validators=[Optional(), Length(max=100)])
+    app_base_url = StringField(
+        'Application Base URL', 
+        validators=[DataRequired(message="This URL is required."), URL(message="Invalid URL. Must be full public URL (e.g., https://pum.example.com).")],
+        description="Full public URL where this application is accessible. Essential for generating correct invite and callback links."
+    )
     submit = SubmitField('Save General Settings')
 
+
+class InviteEditForm(FlaskForm):
+    # Note: custom_path is intentionally omitted as it should not be editable.
+    expires_in_days = IntegerField('Expires in (days)', validators=[Optional(), NumberRange(min=0)], default=0)
+    clear_expiry = BooleanField('Clear Expiration (Set to Never Expire)', default=False)
+    
+    number_of_uses = IntegerField('Number of Uses', validators=[Optional(), NumberRange(min=0)], default=0)
+    clear_max_uses = BooleanField('Clear Max Uses (Set to Unlimited)', default=False)
+    
+    membership_duration_days = IntegerField('Membership Duration (days)', validators=[Optional(), NumberRange(min=1)], default=None)
+    clear_membership_duration = BooleanField('Clear Membership Duration (Set to Permanent)', default=False)
+    
+    libraries = SelectMultipleField('Grant Access to Libraries', coerce=str, validators=[Optional()])
+    allow_downloads = BooleanField('Enable Downloads (Allow Sync)', default=False)
+    
+    override_force_discord_auth = BooleanField("Override 'Make Discord Login Mandatory'")
+    override_force_guild_membership = BooleanField("Override 'Require Discord Server Membership'")
+    grant_purge_whitelist = BooleanField('Whitelist user from Inactivity Purge')
+    grant_bot_whitelist = BooleanField('Whitelist user from Discord Bot Actions')
+    
+    submit = SubmitField('Save Changes')
+    
 class PlexSettingsForm(FlaskForm): # As before
     plex_url = StringField('Plex URL', validators=[DataRequired(), URL()])
     plex_token = StringField('Plex Token', validators=[DataRequired(), Length(min=19, max=24)])

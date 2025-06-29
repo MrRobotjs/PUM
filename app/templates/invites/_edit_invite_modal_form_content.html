@@ -1,0 +1,181 @@
+{# File: app/templates/invites/_edit_invite_modal_form_content.html #}
+{# Expects form (InviteEditForm), invite, and global_require_guild in context #}
+
+<h3 class="font-bold text-lg mb-4">
+    <i class="fa-solid fa-edit mr-2"></i>Edit Invite
+</h3> 
+<p class="text-sm text-base-content/80 mb-4 -mt-2">
+    Path:
+    <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank" class="link link-hover font-mono text-xs">
+        {{ invite.custom_path or invite.token }}
+    </a> (Path is not editable)
+</p>
+
+<form id="editInviteForm-{{ invite.id }}"
+      hx-post="{{ url_for('invites.update_invite', invite_id=invite.id) }}"
+      hx-target="#edit_invite_modal_content_div"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful && event.detail.xhr.status !== 422) { edit_invite_modal.close(); }"
+      hx-indicator="#edit_invite_loader_span">
+
+    {{ form.hidden_tag() }}
+
+    {# --- Expiration Fields --- #}
+    <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="form-control">
+            {{ form.expires_in_days.label(class="label text-sm") }}
+            {{ form.expires_in_days(class="input input-bordered " + ("input-error" if form.expires_in_days.errors else ""), type="number", min="0", id="edit_expires_in_days") }}
+        </div>
+        <div class="form-control justify-end pb-1">
+            <label class="label cursor-pointer justify-start">
+                {{ form.clear_expiry(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_expiry") }}
+                <span class="label-text text-sm">{{ form.clear_expiry.label.text }}</span>
+            </label>
+        </div>
+    </div>
+    
+    {# --- Uses Fields --- #}
+    <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="form-control">
+            {{ form.number_of_uses.label(class="label text-sm") }}
+            {{ form.number_of_uses(class="input input-bordered " + ("input-error" if form.number_of_uses.errors else ""), type="number", min="0", id="edit_number_of_uses") }}
+        </div>
+        <div class="form-control justify-end pb-1">
+            <label class="label cursor-pointer justify-start">
+                {{ form.clear_max_uses(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_max_uses") }}
+                <span class="label-text text-sm">{{ form.clear_max_uses.label.text }}</span>
+            </label>
+        </div>
+    </div>
+
+    {# --- Membership Fields --- #}
+    <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="form-control">
+            {{ form.membership_duration_days.label(class="label text-sm") }}
+            {{ form.membership_duration_days(class="input input-bordered " + ("input-error" if form.membership_duration_days.errors else ""), type="number", min="1", id="edit_membership_duration_days") }}
+        </div>
+         <div class="form-control justify-end pb-1">
+            <label class="label cursor-pointer justify-start">
+                {{ form.clear_membership_duration(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_membership_duration") }}
+                <span class="label-text text-sm">{{ form.clear_membership_duration.label.text }}</span>
+            </label>
+        </div>
+    </div>
+
+    {# --- Other Options in Details Element --- #}
+    <details class="collapse collapse-arrow bg-base-100/50 border border-base-300 rounded-md">
+        <summary class="collapse-title text-md font-medium">Libraries & Advanced Options</summary>
+        <div class="collapse-content space-y-4 pt-4">
+            
+            {# Library Selector #}
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text">{{ form.libraries.label.text }}</span>
+                </label>
+                <div class="max-h-60 overflow-y-auto p-2 border border-base-300 rounded-md bg-base-100/30 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                    {% for value, label in form.libraries.choices %}
+                        <label class="label cursor-pointer justify-start py-1">
+                            <input type="checkbox" name="{{ form.libraries.name }}" value="{{ value }}" class="checkbox checkbox-primary checkbox-sm mr-2" {% if form.libraries.data and value in form.libraries.data %}checked{% endif %}>
+                            <span class="label-text" title="{{ label }}">{{ label | truncate(30, True) }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# Downloads Toggle #}
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.allow_downloads(class="toggle toggle-accent mr-3") }}
+                    <span class="label-text font-medium">{{ form.allow_downloads.label.text }}</span>
+                </label>
+            </div>
+            
+            {# Discord Overrides #}
+            <div class="divider text-xs">Discord Overrides</div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.override_force_discord_auth(class="toggle toggle-info mr-3", id="edit_modal_override_sso") }}
+                    <span class="label-text font-medium">{{ form.override_force_discord_auth.label.text }}</span>
+                </label>
+            </div>
+            {% if global_require_guild %}
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.override_force_guild_membership(class="toggle toggle-warning mr-3", id="edit_modal_override_guild") }}
+                    <span class="label-text font-medium">{{ form.override_force_guild_membership.label.text }}</span>
+                </label>
+            </div>
+            {% endif %}
+
+            {# Whitelist Grants #}
+            <div class="divider text-xs">Whitelist Grants</div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.grant_purge_whitelist(class="toggle toggle-accent mr-3") }}
+                    <span class="label-text font-medium">{{ form.grant_purge_whitelist.label.text }}</span>
+                </label>
+            </div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.grant_bot_whitelist(class="toggle toggle-info mr-3") }}
+                    <span class="label-text font-medium">{{ form.grant_bot_whitelist.label.text }}</span>
+                </label>
+            </div>
+            
+        </div>
+    </details>
+
+    <div class="modal-action mt-6">
+        <button type="button" class="btn btn-ghost" onclick="edit_invite_modal.close()">Cancel</button>
+        {{ form.submit(class="btn btn-primary") }}
+        <span id="edit_invite_loader_span" class="htmx-indicator loading loading-spinner loading-md"></span>
+    </div>
+</form>
+
+<script>
+// Script to handle clear checkboxes disabling their corresponding inputs
+(function() {
+    const fields = [
+        { cbId: 'edit_clear_expiry', inputId: 'edit_expires_in_days' },
+        { cbId: 'edit_clear_max_uses', inputId: 'edit_number_of_uses' },
+        { cbId: 'edit_clear_membership_duration', inputId: 'edit_membership_duration_days' }
+    ];
+    fields.forEach(field => {
+        const formElement = document.getElementById('editInviteForm-{{ invite.id }}');
+        if (!formElement) return;
+
+        const checkbox = formElement.querySelector('#' + field.cbId);
+        const input = formElement.querySelector('#' + field.inputId);
+        
+        if (checkbox && input) {
+            const sync = () => { 
+                input.disabled = checkbox.checked;
+                if (checkbox.checked) {
+                    input.value = ''; // Clear value when disabled
+                }
+            };
+            checkbox.addEventListener('change', sync);
+            sync();
+        }
+    });
+
+    // Add Discord dependency logic for the edit modal
+    const ssoToggle = document.getElementById('edit_modal_override_sso');
+    const guildToggle = document.getElementById('edit_modal_override_guild');
+
+    function handleEditSsoDependency() {
+        if (!ssoToggle || !guildToggle) return;
+        if (ssoToggle.checked) {
+            guildToggle.disabled = false;
+        } else {
+            guildToggle.disabled = true;
+            guildToggle.checked = false;
+        }
+    }
+
+    if (ssoToggle) {
+        ssoToggle.addEventListener('change', handleEditSsoDependency);
+        handleEditSsoDependency(); // Set initial state
+    }
+})();
+</script>

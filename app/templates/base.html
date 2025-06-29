@@ -60,51 +60,32 @@
             <div id="sidebar" class="drawer-side z-40">
                 <label for="main-sidebar-drawer-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
                 <ul class="menu p-4 w-60 sm:w-80 min-h-full bg-base-200 text-base-content">
-                    <li class="mb-2 text-lg font-semibold px-4"><a href="{{ url_for('dashboard.index') }}"><i
-                                class="fa-solid fa-users-gear mr-2"></i> {{ g.app_name }}</a></li>
-                    <li><a href="{{ url_for('dashboard.index') }}"
-                            class="{{ 'active' if request.endpoint == 'dashboard.index' else '' }}"><i
-                                class="fa-solid fa-chart-line fa-fw mr-2"></i> Dashboard</a></li>
-                    <li><a href="{{ url_for('users.list_users') }}"
-                            class="{{ 'active' if request.endpoint and request.endpoint.startswith('users.') else '' }}"><i
-                                class="fa-solid fa-users fa-fw mr-2"></i> Users</a></li>
-                    <li><a href="{{ url_for('invites.list_invites') }}"
-                            class="{{ 'active' if request.endpoint and request.endpoint.startswith('invites.') else '' }}"><i
-                                class="fa-solid fa-ticket fa-fw mr-2"></i> Invites</a></li>
-                     <li><a href="{{ url_for('dashboard.streaming_sessions') }}" 
-                            class="{{ 'active' if request.endpoint == 'dashboard.streaming_sessions' else '' }}"><i 
-                                class="fa-solid fa-tower-broadcast fa-fw mr-2"></i> Streaming</a></li>
-                    <li><a href="{{ url_for('dashboard.history') }}"
-                            class="{{ 'active' if request.endpoint == 'dashboard.history' else '' }}"><i
-                                class="fa-solid fa-timeline fa-fw mr-2"></i> History</a></li>
+
+                    {# Add conditional 'active' class to each link #}
+                    <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.index' else '' }}"><i class="fa-solid fa-chart-line fa-fw mr-2"></i> Dashboard</a></li>
+                    <li><a href="{{ url_for('users.list_users') }}" class="{{ 'active menu-active' if request.endpoint and request.endpoint.startswith('users.') else '' }}"><i class="fa-solid fa-users fa-fw mr-2"></i> Users</a></li>
+                    <li><a href="{{ url_for('invites.list_invites') }}" class="{{ 'active menu-active' if request.endpoint and request.endpoint.startswith('invites.') else '' }}"><i class="fa-solid fa-ticket fa-fw mr-2"></i> Invites</a></li>
+                    <li><a href="{{ url_for('dashboard.streaming_sessions') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.streaming_sessions' else '' }}"><i class="fa-solid fa-tower-broadcast fa-fw mr-2"></i> Streaming</a></li>
+                    <li><a href="{{ url_for('dashboard.history') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.history' else '' }}"><i class="fa-solid fa-timeline fa-fw mr-2"></i> History</a></li>
+                    
+                    {# For the <details> element, we need a way to keep it open if a child is active. #}
+                    {% set settings_is_active = request.endpoint and request.endpoint.startswith('dashboard.settings_') %}
                     <li>
-                        <details
-                            class="collapse collapse-arrow {{ 'menu-item-active' if request.endpoint and request.endpoint.startswith('dashboard.settings_') else '' }}">
-                            <summary class="collapse-title hover:bg-base-300 rounded-lg"><i
-                                    class="fa-solid fa-cog fa-fw mr-2"></i> Settings</summary>
+                        {# DaisyUI's <details> element doesn't have a built-in 'active' state based on children. #}
+                        {# However, we can add the 'open' attribute to it if a child is active. #}
+                        <details class="collapse collapse-arrow {{ 'menu-item-active' if settings_is_active else '' }}" {% if settings_is_active %}open{% endif %}>
+                            <summary class="collapse-title hover:bg-base-300 rounded-lg"><i class="fa-solid fa-cog fa-fw mr-2"></i> Settings</summary>
                             <ul class="menu collapse-content p-0 ml-4 width-full">
-                                <li><a href="{{ url_for('dashboard.settings_general') }}"
-                                        class="{{ 'active' if request.endpoint == 'dashboard.settings_general' else '' }}"><i
-                                class="fa-solid fa-sliders fa-fw mr-2"></i>General</a>
-                                </li>
-                                <li><a href="{{ url_for('dashboard.settings_plex') }}"
-                                        class="{{ 'active' if request.endpoint == 'dashboard.settings_plex' else '' }}"><i
-                                class="fa-solid fa-network-wired fa-fw mr-2"></i>Plex</a>
-                                </li>
-                                <li><a href="{{ url_for('dashboard.settings_discord') }}"
-                                        class="{{ 'active' if request.endpoint == 'dashboard.settings_discord' else '' }}"><i
-                                class="fa-brands fa-discord fa-fw mr-2"></i>Discord</a>
-                                </li>
-                                <li><a href="{{ url_for('dashboard.settings_advanced') }}"
-                                        class="{{ 'active' if request.endpoint == 'dashboard.settings_advanced' else '' }}"><i
-                                class="fa-solid fa-gears fa-fw mr-2"></i>Advanced</a>
-                                </li>
+                                <li><a href="{{ url_for('dashboard.settings_general') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_general' else '' }}"><i class="fa-solid fa-sliders fa-fw mr-2"></i>General</a></li>
+                                <li><a href="{{ url_for('dashboard.settings_plex') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_plex' else '' }}"><i class="fa-solid fa-network-wired fa-fw mr-2"></i>Plex</a></li>
+                                <li><a href="{{ url_for('dashboard.settings_discord') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_discord' else '' }}"><i class="fa-brands fa-discord fa-fw mr-2"></i>Discord</a></li>
+                                <li><a href="{{ url_for('dashboard.settings_advanced') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_advanced' else '' }}"><i class="fa-solid fa-gears fa-fw mr-2"></i>Advanced</a></li>
                             </ul>
                         </details>
                     </li>
+                    
                     <div class="divider"></div>
-                    <li><a href="{{ url_for('auth.logout') }}"><i
-                                class="fa-solid fa-arrow-right-from-bracket fa-fw mr-2"></i> Logout</a></li>
+                    <li><a href="{{ url_for('auth.logout') }}"><i class="fa-solid fa-arrow-right-from-bracket fa-fw mr-2"></i> Logout</a></li>
                 </ul>
             </div>
         </div> {# Closes drawer #}

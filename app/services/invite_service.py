@@ -150,7 +150,9 @@ def accept_invite_and_grant_access(invite: Invite, plex_user_uuid: str, plex_use
             discord_username=discord_username,
             discord_avatar_hash=discord_avatar_hash,
             access_expires_at=user_access_expires_at, # Set the expiration date
-            last_synced_with_plex=datetime.now(timezone.utc) # Mark as synced
+            last_synced_with_plex=datetime.now(timezone.utc), # Mark as synced
+            is_purge_whitelisted=bool(invite.grant_purge_whitelist),
+            is_discord_bot_whitelisted=bool(invite.grant_bot_whitelist)
         )
         db.session.add(new_user)
         

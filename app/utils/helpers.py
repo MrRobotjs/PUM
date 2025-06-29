@@ -10,12 +10,10 @@ from functools import wraps
 # or ensure helpers don't directly cause DB interaction at module level.
 
 def is_setup_complete():
-    # ... (same as before)
     return getattr(flask_g, 'setup_complete', False)
 
 
 def setup_required(f):
-    # ... (same as before, ensure it uses flask_g if g is used for app context)
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not is_setup_complete():
@@ -76,7 +74,6 @@ def log_event(event_type, message: str, details: dict = None, # Removed type hin
         db.session.rollback()
         current_app.logger.error(f"Error logging event (original: {event_type.name} - {message}): {e}")
 
-# ... (rest of helpers.py: calculate_expiry_date, format_datetime_human, etc. remain the same) ...
 def calculate_expiry_date(days: int) -> datetime | None:
     if days is None or days <= 0: return None
     return datetime.now(timezone.utc) + timedelta(days=days)

@@ -16,6 +16,7 @@ from app.utils.helpers import log_event, setup_required
 from app.services import plex_service, history_service
 import json
 from urllib.parse import urlparse
+from datetime import datetime 
 
 bp = Blueprint('dashboard', __name__)
 
@@ -148,11 +149,18 @@ def settings_general():
     if form.validate_on_submit():
         Setting.set('APP_NAME', form.app_name.data, SettingValueType.STRING, "Application Name")
         current_app.config['APP_NAME'] = form.app_name.data
-        if hasattr(g, 'app_name'): g.app_name = form.app_name.data 
+        if hasattr(g, 'app_name'): g.app_name = form.app_name.data
+
+        app_base_url = form.app_base_url.data.rstrip('/')
+        Setting.set('APP_BASE_URL', app_base_url, SettingValueType.STRING, "Application Base URL")
+        current_app.config['APP_BASE_URL'] = app_base_url
+        if hasattr(g, 'app_base_url'): g.app_base_url = app_base_url
+
         log_event(EventType.SETTING_CHANGE, "General settings updated.", admin_id=current_user.id)
         flash('General settings saved successfully.', 'success'); return redirect(url_for('dashboard.settings_general'))
     elif request.method == 'GET':
         form.app_name.data = Setting.get('APP_NAME', current_app.config.get('APP_NAME'))
+        form.app_base_url.data = Setting.get('APP_BASE_URL') # This will be pre-filled
     return render_template('settings/index.html', title="General Settings", form=form, active_tab='general')
 
 @bp.route('/settings/plex', methods=['GET', 'POST'])
@@ -242,6 +250,9 @@ def settings_discord():
 
     if request.method == 'POST':
         if form.validate_on_submit():
+            # Store original global setting state BEFORE changes
+            original_require_guild = Setting.get_bool('DISCORD_REQUIRE_GUILD_MEMBERSHIP', False)
+
             enable_oauth_from_form = form.enable_discord_oauth.data
             enable_bot_from_form = form.enable_discord_bot.data
             require_guild_membership_from_form = form.discord_require_guild_membership.data
@@ -273,22 +284,49 @@ def settings_discord():
                 else: 
                     Setting.set('DISCORD_BOT_REQUIRE_SSO_ON_INVITE', require_sso_on_invite_from_form, SettingValueType.BOOLEAN)
                 
+                # --- NEW LOGIC: Grandfathering invites when guild requirement is disabled ---
+                if original_require_guild is True and require_guild_membership_from_form is False:
+                    now = datetime.utcnow()
+                    affected_invites_query = Invite.query.filter(
+                        Invite.is_active == True,
+                        (Invite.expires_at == None) | (Invite.expires_at > now),
+                        (Invite.max_uses == None) | (Invite.current_uses < Invite.max_uses),
+                        Invite.force_guild_membership.is_(None)
+                    )
+                    affected_invites = affected_invites_query.all()
+                    
+                    if affected_invites:
+                        updated_invite_ids = []
+                        for invite in affected_invites:
+                            invite.force_guild_membership = True
+                            updated_invite_ids.append(invite.id)
+                        
+                        try:
+                            # The commit for this is handled below with other settings
+                            log_event(
+                                EventType.SETTING_CHANGE,
+                                f"Admin disabled 'Require Guild Membership'. Grandfathered {len(affected_invites)} existing invite(s) by forcing their requirement to ON.",
+                                admin_id=current_user.id,
+                                details={'updated_invite_ids': updated_invite_ids}
+                            )
+                        except Exception as e_log:
+                            current_app.logger.error(f"Error logging grandfathering of invites: {e_log}")
+                # --- END NEW LOGIC ---
+
+                # Now save the new global setting
                 Setting.set('DISCORD_REQUIRE_GUILD_MEMBERSHIP', require_guild_membership_from_form, SettingValueType.BOOLEAN)
                 
-                # Save Guild ID and Server Invite URL if OAuth is on and (Bot is ON OR Require Guild Membership is ON)
                 if enable_bot_from_form or require_guild_membership_from_form:
                     Setting.set('DISCORD_GUILD_ID', form.discord_guild_id.data or Setting.get('DISCORD_GUILD_ID', ""), SettingValueType.STRING)
-                    # Only explicitly save/clear server_invite_url based on require_guild_membership
                     if require_guild_membership_from_form:
                         Setting.set('DISCORD_SERVER_INVITE_URL', form.discord_server_invite_url.data or Setting.get('DISCORD_SERVER_INVITE_URL', ""), SettingValueType.STRING)
-                    elif not enable_bot_from_form: # If bot is also off, and require_guild is off, clear it
+                    elif not enable_bot_from_form: 
                         Setting.set('DISCORD_SERVER_INVITE_URL', "", SettingValueType.STRING) 
-                        # If bot is ON but require_guild is OFF, we might keep server_invite_url if bot uses it independently.
-                        # For now, only tying it to require_guild_membership for saving.
-                else: # OAuth is ON, but Bot is OFF AND Require Guild Membership is OFF
+                else:
                     Setting.set('DISCORD_GUILD_ID', "", SettingValueType.STRING)
                     Setting.set('DISCORD_SERVER_INVITE_URL', "", SettingValueType.STRING)
             else: 
+                # If OAuth is disabled, clear all related settings
                 Setting.set('DISCORD_CLIENT_ID', "", SettingValueType.STRING)
                 Setting.set('DISCORD_CLIENT_SECRET', "", SettingValueType.SECRET)
                 Setting.set('DISCORD_OAUTH_AUTH_URL', "", SettingValueType.STRING)
@@ -299,17 +337,15 @@ def settings_discord():
                 Setting.set('DISCORD_GUILD_ID', "", SettingValueType.STRING)
                 Setting.set('DISCORD_SERVER_INVITE_URL', "", SettingValueType.STRING)
 
+            # Bot settings save logic (unchanged)
             Setting.set('DISCORD_BOT_ENABLED', enable_bot_from_form, SettingValueType.BOOLEAN)
             if enable_bot_from_form:
-                # Guild ID is already handled above as it's needed if bot is ON
                 if form.discord_bot_token.data: Setting.set('DISCORD_BOT_TOKEN', form.discord_bot_token.data, SettingValueType.SECRET)
                 Setting.set('DISCORD_MONITORED_ROLE_ID', form.discord_monitored_role_id.data or Setting.get('DISCORD_MONITORED_ROLE_ID', ""), SettingValueType.STRING)
                 Setting.set('DISCORD_THREAD_CHANNEL_ID', form.discord_thread_channel_id.data or Setting.get('DISCORD_THREAD_CHANNEL_ID', ""), SettingValueType.STRING)
                 Setting.set('DISCORD_BOT_LOG_CHANNEL_ID', form.discord_bot_log_channel_id.data or Setting.get('DISCORD_BOT_LOG_CHANNEL_ID', ""), SettingValueType.STRING)
-                # DISCORD_SERVER_INVITE_URL is now tied more to require_guild_membership if bot is off
-                if not require_guild_membership_from_form: # If bot is on but require_guild is off, bot might still use server_invite_url
+                if not require_guild_membership_from_form:
                     Setting.set('DISCORD_SERVER_INVITE_URL', form.discord_server_invite_url.data or Setting.get('DISCORD_SERVER_INVITE_URL', ""), SettingValueType.STRING)
-
                 Setting.set('DISCORD_BOT_WHITELIST_SHARERS', form.discord_bot_whitelist_sharers.data, SettingValueType.BOOLEAN)
                 log_event(EventType.DISCORD_CONFIG_SAVE, "Discord settings updated (Bot Enabled).", admin_id=current_user.id)
             else: 
@@ -318,6 +354,7 @@ def settings_discord():
                 Setting.set('DISCORD_BOT_WHITELIST_SHARERS', form.discord_bot_whitelist_sharers.data, SettingValueType.BOOLEAN)
                 log_event(EventType.DISCORD_CONFIG_SAVE, "Discord settings updated (Bot Disabled).", admin_id=current_user.id)
 
+            db.session.commit() # A single commit at the end to save grandfathered invites and settings
             flash('Discord settings saved successfully.', 'success')
             return redirect(url_for('dashboard.settings_discord'))
 
