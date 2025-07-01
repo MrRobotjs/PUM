@@ -4,125 +4,195 @@
 {% block title %}{{ super() }} - Edit {{ user.plex_username }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-2 max-w-2xl">
+<div class="container mx-auto px-4 py-2 max-w-5xl"> {# Increased max-width for columns #}
     <div class="flex items-center mb-6">
         <a href="{{ url_for('users.list_users', view=request.args.get('view', 'cards')) }}" class="btn btn-ghost btn-sm mr-2">
             <i class="fa-solid fa-arrow-left"></i> Back to Users
         </a>
-        <h1 class="text-2xl sm:text-3xl font-bold">{{ user.plex_username }}</h1>
     </div>
 
-    <div class="bg-base-200 shadow-xl rounded-lg p-6 sm:p-8">
-        <form method="POST" action="{{ url_for('users.edit_user', user_id=user.id, view=request.args.get('view', 'cards')) }}" id="editUserForm">
-            {{ form.hidden_tag() }} 
+    {# --- NEW: Two-Column Grid Layout --- #}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 items-center">
-                <div class="avatar md:col-span-1 flex justify-center"> <div class="w-32 h-32 rounded-full ring ring-primary ring-offset-base-100 ring-offset-4"> <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';"/> </div> </div>
-                <div class="md:col-span-2 space-y-2">
-                    <div class="form-control flex flex-row">{{ form.plex_email.label(class="label pb-0") }} {{ form.plex_email(class="input input-bordered input-disabled", disabled=True) }} </div>
-                    <div class="form-control"> <label class="label justify-start cursor-default"> {{ form.is_home_user(class="checkbox checkbox-disabled mr-2 bg-gray-500", disabled=True) }} <span class="label-text">Plex Home User</span> </label> </div>
-                     {% if user.discord_user_id %} <div class="form-control"> <label class="label"> <span class="label-text"><i class="fa-brands fa-discord mr-1 text-info"></i> Discord</span> </label> <input type="text" readonly value="{{ user.discord_username or 'Linked' }} (ID: {{ user.discord_user_id }})" class="input input-bordered input-disabled input-sm bg-base-300/50"> </div> {% endif %}
+        {# --- COLUMN 1: User Profile (Left) --- #}
+        <div class="md:col-span-1 space-y-8 self-start md:sticky md:top-24">
+            <div class="card bg-base-200 shadow-xl"> {# Sticky for nice scrolling effect on desktop #}
+                <div class="card-body items-center text-center">
+                    <div class="flex justify-center items-center space-x-2 mb-4">
+                        {# Plex Avatar #}
+                        <div class="avatar">
+                            {# This avatar was already the correct larger size #}
+                            <div class="w-24 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                                <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} Plex avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';" />
+                            </div>
+                        </div>
+
+                        {# Link Icon and Discord Avatar (if available) #}
+                        {% if user.discord_user_id and user.discord_avatar_hash %}
+                            <div class="text-2xl text-base-content/50"><i class="fa-solid fa-link"></i></div>
+                            <div class="avatar">
+                                {# THIS is the corrected line. Changed from w-16 to w-24 to match. #}
+                                <div class="w-24 rounded-full ring ring-info ring-offset-base-100 ring-offset-2">
+                                    <img src="https://cdn.discordapp.com/avatars/{{ user.discord_user_id }}/{{ user.discord_avatar_hash }}.png?size=128" alt="{{ user.discord_username or 'Discord' }} avatar" />
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                    <h2 class="card-title text-2xl">{{ user.plex_username }}</h2>
+                    <p class="text-base-content/70 text-sm" title="{{ user.plex_email or 'No email on file' }}">{{ user.plex_email or 'No email on file' }}</p>
+
+                    {# Status Badges #}
+                    <div class="flex flex-wrap gap-2 justify-center my-2">
+                        {% if user.is_home_user %}
+                            <div class="badge badge-xs badge-primary" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</div>
+                        {% endif %}
+                        {% if user.shares_back %}
+                            <div class="badge badge-xs badge-secondary" title="This user shares their own Plex server back"><i class="fa-solid fa-server mr-1"></i> Shares Back</div>
+                        {% endif %}
+                        {% if user.discord_user_id %}
+                            <div class="badge badge-xs badge-info" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Linked</div>
+                        {% endif %}
+                        {% if user.is_purge_whitelisted %}
+                            <div class="badge badge-xs badge-accent" title="This user is immune to inactivity purging"><i class="fa-solid fa-shield-halved mr-1"></i> Purge WL</div>
+                        {% endif %}
+                        {% if user.is_discord_bot_whitelisted %}
+                            <div class="badge  badge-xs badge-success" title="This user is immune to automated Discord Bot actions"><i class="fa-solid fa-robot mr-1"></i> Bot WL</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="divider text-xs">Access Status</div>
+                    
+                    <div class="stats bg-transparent w-full text-center">
+                        <div class="stat p-2">
+                            <div class="stat-title text-sm">Access Expires</div>
+                            <div class="stat-value text-lg {% if user.access_expires_at and user.access_expires_at < now_utc() %}text-error{% elif user.access_expires_at %}text-success{% endif %}">
+                                {{ user.access_expires_at | time_ago if user.access_expires_at else 'Never' }}
+                            </div>
+                            <div class="stat-desc text-xs">{{ user.access_expires_at | format_datetime_human(include_time=False) if user.access_expires_at else 'Permanent Access' }}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="divider">User Details & Whitelists</div>
+            {% if user.discord_user_id %}
+            <div class="card bg-base-200 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-base"><i class="fa-brands fa-discord mr-2 text-info"></i> Discord Details</h2>
+                    <div class="divider my-1"></div>
+                    
+                    {# Avatar and Username #}
+                    <div class="flex items-center space-x-4 mb-2">
+                        {% if user.discord_avatar_hash %}
+                        <div class="avatar">
+                            <div class="w-16 rounded-full">
+                                <img src="https://cdn.discordapp.com/avatars/{{ user.discord_user_id }}/{{ user.discord_avatar_hash }}.png?size=128" alt="{{ user.discord_username }} avatar" />
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="text-sm">
+                            <p class="font-semibold text-lg">{{ user.discord_username or 'N/A' }}</p>
+                            <p class="text-xs text-base-content/70">User ID: {{ user.discord_user_id }}</p>
+                        </div>
+                    </div>
+                    
+                    {# More Details #}
+                    <div class="space-y-1 text-sm">
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-at fa-fw mr-2 w-4 text-center text-base-content/60"></i>
+                            <span class="font-medium mr-1">Email:</span>
+                            <span class="text-base-content/80" title="{{ user.discord_email }}">{{ user.discord_email or 'Not Available' }}</span>
+                        </div>
+                        <div class="flex items-center">
+                            {% if user.discord_email_verified %}
+                                <i class="fa-solid fa-check-circle fa-fw mr-2 w-4 text-center text-success"></i>
+                                <span class="font-medium text-success">Verified Email</span>
+                            {% else %}
+                                <i class="fa-solid fa-circle-xmark fa-fw mr-2 w-4 text-center text-error"></i>
+                                <span class="font-medium text-error">Unverified Email</span>
+                            {% endif %}
+                        </div>
+                    </div>
 
-            <div class="form-control w-full mb-4 flex flex-col">
-                {{ form.notes.label(class="label font-medium") }}
-                {{ form.notes(class="textarea textarea-bordered h-24 w-auto " + ("textarea-error" if form.notes.errors else ""), placeholder="Add any notes about this user...") }}
-                {% if form.notes.errors %}{% for error in form.notes.errors %}<label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>{% endfor %}{% endif %}
+                    <div class="card-actions justify-end mt-4">
+                        <a href="https://discord.com/users/{{ user.discord_user_id }}" 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                           class="btn btn-info btn-sm">
+                            <i class="fa-brands fa-discord"></i> Profile
+                        </a>
+                    </div>
+
+                </div>
             </div>
+            {% endif %}
+        </div>
 
-            {# Whitelist Toggles #}
-            <div class="form-control w-full mb-4">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.is_discord_bot_whitelisted(class="toggle toggle-primary mr-3") }}
-                    <span class="label-text font-medium">{{ form.is_discord_bot_whitelisted.label.text }}</span>
-                </label>
-                <p class="text-xs text-base-content/60 pl-15">If checked, this user will be immune to automated actions by the Discord Bot (e.g., removal if they leave the Discord server or lose a role).</p>
-                {% if form.is_discord_bot_whitelisted.errors %}{% for e in form.is_discord_bot_whitelisted.errors %}<p class="text-error text-xs mt-1 pl-12">{{e}}</p>{% endfor %}{% endif %}
-            </div>
+        {# --- COLUMN 2: User Settings (Right) --- #}
+        <div class="md:col-span-2">
+            <div class="bg-base-200 shadow-xl rounded-lg p-6 sm:p-8">
+                <form method="POST" action="{{ url_for('users.edit_user', user_id=user.id, view=request.args.get('view', 'cards')) }}" id="editUserForm">
+                    {{ form.hidden_tag() }} 
 
-            <div class="form-control w-full mb-6">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.is_purge_whitelisted(class="toggle toggle-accent mr-3") }}
-                    <span class="label-text font-medium">{{ form.is_purge_whitelisted.label.text }}</span>
-                </label>
-                <p class="text-xs text-base-content/60 pl-15">If checked, this user will be immune to the "Purge Inactive Users" feature, regardless of their activity.</p>
-                {% if form.is_purge_whitelisted.errors %}{% for e in form.is_purge_whitelisted.errors %}<p class="text-error text-xs mt-1 pl-12">{{e}}</p>{% endfor %}{% endif %}
-            </div>
+                    <div class="divider">Notes & Whitelists</div>
 
-            <div class="divider">Access Duration</div>
-            <div class="form-control w-full mb-2">
-                <label class="label">
-                    <span class="label-text font-medium">Current Access Expiration:</span>
-                </label>
-                <input type="text" readonly 
-                       value="{{ current_access_expires_at | format_datetime_human if current_access_expires_at else 'Permanent' }}" 
-                       class="input input-bordered input-sm bg-base-300/50 
-                              {% if current_access_expires_at and current_access_expires_at < now_utc() %}text-error font-semibold{% elif current_access_expires_at %}text-success{% endif %}">
-                {% if current_access_expires_at and current_access_expires_at < now_utc() %}
-                <p class="text-xs text-error mt-1">Note: Access has already expired. User will be removed by the next scheduled task if not updated.</p>
-                {% endif %}
-            </div>
+                    <div class="form-control w-full mb-4">
+                        {{ form.notes.label(class="label font-medium") }} {# WTForms adds for="notes" #}
+                        {{ form.notes(class="textarea textarea-bordered h-24 " + ("textarea-error" if form.notes.errors else ""), placeholder="Add any notes about this user...") }} {# WTForms adds id="notes" #}
+                    </div>
 
-            <div class="form-control w-full mb-1">
-                {{ form.access_expires_in_days.label(class="label font-medium whitespace-normal") }}
-                {{ form.access_expires_in_days(id="user_edit_access_expires_in_days_input", class="input input-bordered " + ("input-error" if form.access_expires_in_days.errors else ""), type="number", min="1") }}
-                {% if form.access_expires_in_days.errors %}
-                    {% for error in form.access_expires_in_days.errors %}
-                    <label class="label py-0 mt-1"><span class="label-text-alt text-error">{{ error }}</span></label>
-                    {% endfor %}
-                {% else %}
-                    <label class="label py-0 mt-1">
-                        <span class="label-text-alt whitespace-normal">Calculated New Expiry: <strong id="user_edit_calculated_new_expiry_date">No change (if blank/invalid)</strong></span>
-                    </label>
-                {% endif %}
-            </div>
-             <p class="text-xs text-base-content/60 mb-4">{{ form.access_expires_in_days.description }}</p>
-
-            <div class="form-control w-full mb-6">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.clear_access_expiration(class="checkbox checkbox-warning checkbox-sm mr-2", id="user_edit_clear_access_expiration_checkbox") }}
-                    <span class="label-text font-medium whitespace-normal">{{ form.clear_access_expiration.label.text }}</span>
-                </label>
-                <p class="text-xs text-base-content/60 pl-8">{{ form.clear_access_expiration.description }}</p>
-                 {% if form.clear_access_expiration.errors %}{% for e in form.clear_access_expiration.errors %}<p class="text-error text-xs mt-1 pl-8">{{e}}</p>{% endfor %}{% endif %}
-            </div>
-
-            <div class="divider">Library Access</div>
-
-            <div class="form-control w-full mb-6">
-                <label class="label">
-                    <span class="label-text hidden">{{ form.libraries.label.text }}</span>
-                    <span class="label-text-alt">
-                        <button type="button" id="select_all_libraries" class="btn btn-xs btn-ghost">Select All</button> |
-                        <button type="button" id="deselect_all_libraries" class="btn btn-xs btn-ghost">Deselect All</button>
-                    </span>
-                </label>
-                <div class="max-h-80 overflow-y-auto p-4 border border-base-300 rounded-md bg-base-100/30 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                    {# Corrected loop for libraries #}
-                    {% for subfield in form.libraries %} {# Iterate directly over the field for subfields #}
-                        <label class="label cursor-pointer justify-start py-1">
-                            {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-2 library-checkbox") }} {# Render the subfield (checkbox) #}
-                            {{ subfield.label(class="label-text", title=subfield.label.text) }} {# Render its label #}
+                    <div class="form-control w-full mb-4">
+                        <label class="label cursor-pointer justify-start">
+                            {{ form.is_discord_bot_whitelisted(class="toggle toggle-primary mr-3") }} {# Implicit label by nesting #}
+                            <span class="label-text font-medium whitespace-normal">{{ form.is_discord_bot_whitelisted.label.text }}</span>
                         </label>
-                    {% endfor %}
-                </div>
-                <label class="label">
-                    <span class="label-text-alt whitespace-normal text-xs text-base-content/60">If no libraries are selected, the user will typically have access to <strong>all</strong> libraries by default (standard Plex behavior). To grant access to <strong>none</strong>, you would usually remove the user from the server share entirely. This tool manages specific library section shares.</span>
-                </label>
-                {% if form.libraries.errors %}{% for error in form.libraries.errors %}<label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>{% endfor %}{% endif %}
-            </div>
-             <p class="text-xs text-base-content/70 mb-6 text-center">
-                Note: Library changes are applied directly to the Plex server. If no changes are made to libraries, no Plex API calls for library updates will be performed on save.
-            </p>
+                        <p class="text-xs text-base-content/60 pl-14">{{ form.is_discord_bot_whitelisted.description }}</p>
+                    </div>
 
-            <div class="form-control mt-8 flex flex-col sm:flex-row justify-end items-center gap-3">
-                <a href="{{ url_for('users.list_users', view=request.args.get('view', 'cards')) }}" class="btn btn-ghost order-2 sm:order-1 w-full sm:w-auto">Cancel</a>
-                {{ form.submit(class="btn btn-primary order-1 sm:order-2 w-full sm:w-auto") }}
+                    <div class="form-control w-full mb-6">
+                        <label class="label cursor-pointer justify-start">
+                            {{ form.is_purge_whitelisted(class="toggle toggle-accent mr-3") }} {# Implicit label #}
+                            <span class="label-text font-medium whitespace-normal">{{ form.is_purge_whitelisted.label.text }}</span>
+                        </label>
+                        <p class="text-xs text-base-content/60 pl-14">{{ form.is_purge_whitelisted.description }}</p>
+                    </div>
+
+                    <div class="divider">Access Duration</div>
+                    
+                    <div class="form-control w-full mb-1">
+                        {{ form.access_expires_in_days.label(class="label font-medium whitespace-normal") }} {# WTForms adds for="access_expires_in_days" #}
+                        {{ form.access_expires_in_days(class="input input-bordered " + ("input-error" if form.access_expires_in_days.errors else ""), type="number", min="1") }} {# WTForms adds id="access_expires_in_days" #}
+                    </div>
+                    <p class="text-xs text-base-content/60 mb-4">{{ form.access_expires_in_days.description }}</p>
+
+                    <div class="form-control w-full mb-6">
+                        <label class="label cursor-pointer justify-start">
+                            {{ form.clear_access_expiration(class="checkbox checkbox-warning checkbox-sm mr-2") }} {# Implicit label #}
+                            <span class="label-text font-medium whitespace-normal">{{ form.clear_access_expiration.label.text }}</span>
+                        </label>
+                    </div>
+
+                    <div class="divider">Library Access</div>
+
+                    <div class="form-control w-full mb-6">
+                        <label class="label"><span class="label-text">{{ form.libraries.label.text }}</span><span class="label-text-alt"><button type="button" id="select_all_libraries" class="btn btn-xs btn-ghost">Select All</button> | <button type="button" id="deselect_all_libraries" class="btn btn-xs btn-ghost">Deselect All</button></span></label>
+                        <div class="max-h-80 overflow-y-auto p-4 border border-base-300 rounded-md bg-base-100/30 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                            {% for subfield in form.libraries %}
+                                <label class="label cursor-pointer justify-start py-1">
+                                    {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-2 library-checkbox") }} {# Implicit association for subfields #}
+                                    <span class="label-text">{{ subfield.label.text }}</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="form-control mt-8 flex flex-col sm:flex-row justify-end items-center gap-3">
+                        <a href="{{ url_for('users.list_users', view=request.args.get('view', 'cards')) }}" class="btn btn-ghost order-2 sm:order-1 w-full sm:w-auto">Cancel</a>
+                        {{ form.submit(class="btn btn-primary order-1 sm:order-2 w-full sm:w-auto") }}
+                    </div>
+                </form>
             </div>
-        </form>
+        </div>
+
     </div>
 </div>
 {% endblock %}

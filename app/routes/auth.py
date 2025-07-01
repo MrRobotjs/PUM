@@ -281,6 +281,8 @@ def discord_callback_admin():
         if discord_user.get('discriminator') and discord_user.get('discriminator') != '0':
             admin_to_update.discord_username = f"{discord_user['username']}#{discord_user['discriminator']}"
         admin_to_update.discord_avatar_hash = discord_user.get('avatar')
+        admin_to_update.discord_email = discord_user.get('email') # NEW
+        admin_to_update.discord_email_verified = discord_user.get('verified') # NEW
         admin_to_update.discord_access_token = access_token
         admin_to_update.discord_refresh_token = refresh_token
         admin_to_update.discord_token_expires_at = token_expires_at

@@ -50,7 +50,7 @@
                         {% if not already_authenticated_plex_user %}
                         <div class="form-control mt-6">
                             <button name="auth_method" value="plex" type="submit" class="btn btn-primary bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black btn-block text-base">
-                                <i class="fa-brands fa-plex fa-lg mr-2"></i> Sign In with Plex
+                                <i class="fa-solid fa-right-to-bracket mr-2"></i> Sign In with Plex
                             </button>
                         </div>
                         {% endif %}
@@ -71,33 +71,24 @@
                                         <span class="badge badge-sm badge-ghost ml-2">Optional</span>
                                     {% endif %}
                                 </button>
-                                
-                                {# Help text for Discord button #}
-                                {% if discord_sso_is_mandatory %}
-                                    <div class="text-xs text-warning mt-1.5 text-left pl-1">
-                                        <i class="fa-solid fa-triangle-exclamation fa-fw"></i>
-                                        Discord linking is required for this invite.
-                                        {% if setting_require_guild_membership and setting_discord_guild_id %}
-                                            You must also be a member of our Discord server.
-                                            {% if setting_discord_server_invite_url %}
-                                                Join here: <a href="{{ setting_discord_server_invite_url }}" target="_blank" class="link link-hover">{{ setting_discord_server_invite_url | replace("https://discord.gg/", "") }}</a>
-                                            {% endif %}
-                                        {% endif %}
-                                    </div>
-                                {% elif show_discord_button %} {# Optional linking scenario #}
-                                     <div class="text-xs text-base-content/70 mt-1.5 text-left pl-1">
-                                        <i class="fa-solid fa-circle-info fa-fw"></i>
-                                        Optionally link Discord for server updates or community features.
-                                        {% if setting_require_guild_membership and setting_discord_guild_id %}
-                                            If you link, you must be a member of our Discord server.
-                                            {% if setting_discord_server_invite_url %}
-                                                Join: <a href="{{ setting_discord_server_invite_url }}" target="_blank" class="link link-hover">{{ setting_discord_server_invite_url | replace("https://discord.gg/", "") }}</a>
-                                            {% endif %}
-                                        {% endif %}
-                                    </div>
-                                {% endif %}
                             </div>
                         {% endif %}
+
+                        <div class="text-xs text-left pl-1 mt-3 space-y-2">
+                            {% if setting_require_guild_membership and not already_authenticated_discord_user %}
+                                {% if setting_discord_server_invite_url %}
+                                <div class="form-control mt-2">
+                                    <a href="{{ setting_discord_server_invite_url }}" target="_blank" rel="noopener noreferrer" 
+                                       class="btn btn-secondary btn-block text-base">
+                                        <i class="fa-brands fa-discord fa-lg mr-2"></i>
+                                        Join our Discord Server
+                                        <span class="badge badge-sm badge-warning ml-2 animate-pulse">Required</span>
+                                    </a>
+                                </div>
+                                {% endif %}
+                            {% endif %}
+                            {# --- END NEW --- #}
+                        </div>
 
                         {# Accept Invite Button #}
                         {% if already_authenticated_plex_user %}
@@ -106,11 +97,6 @@
                                     <button name="action" value="accept_invite" type="submit" class="btn btn-success btn-block text-base">
                                         <i class="fa-solid fa-check-circle mr-2"></i> Accept Invite & Join Server
                                     </button>
-                                </div>
-                            {% elif discord_sso_is_mandatory and not already_authenticated_discord_user and show_discord_button %}
-                                <div class="alert alert-warning mt-6 text-sm p-3 justify-start items-center">
-                                    <i class="fa-solid fa-triangle-exclamation mr-2 flex-shrink-0"></i>
-                                    <span>Please link your Discord account (required) above to proceed.</span>
                                 </div>
                             {% elif discord_sso_is_mandatory and not show_discord_button %}
                                 <div class="alert alert-error mt-6 text-sm p-3 justify-start items-center">

@@ -170,7 +170,7 @@ class UserEditForm(FlaskForm): # As updated for whitelist fields
     submit = SubmitField('Save Changes')
 
 class MassUserEditForm(FlaskForm): # As updated
-    user_ids = HiddenField(validators=[DataRequired()])
+    #user_ids = HiddenField(validators=[DataRequired()])
     action = SelectField('Action', choices=[
             ('', '-- Select Action --'), ('update_libraries', 'Update Libraries'),
             ('delete_users', 'Delete Users from PUM & Plex'),
@@ -251,7 +251,7 @@ class InviteEditForm(FlaskForm):
     grant_bot_whitelist = BooleanField('Whitelist user from Discord Bot Actions')
     
     submit = SubmitField('Save Changes')
-    
+
 class PlexSettingsForm(FlaskForm): # As before
     plex_url = StringField('Plex URL', validators=[DataRequired(), URL()])
     plex_token = StringField('Plex Token', validators=[DataRequired(), Length(min=19, max=24)])

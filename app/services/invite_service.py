@@ -64,13 +64,13 @@ def record_invite_usage_attempt(invite_id, ip_address, plex_user_info=None, disc
 
 
 def accept_invite_and_grant_access(invite: Invite, plex_user_uuid: str, plex_username: str, plex_email: str, plex_thumb: str,
-                                   discord_user_id: str = None, discord_username: str = None, discord_avatar_hash: str = None,
+                                   discord_user_info: dict,
                                    ip_address: str = None):
     """
     Processes invite acceptance:
     1. Checks if Plex user already exists in PUM or on Plex server.
     2. If new, invites/shares with Plex server (respecting allow_downloads from invite).
-    3. Creates/updates PUM User record, setting access_expires_at if specified in invite.
+    3. Creates/updates PUM User record, setting access_expires_at and whitelist statuses if specified in invite.
     4. Updates Invite usage counts and links PUM user to InviteUsage.
     Returns (True, "Success message" or User object) or (False, "Error message")
     """
@@ -80,33 +80,24 @@ def accept_invite_and_grant_access(invite: Invite, plex_user_uuid: str, plex_use
 
     existing_pum_user = User.query.filter_by(plex_uuid=plex_user_uuid).first()
     if existing_pum_user:
-        # User already exists in PUM.
-        # Optionally, update their Discord if not present, or other details.
         updated_existing = False
-        if discord_user_id and not existing_pum_user.discord_user_id:
-            existing_pum_user.discord_user_id = discord_user_id
-            existing_pum_user.discord_username = discord_username
-            existing_pum_user.discord_avatar_hash = discord_avatar_hash
+        # If the user already exists, but re-links their Discord, update their info
+        if discord_user_info and discord_user_info.get('id') and not existing_pum_user.discord_user_id:
+            existing_pum_user.discord_user_id = discord_user_info.get('id')
+            existing_pum_user.discord_username = discord_user_info.get('username')
+            existing_pum_user.discord_avatar_hash = discord_user_info.get('avatar')
+            existing_pum_user.discord_email = discord_user_info.get('email')
+            existing_pum_user.discord_email_verified = discord_user_info.get('verified')
             updated_existing = True
-        
-        # If invite has a membership duration, and user doesn't have one or has an older one, update it?
-        # For now, let's assume existing users' expirations aren't modified by new invites.
-        # This could be a future enhancement.
         
         if updated_existing:
             existing_pum_user.updated_at = datetime.now(timezone.utc)
-            # db.session.commit() # Commit handled later or by calling function
-
-        usage_log = record_invite_usage_attempt(
-            invite.id, ip_address,
-            plex_user_info={'uuid': plex_user_uuid, 'username': plex_username, 'email': plex_email, 'thumb': plex_thumb},
-            discord_user_info={'id': discord_user_id, 'username': discord_username} if discord_user_id else None,
-            status_message="User already managed by PUM."
-        )
+        
+        plex_user_info = {'uuid': plex_user_uuid, 'username': plex_username, 'email': plex_email, 'thumb': plex_thumb}
+        usage_log = record_invite_usage_attempt(invite.id, ip_address, plex_user_info=plex_user_info, discord_user_info=discord_user_info, status_message="User already managed by PUM.")
         usage_log.pum_user_id = existing_pum_user.id
         usage_log.accepted_invite = True 
         
-        # Increment invite uses even if user exists, as they "used" the link
         invite.current_uses += 1
         db.session.add(usage_log)
         db.session.add(invite)
@@ -125,7 +116,7 @@ def accept_invite_and_grant_access(invite: Invite, plex_user_uuid: str, plex_use
         plex_service.invite_user_to_plex_server(
             plex_username_or_email=plex_email or plex_username,
             library_ids_to_share=invite.grant_library_ids,
-            allow_sync=invite.allow_downloads  # Pass the allow_downloads flag
+            allow_sync=invite.allow_downloads
         )
         log_event(EventType.PLEX_USER_ADDED, f"User '{plex_username}' invited/shared with Plex. Downloads: {'enabled' if invite.allow_downloads else 'disabled'}.", invite_id=invite.id, details={'plex_user': plex_username, 'allow_downloads': invite.allow_downloads})
     except Exception as e:
@@ -144,51 +135,48 @@ def accept_invite_and_grant_access(invite: Invite, plex_user_uuid: str, plex_use
             plex_username=plex_username,
             plex_email=plex_email,
             plex_thumb_url=plex_thumb,
-            allowed_library_ids=list(invite.grant_library_ids), # Make a copy
+            allowed_library_ids=list(invite.grant_library_ids),
             used_invite_id=invite.id,
-            discord_user_id=discord_user_id,
-            discord_username=discord_username,
-            discord_avatar_hash=discord_avatar_hash,
-            access_expires_at=user_access_expires_at, # Set the expiration date
-            last_synced_with_plex=datetime.now(timezone.utc), # Mark as synced
+            
+            discord_user_id=discord_user_info.get('id') if discord_user_info else None,
+            discord_username=discord_user_info.get('username') if discord_user_info else None,
+            discord_avatar_hash=discord_user_info.get('avatar') if discord_user_info else None,
+            discord_email=discord_user_info.get('email') if discord_user_info else None,
+            discord_email_verified=discord_user_info.get('verified') if discord_user_info else None,
+
+            access_expires_at=user_access_expires_at,
+            last_synced_with_plex=datetime.now(timezone.utc),
+            
             is_purge_whitelisted=bool(invite.grant_purge_whitelist),
             is_discord_bot_whitelisted=bool(invite.grant_bot_whitelist)
         )
         db.session.add(new_user)
         
         invite.current_uses += 1
-        # No need to explicitly check invite.has_reached_max_uses here to deactivate;
-        # the invite.is_usable check at the start handles it for subsequent uses.
         
-        usage_log = record_invite_usage_attempt(
-            invite.id, ip_address,
-            plex_user_info={'uuid': plex_user_uuid, 'username': plex_username, 'email': plex_email, 'thumb': plex_thumb},
-            discord_user_info={'id': discord_user_id, 'username': discord_username} if discord_user_id else None,
-            status_message="Invite accepted successfully."
-        )
-        # We need the new_user.id, so we have to add it to session before flush/commit
-        # or commit in stages. Let's flush to get ID.
-        db.session.flush() # Assigns ID to new_user without full commit
+        plex_user_info = {'uuid': plex_user_uuid, 'username': plex_username, 'email': plex_email, 'thumb': plex_thumb}
+        usage_log = record_invite_usage_attempt(invite.id, ip_address, plex_user_info=plex_user_info, discord_user_info=discord_user_info, status_message="Invite accepted successfully.")
+        
+        db.session.flush()
         if new_user.id:
             usage_log.pum_user_id = new_user.id
-        else: # Should not happen if flush works
+        else:
             current_app.logger.error(f"Failed to get new_user.id after flush for invite {invite.id}")
         usage_log.accepted_invite = True
         db.session.add(usage_log)
-        db.session.add(invite) # ensure invite changes (current_uses) are also staged
+        db.session.add(invite)
 
-        db.session.commit() # Commit user, invite, and usage log changes together
+        db.session.commit()
 
         log_event(EventType.INVITE_USER_ACCEPTED_AND_SHARED, 
-                  f"User '{plex_username}' accepted invite '{invite.id}'. Access expires: {user_access_expires_at.strftime('%Y-%m-%d %H:%M UTC') if user_access_expires_at else 'Permanent'}.", 
+                  f"User '{plex_username}' accepted invite '{invite.id}'. Purge WL: {new_user.is_purge_whitelisted}, Bot WL: {new_user.is_discord_bot_whitelisted}. Access expires: {user_access_expires_at.strftime('%Y-%m-%d') if user_access_expires_at else 'Permanent'}.", 
                   user_id=new_user.id, invite_id=invite.id)
         
         return True, new_user 
 
-    except IntegrityError as ie_user: # Catch potential IntegrityError during User creation specifically
+    except IntegrityError as ie_user:
         db.session.rollback()
         current_app.logger.error(f"Database integrity error creating PUM user {plex_username} from invite {invite.id}: {ie_user}", exc_info=True)
-        # Log the event before returning
         log_event(EventType.ERROR_GENERAL, f"DB integrity error creating user {plex_username} from invite {invite.id}: {ie_user}", invite_id=invite.id)
         return False, "A database error occurred creating your user account. This could be due to a conflict. Please contact admin."
     except Exception as e_user:

@@ -155,10 +155,14 @@
     </div>
     <!-- End Purge Users Section -->
 
-    <div id="mass-edit-container" class="mb-4 hidden"> {# Visibility controlled by JS #}
-        <button type="button" class="btn btn-accent" onclick="mass_edit_modal.showModal()">
-            <i class="fa-solid fa-pen-to-square mr-2"></i> Mass Edit (<span id="selected-users-count">0</span> selected)
-        </button>
+    <div id="mass-edit-container" class="mb-4 hidden">
+        <div class="flex items-center space-x-2"> {# Wrapper div #}
+            <button type="button" class="btn btn-accent" onclick="mass_edit_modal.showModal()">
+                <i class="fa-solid fa-pen-to-square mr-2"></i> Mass Edit (<span id="selected-users-count" class="contents">0</span> selected)
+            </button>
+            <button type="button" class="btn btn-secondary" id="select_all_visible_button" title="Select all users currently visible">Select All</button>
+            <button type="button" class="btn btn-secondary" id="deselect_all_visible_button" title="Deselect all users">Deselect All</button>
+        </div>
     </div>
 
     {# The user list will be loaded into this container by HTMX. This container is STABLE. #}
@@ -176,36 +180,27 @@
     <div class="modal-box max-w-2xl">
         <form method="dialog"> <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button> </form>
         <h3 class="font-bold text-lg mb-4"><i class="fa-solid fa-users-cog mr-2"></i>Mass Edit Users</h3>
-        <form id="massEditForm" method="POST"
-            hx-post="{{ url_for('users.mass_edit_users', **request.args.to_dict(flat=False)) }}" {# Pass current query
-            args to preserve filters on refresh #} hx-target="#user-list-container" hx-swap="innerHTML"
-            hx-indicator="#mass_edit_loader"
-            hx-on::after-request="if (event.detail.successful) { mass_edit_modal.close(); }">
+        
+        <form id="massEditForm" method="POST">
             {{ mass_edit_form.hidden_tag() }}
-            {{ mass_edit_form.user_ids(id="mass_edit_user_ids") }}
+            
+            <input type="hidden" id="mass_edit_user_ids_input">
+            
             <div class="form-control mb-4">
                 {{ mass_edit_form.action.label(class="label") }}
-                {{ mass_edit_form.action(class="select select-bordered " + ("select-error" if
-                mass_edit_form.action.errors else ""), id="mass_edit_action_select") }}
-                {% if mass_edit_form.action.errors %}<span class="text-error text-xs mt-1">{{
-                    mass_edit_form.action.errors[0] }}</span>{% endif %}
+                {{ mass_edit_form.action(class="select select-bordered", id="mass_edit_action_select") }}
             </div>
+            
             <div id="mass_edit_libraries_section" class="form-control mb-4 hidden">
-                {{ mass_edit_form.libraries.label(class="label") }}
+                <label class="label"><span class="label-text">Set Access to Libraries...</span></label>
                 <div class="max-h-60 overflow-y-auto p-2 border border-base-300 rounded-md">
                     {% for value, label in mass_edit_form.libraries.choices %}
                     <label class="label cursor-pointer justify-start">
-                        <input type="checkbox" name="{{ mass_edit_form.libraries.name }}" value="{{ value }}"
-                            class="checkbox checkbox-primary mr-2" {% if mass_edit_form.libraries.data and value in
-                            mass_edit_form.libraries.data %}checked{% endif %}>
+                        <input type="checkbox" name="libraries" value="{{ value }}" class="checkbox checkbox-primary mr-2">
                         <span class="label-text">{{ label }}</span>
                     </label>
                     {% endfor %}
                 </div>
-                {% if mass_edit_form.libraries.errors %}<span class="text-error text-xs mt-1">{{
-                    mass_edit_form.libraries.errors[0] }}</span>{% endif %}
-                <label class="label"><span class="label-text-alt">Select libraries to apply. Existing access will be
-                        overwritten.</span></label>
             </div>
             <div id="mass_edit_delete_confirmation_section" class="form-control mb-4 hidden">
                 <div class="alert alert-error"><i class="fa-solid fa-triangle-exclamation mr-2"></i>
@@ -214,19 +209,15 @@
                         <div class="text-xs">Removes users from PUM AND Plex server. Cannot be undone.</div>
                     </div>
                 </div>
-                <label class="label cursor-pointer justify-start mt-2">{{ mass_edit_form.confirm_delete(class="checkbox
-                    checkbox-error mr-2", id="mass_edit_confirm_delete") }}<span class="label-text font-semibold">I
-                        understand and wish to permanently delete these users.</span></label>
-                {% if mass_edit_form.confirm_delete.errors %}<span class="text-error text-xs mt-1">{{
-                    mass_edit_form.confirm_delete.errors[0] }}</span>{% endif %}
+                <label class="label cursor-pointer justify-start mt-2">
+                    {{ mass_edit_form.confirm_delete(class="checkbox checkbox-error mr-2", id="mass_edit_confirm_delete") }}
+                    <span class="label-text font-semibold">I understand...</span>
+                </label>
             </div>
-            <div id="mass_edit_progress_bar_container" class="my-4 hidden">
-                <div class="text-sm mb-1"><span id="mass_edit_progress_text">Processing...</span></div><progress
-                    id="mass_edit_progress_bar" class="progress progress-primary w-full" value="0" max="100"></progress>
-            </div>
+            
             <div class="modal-action mt-6">
                 <button type="button" class="btn btn-ghost" onclick="mass_edit_modal.close()">Cancel</button>
-                {{ mass_edit_form.submit(class="btn btn-primary", id="mass_edit_submit_button") }}
+                <button type="button" class="btn btn-primary" id="mass_edit_submit_button">Apply Changes</button>
                 <span id="mass_edit_loader" class="htmx-indicator loading loading-spinner loading-md"></span>
             </div>
         </form>
@@ -259,38 +250,50 @@
 {% block scripts %}
 {{ super() }}
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        /****************************************************************************
-         * REFACTORED USER SELECTION LOGIC USING EVENT DELEGATION
-         * This is more efficient as it uses a single listener on the parent
-         * container and works automatically for content loaded via HTMX.
-         ****************************************************************************/
+    const selectedUserIds = new Set();
+    
+    function populateMassEditUserIds() {
+        const hiddenInput = document.getElementById('mass_edit_user_ids_input');
+        if(hiddenInput) {
+            hiddenInput.value = Array.from(selectedUserIds).join(',');
+            console.log(`[DEBUG] CLICK: Populating #mass_edit_user_ids_input with value: "${hiddenInput.value}"`);
+        } else {
+            console.error("[DEBUG] Click handler could not find #mass_edit_user_ids_input");
+        }
+    }
+    
+    function updateMassEditUI() {
+        const massEditContainer = document.getElementById('mass-edit-container');
+        const selectedUsersCountSpan = document.getElementById('selected-users-count');
+        if (!massEditContainer || !selectedUsersCountSpan) return;
+        const count = selectedUserIds.size;
+        selectedUsersCountSpan.textContent = count;
+        massEditContainer.classList.toggle('hidden', count === 0);
+        console.log(`[DEBUG] UI Updated. Selected count: ${count}.`);
+    }
 
-        const selectedUserIds = new Set();
+    document.addEventListener('DOMContentLoaded', function () {
         const userListContainer = document.getElementById('user-list-container');
         const massEditContainer = document.getElementById('mass-edit-container');
         const selectedUsersCountSpan = document.getElementById('selected-users-count');
-        const massEditUserIdsInput = document.getElementById('mass_edit_user_ids');
+        const selectAllVisibleBtn = document.getElementById('select_all_visible_button');
+        const deselectAllVisibleBtn = document.getElementById('deselect_all_visible_button');
+        
+        // --- Modal-specific selectors ---
+        const massEditModal = document.getElementById('mass_edit_modal');
+        const massEditSubmitButton = document.getElementById('mass_edit_submit_button');
+        const massEditActionSelect = document.getElementById('mass_edit_action_select');
+        const massEditLoader = document.getElementById('mass_edit_loader');
+        const librariesSection = document.getElementById('mass_edit_libraries_section');
+        const deleteConfirmSection = document.getElementById('mass_edit_delete_confirmation_section');
+        const confirmDeleteCheckbox = document.getElementById('mass_edit_confirm_delete');
 
-        // Function to update the mass edit button's visibility and user count
-        function updateMassEditUI() {
-            if (!massEditContainer || !selectedUsersCountSpan || !massEditUserIdsInput) return;
-            const count = selectedUserIds.size;
-            selectedUsersCountSpan.textContent = count;
-            massEditUserIdsInput.value = Array.from(selectedUserIds).join(',');
-            massEditContainer.classList.toggle('hidden', count === 0);
-        }
-
-        // --- Event Delegation Listeners on the main container ---
-
-        if (userListContainer) {
-            // 1. Delegated CHANGE listener for all checkboxes
+        if(userListContainer) {
             userListContainer.addEventListener('change', function(event) {
                 const target = event.target;
-
-                // Handle individual user checkbox clicks
                 if (target.matches('.user-select-checkbox') && target.dataset.userId) {
                     const userId = target.dataset.userId;
+                    console.log(`[DEBUG] Checkbox change for user ID: ${userId}. Checked: ${target.checked}`);
                     if (target.checked) {
                         selectedUserIds.add(userId);
                     } else {
@@ -298,112 +301,145 @@
                     }
                     updateMassEditUI();
                 }
-
-                // Handle "Select All" checkbox in table view
-                if (target.matches('#select_all_users_table')) {
-                    const isChecked = target.checked;
-                    userListContainer.querySelectorAll('.user-select-checkbox').forEach(cb => {
-                        if (cb.id !== 'select_all_users_table') {
-                            const userId = cb.dataset.userId;
-                            cb.checked = isChecked;
-                            if (isChecked) {
-                                selectedUserIds.add(userId);
-                            } else {
-                                selectedUserIds.delete(userId);
-                            }
-                        }
-                    });
-                    updateMassEditUI();
-                }
             });
-
-            // 2. Delegated CLICK listener for user cards
             userListContainer.addEventListener('click', function(event) {
                 const card = event.target.closest('.user-card-clickable');
-                if (!card) return; // Exit if the click was not on a card
-
-                // Ignore clicks on buttons, links, or the checkbox itself inside the card
-                if (event.target.closest('a, button, .user-select-checkbox, .card-action-button')) {
-                    return;
+                if (card && !event.target.closest('a, button, .user-select-checkbox')) {
+                    const checkbox = card.querySelector('.user-select-checkbox');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                 }
-
-                // This is a valid click on the card body
-                const checkbox = card.querySelector('.user-select-checkbox');
-                if (checkbox) {
-                    checkbox.checked = !checkbox.checked;
-                    // Dispatch a 'change' event so the listener above can handle the logic
-                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            });
-
-            // 3. Delegated CLICK listener for expanding libraries in table view
-            userListContainer.addEventListener('click', function(event) {
-                const button = event.target.closest('.show-more-libs-button');
-                if (!button) return;
-
-                const userId = button.dataset.targetUserId;
-                const allBadgesForThisUser = userListContainer.querySelectorAll(`.library-badge-for-user-${userId}.extra-library-badge`);
-                
-                let areAnyHidden = Array.from(allBadgesForThisUser).some(badge => badge.classList.contains('hidden'));
-
-                allBadgesForThisUser.forEach(badge => {
-                    badge.classList.toggle('hidden', !areAnyHidden);
-                });
-
-                button.innerHTML = areAnyHidden ? `- Show less` : `+ ${allBadgesForThisUser.length} more`;
             });
         }
         
-        // --- HTMX Event Listener for list updates ---
-        // This is now much simpler. We only need to clear the selection.
         document.body.addEventListener('htmx:afterSwap', function(event) {
             if (event.detail.target.id === 'user-list-container') {
-                console.log("User list was updated. Clearing current selection set.");
                 selectedUserIds.clear();
                 updateMassEditUI();
+                console.log("[DEBUG] htmx:afterSwap: User list reloaded. Selection cleared.");
             }
         });
 
+        if (selectAllVisibleBtn) {
+            selectAllVisibleBtn.addEventListener('click', function() {
+                console.log("[DEBUG] 'Select All' clicked.");
+                if (!userListContainer) return;
+                userListContainer.querySelectorAll('.user-select-checkbox[data-user-id]').forEach(cb => {
+                    if (!cb.checked) {
+                        cb.checked = true;
+                        selectedUserIds.add(cb.dataset.userId);
+                    }
+                });
+                updateMassEditUI();
+            });
+        }
 
-        // --- Purge Modal Logic (Remains the same) ---
+        if (deselectAllVisibleBtn) {
+            deselectAllVisibleBtn.addEventListener('click', function() {
+                console.log("[DEBUG] 'Deselect All' clicked.");
+                if (!userListContainer) return;
+                userListContainer.querySelectorAll('.user-select-checkbox[data-user-id]').forEach(cb => {
+                     cb.checked = false;
+                });
+                selectedUserIds.clear();
+                updateMassEditUI();
+            });
+        }
+        
+        // --- CORRECTED Manual submission logic for the Mass Edit Modal ---
+        if (massEditSubmitButton && massEditForm) {
+            massEditSubmitButton.addEventListener('click', function() {
+                
+                // Show the loader manually
+                if (massEditLoader) massEditLoader.style.display = 'inline-block';
+
+                // 1. Get all form data into a serializable object
+                const formData = new FormData(massEditForm);
+                
+                // 2. Add our dynamically generated user_ids to it
+                formData.set('user_ids', Array.from(selectedUserIds).join(','));
+
+                // DEBUG: Log the final data being sent
+                console.log("[SUBMIT CLICK] Final data to be sent:", Object.fromEntries(formData.entries()));
+
+                // 3. Make the HTMX request using `fetch` style `htmx.ajax` for full control
+                htmx.ajax('POST', "{{ url_for('users.mass_edit_users', **request.args.to_dict(flat=False)) }}", {
+                    target: '#user-list-container',
+                    swap: 'innerHTML',
+                    values: formData,
+                    indicator: massEditLoader // Tell HTMX which indicator to manage
+                }).then(() => {
+                    // This runs only on success (2xx response)
+                    document.getElementById('mass_edit_modal').close();
+                }).catch(error => {
+                    // This runs on failure (non-2xx response)
+                    console.error("Mass edit submission failed:", error);
+                    // The error toast is handled by the HX-Trigger from the server,
+                    // so we don't need to do anything else here.
+                }).finally(() => {
+                     // Always hide loader, even on error
+                    if(massEditLoader) massEditLoader.style.display = 'none';
+                });
+            });
+        }
+
+        if (massEditSubmitButton) {
+            massEditSubmitButton.addEventListener('click', function() {
+                const hiddenInput = document.getElementById('mass_edit_user_ids_input');
+                if(hiddenInput) {
+                    hiddenInput.value = Array.from(selectedUserIds).join(',');
+                }
+            });
+        }
+
+        htmx.on("#mass_edit_submit_button", "htmx:afterRequest", function(evt){
+            if (evt.detail.successful) {
+                document.getElementById('mass_edit_modal').close();
+            }
+        });
+
+        if (massEditActionSelect) {
+            massEditActionSelect.addEventListener('change', function () {
+                if(librariesSection) librariesSection.classList.add('hidden'); 
+                if(deleteConfirmSection) deleteConfirmSection.classList.add('hidden');
+                
+                // Use a separate variable for the submit button inside this scope
+                const submitBtn = document.getElementById('mass_edit_submit_button');
+                if(submitBtn) submitBtn.disabled = (this.value === '');
+
+                if (this.value === 'update_libraries' && librariesSection) {
+                    librariesSection.classList.remove('hidden');
+                } else if (this.value === 'delete_users' && deleteConfirmSection) {
+                    deleteConfirmSection.classList.remove('hidden');
+                    if (submitBtn && confirmDeleteCheckbox) {
+                        submitBtn.disabled = !confirmDeleteCheckbox.checked;
+                    }
+                }
+            });
+             const submitBtn = document.getElementById('mass_edit_submit_button');
+             if (submitBtn && massEditActionSelect.value === '') {
+                submitBtn.disabled = true;
+             }
+        }
+
+        if (confirmDeleteCheckbox) {
+            confirmDeleteCheckbox.addEventListener('change', function () {
+                const submitBtn = document.getElementById('mass_edit_submit_button');
+                if (massEditActionSelect && massEditActionSelect.value === 'delete_users' && submitBtn) {
+                    submitBtn.disabled = !this.checked;
+                }
+            });
+        }
+        
+        // --- Logic for modals (purge, mass edit, sync) ---
         const confirmPurgeModal = document.getElementById('confirm_purge_modal');
         if (confirmPurgeModal) {
             confirmPurgeModal.addEventListener('close', () => {
                 const contentDiv = document.getElementById('confirm_purge_modal_content_div');
                 if (contentDiv) {
                     contentDiv.innerHTML = '<div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading preview...</p></div>';
-                }
-            });
-        }
-
-        // --- Mass Edit Modal Specific Logic (Remains the same) ---
-        const massEditActionSelect = document.getElementById('mass_edit_action_select');
-        const librariesSection = document.getElementById('mass_edit_libraries_section');
-        const deleteConfirmSection = document.getElementById('mass_edit_delete_confirmation_section');
-        const massEditSubmitButton = document.getElementById('mass_edit_submit_button');
-        const confirmDeleteCheckbox = document.getElementById('mass_edit_confirm_delete');
-
-        if (massEditActionSelect) {
-            massEditActionSelect.addEventListener('change', function () {
-                if(librariesSection) librariesSection.classList.add('hidden'); 
-                if(deleteConfirmSection) deleteConfirmSection.classList.add('hidden');
-                if(massEditSubmitButton) massEditSubmitButton.disabled = (this.value === '');
-
-                if (this.value === 'update_libraries' && librariesSection) {
-                    librariesSection.classList.remove('hidden');
-                } else if (this.value === 'delete_users' && deleteConfirmSection) {
-                    deleteConfirmSection.classList.remove('hidden');
-                    if (massEditSubmitButton && confirmDeleteCheckbox) {
-                        massEditSubmitButton.disabled = !confirmDeleteCheckbox.checked;
-                    }
-                }
-            });
-            if (massEditSubmitButton && massEditActionSelect.value === '') massEditSubmitButton.disabled = true;
-        }
-        if (confirmDeleteCheckbox) {
-            confirmDeleteCheckbox.addEventListener('change', function () {
-                if (massEditActionSelect && massEditActionSelect.value === 'delete_users' && massEditSubmitButton) {
-                    massEditSubmitButton.disabled = !this.checked;
                 }
             });
         }
@@ -418,14 +454,12 @@
             });
         }
 
-        // --- Sync Results Modal Listener (Remains the same) ---
         document.body.addEventListener('openSyncResultsModal', function(evt) {
             const modal = document.getElementById('sync_results_modal');
             if (modal && typeof modal.showModal === 'function') {
                 modal.showModal();
             }
         });
-
     });
 </script>
 {% endblock %}

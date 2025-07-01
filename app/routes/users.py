@@ -231,7 +231,6 @@ def edit_user(user_id):
 
 
     if form.validate_on_submit():
-        # ... (library change logic as before) ...
         original_library_ids = set(user.allowed_library_ids or [])
         new_library_ids_from_form = set(form.libraries.data or [])
         libraries_changed = (new_library_ids_from_form != original_library_ids)
@@ -296,111 +295,151 @@ def edit_user(user_id):
 @login_required
 @setup_required
 def delete_user(user_id):
-    user = User.query.get_or_404(user_id) # User needed for username in flash message if needed
+    user = User.query.get_or_404(user_id)
     username = user.plex_username
     try:
-        # Pass current_user.id as admin_id
         user_service.delete_user_from_pum_and_plex(user_id, admin_id=current_user.id)
-        flash(f"User '{username}' and their Plex server access has been removed.", "success")
-        return "", 200 # For HTMX
+        
+        # Create a toast message payload
+        toast = {
+            "showToastEvent": {
+                "message": f"User '{username}' has been successfully removed.",
+                "category": "success"
+            }
+        }
+        
+        # Create an empty response and add the HX-Trigger header
+        response = make_response("", 200)
+        response.headers['HX-Trigger'] = json.dumps(toast)
+        return response
+
     except Exception as e:
-        # The service layer now raises the exception, so it will be caught here.
-        current_app.logger.error(f"Route Error deleting user {username}: {e}", exc_info=True) # Log it from route too
-        flash(f"Error deleting user '{username}': {e}", "danger")
-        # Log the general error from the route, service layer might have logged specifics
+        current_app.logger.error(f"Route Error deleting user {username}: {e}", exc_info=True)
         log_event(EventType.ERROR_GENERAL, f"Route: Failed to delete user {username}: {e}", user_id=user_id, admin_id=current_user.id)
-        return f"<div class='alert alert-error'>Error deleting user '{username}': {e}</div>", 500
+        
+        # Create an error toast message payload
+        toast = {
+            "showToastEvent": {
+                "message": f"Error deleting user '{username}': {str(e)[:100]}",
+                "category": "error"
+            }
+        }
+        
+        # Respond with an error status and the trigger header
+        # Note: HTMX will NOT swap the target on a 500 error unless told to.
+        # But it WILL process the trigger header, showing the toast.
+        response = make_response("", 500)
+        response.headers['HX-Trigger'] = json.dumps(toast)
+        return response
 
 @bp.route('/mass_edit', methods=['POST'])
 @login_required
 @setup_required
 def mass_edit_users():
-    form = MassUserEditForm()
+    current_app.logger.debug("--- MASS EDIT ROUTE START ---")
+    
+    # DEBUG 1: Print the raw form data received by Flask
+    print(f"[SERVER DEBUG 1] Raw request.form: {request.form.to_dict()}")
+
+    # We get user_ids manually from the request now
+    user_ids_str = request.form.get('user_ids')
+    toast_message = ""
+    toast_category = "error"
+
+    # Instantiate form for the other fields that DO need validation
+    form = MassUserEditForm(request.form)
+    
+    # We still must populate the dynamic choices for the libraries field
     available_libraries = plex_service.get_plex_libraries_dict()
     form.libraries.choices = [(lib_id, name) for lib_id, name in available_libraries.items()]
-    if form.libraries.data is None and not form.is_submitted(): form.libraries.data = []
 
-    if form.validate_on_submit():
-        user_ids_str = form.user_ids.data
-        if not user_ids_str:
-            flash("No users selected for mass edit.", "warning")
-            return redirect(url_for('users.list_users', **request.args)) 
+    # Manual validation for user_ids, then form validation for the rest
+    if not user_ids_str:
+        toast_message = "Validation Error: User Ids: This field is required."
+        print("[SERVER DEBUG 2] user_ids_str is missing or empty.")
+    elif form.validate():
+        print(f"[SERVER DEBUG 3] Form validation PASSED. User IDs from request: '{user_ids_str}'")
         user_ids = [int(uid) for uid in user_ids_str.split(',') if uid.isdigit()]
-        action = form.action.data; processed_count = 0; error_count = 0
-        
-        if action == 'update_libraries':
-            new_library_ids = form.libraries.data or [] 
-            try:
-                # Assuming mass_update_user_libraries also needs admin_id for its logging
+        action = form.action.data
+        try:
+            if action == 'update_libraries':
+                new_library_ids = form.libraries.data or []
                 processed_count, error_count = user_service.mass_update_user_libraries(user_ids, new_library_ids, admin_id=current_user.id)
-                flash(f"Mass library update: {processed_count} processed, {error_count} errors.", "success" if error_count == 0 else "warning")
-                # Logging is now primarily handled within the service for this action
-            except Exception as e: 
-                flash(f"Error during mass library update: {e}", "danger")
-                log_event(EventType.ERROR_GENERAL, f"Route: Mass library update error: {e}", admin_id=current_user.id, details={'attempted_ids': user_ids})
-
-        elif action == 'delete_users':
-            if not form.confirm_delete.data:
-                flash("Deletion not confirmed.", "warning")
-            else:
-                try:
-                    # Pass current_user.id as admin_id
+                toast_message = f"Mass library update: {processed_count} processed, {error_count} errors."
+                toast_category = "success" if error_count == 0 else "warning"
+            elif action == 'delete_users':
+                if not form.confirm_delete.data:
+                    toast_message = "Deletion was not confirmed. No action taken."
+                    toast_category = "warning"
+                else:
                     processed_count, error_count = user_service.mass_delete_users(user_ids, admin_id=current_user.id)
-                    flash(f"Mass delete: {processed_count} removed, {error_count} errors.", "success" if error_count == 0 else "warning")
-                    # Logging is now primarily handled within the service for this action
-                except Exception as e: 
-                    flash(f"Error during mass deletion: {e}", "danger")
-                    log_event(EventType.ERROR_GENERAL, f"Route: Mass delete error: {e}", admin_id=current_user.id, details={'attempted_ids': user_ids})
-        elif action == 'add_to_bot_whitelist':
-                count = user_service.mass_update_bot_whitelist(user_ids, True, current_user.id)
-                flash(f"{count} users added to Discord Bot Whitelist.", "success")
-        elif action == 'remove_from_bot_whitelist':
-            count = user_service.mass_update_bot_whitelist(user_ids, False, current_user.id)
-            flash(f"{count} users removed from Discord Bot Whitelist.", "success")
-        elif action == 'add_to_purge_whitelist':
-            count = user_service.mass_update_purge_whitelist(user_ids, True, current_user.id)
-            flash(f"{count} users added to Purge Whitelist.", "success")
-        elif action == 'remove_from_purge_whitelist':
-            count = user_service.mass_update_purge_whitelist(user_ids, False, current_user.id)
-            flash(f"{count} users removed from Purge Whitelist.", "success")
-        else:
-            flash("Invalid mass edit action.", "danger")
-    else: 
-        # Handle form validation errors by flashing them
-        for field_name, error_list in form.errors.items():
-            field_label = getattr(form, field_name).label.text
-            for error_message_text in error_list:
-                flash(f"Error in '{field_label}': {error_message_text}", "danger")
+                    toast_message = f"Mass delete: {processed_count} removed, {error_count} errors."
+                    toast_category = "success" if error_count == 0 else "warning"
+            elif action.endswith('_whitelist'):
+                should_add = action.startswith('add_to')
+                whitelist_type = "Bot" if "bot" in action else "Purge"
+                if whitelist_type == "Bot":
+                    count = user_service.mass_update_bot_whitelist(user_ids, should_add, current_user.id)
+                else: # Purge
+                    count = user_service.mass_update_purge_whitelist(user_ids, should_add, current_user.id)
+                action_text = "added to" if should_add else "removed from"
+                toast_message = f"{count} user(s) {action_text} the {whitelist_type} Whitelist."
+                toast_category = "success"
+            else:
+                toast_message = "Invalid action."
+        except Exception as e:
+            toast_message = f"Server Error: {str(e)[:100]}"
+            print(f"[SERVER DEBUG 5] Exception during action '{action}': {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        # Form validation failed for other fields (e.g., action)
+        error_list = []
+        for field, errors in form.errors.items():
+            field_label = getattr(form, field).label.text
+            for error in errors:
+                error_list.append(f"{field_label}: {error}")
+                print(f"[SERVER DEBUG 4] Validation Error for '{field_label}': {error}")
+        toast_message = "Validation Error: " + "; ".join(error_list)
 
-    # For HTMX, re-render the user list content
-    page = request.args.get('page', 1, type=int); 
+    # Re-rendering logic (unchanged)
+    page = request.args.get('page', 1, type=int)
     view_mode = request.args.get('view', Setting.get('DEFAULT_USER_VIEW', 'cards'))
     items_per_page = session.get('users_list_per_page', int(current_app.config.get('DEFAULT_USERS_PER_PAGE', 12)))
     
-    # Re-apply filters and sorting when re-rendering the list
     query = User.query
-    search_term = request.args.get('search', '').strip() # Get from original request's args for consistency
+    search_term = request.args.get('search', '').strip()
     if search_term: query = query.filter(or_(User.plex_username.ilike(f"%{search_term}%"), User.plex_email.ilike(f"%{search_term}%")))
+    
     filter_type = request.args.get('filter_type', '')
     if filter_type == 'home_user': query = query.filter(User.is_home_user == True)
-    # ... (add other filters back if needed) ...
+    elif filter_type == 'shares_back': query = query.filter(User.shares_back == True)
+    elif filter_type == 'has_discord': query = query.filter(User.discord_user_id != None)
+    elif filter_type == 'no_discord': query = query.filter(User.discord_user_id == None)
+    
     sort_by = request.args.get('sort_by', 'username_asc')
-    if sort_by == 'username_asc': query = query.order_by(User.plex_username.asc())
-    # ... (add other sort options back if needed) ...
+    if sort_by == 'username_desc': query = query.order_by(User.plex_username.desc())
+    elif sort_by == 'last_streamed_desc': query = query.order_by(User.last_streamed_at.desc().nullslast())
+    elif sort_by == 'last_streamed_asc': query = query.order_by(User.last_streamed_at.asc().nullsfirst())
+    elif sort_by == 'created_at_desc': query = query.order_by(User.created_at.desc())
+    elif sort_by == 'created_at_asc': query = query.order_by(User.created_at.asc())
     else: query = query.order_by(User.plex_username.asc())
     
-    users_pagination = query.paginate(page=page, per_page=items_per_page, error_out=False); users_count = query.count()
+    users_pagination = query.paginate(page=page, per_page=items_per_page, error_out=False)
+    users_count = query.count()
     
-    fresh_mass_edit_form = MassUserEditForm() # A new form for the modal
-    fresh_mass_edit_form.libraries.choices = [(lib_id, name) for lib_id, name in available_libraries.items()]
-    if fresh_mass_edit_form.libraries.data is None: fresh_mass_edit_form.libraries.data = []
-
-    template_map = {'cards': 'users/_users_cards.html', 'table': 'users/_users_table.html'}
-    return render_template(template_map.get(view_mode, 'users/_users_cards.html'), 
-                           users=users_pagination,
-                           available_libraries=available_libraries,
-                           mass_edit_form=fresh_mass_edit_form, 
-                           current_view=view_mode)
+    response_html = render_template('users/_users_list_content.html',
+                                    users=users_pagination,
+                                    users_count=users_count,
+                                    available_libraries=available_libraries,
+                                    current_view=view_mode,
+                                    current_per_page=items_per_page)
+    
+    response = make_response(response_html)
+    toast_payload = {"showToastEvent": {"message": toast_message, "category": toast_category}}
+    response.headers['HX-Trigger-After-Swap'] = json.dumps(toast_payload)
+    
+    return response
 
 @bp.route('/purge_inactive', methods=['POST'])
 @login_required

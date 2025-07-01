@@ -119,6 +119,8 @@ class AdminAccount(db.Model, UserMixin): # ... (no changes needed for bot featur
     discord_user_id = db.Column(db.String(255), unique=True, nullable=True); discord_username = db.Column(db.String(255), nullable=True)
     discord_avatar_hash = db.Column(db.String(255), nullable=True); discord_access_token = db.Column(db.String(255), nullable=True)
     discord_refresh_token = db.Column(db.String(255), nullable=True); discord_token_expires_at = db.Column(db.DateTime, nullable=True)
+    discord_email = db.Column(db.String(255), nullable=True)
+    discord_email_verified = db.Column(db.Boolean, nullable=True)
     def set_password(self, password): self.password_hash = generate_password_hash(password)
     def check_password(self, password): return check_password_hash(self.password_hash, password) if self.password_hash else False
     def __repr__(self): return f'<AdminAccount {self.username or self.plex_username}>'
@@ -135,7 +137,8 @@ class User(db.Model):
     is_home_user = db.Column(db.Boolean, default=False, nullable=False) # Added nullable=False
     shares_back = db.Column(db.Boolean, default=False, nullable=False) # Added nullable=False
     is_plex_friend = db.Column(db.Boolean, default=False, nullable=False) # For Req related to "friends" specifically
-
+    discord_email = db.Column(db.String(255), nullable=True)
+    discord_email_verified = db.Column(db.Boolean, nullable=True)
     allowed_library_ids = db.Column(MutableList.as_mutable(JSONEncodedDict), default=list)
     allowed_servers = db.Column(MutableList.as_mutable(JSONEncodedDict), default=list) 
     notes = db.Column(db.Text, nullable=True)

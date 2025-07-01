@@ -21,107 +21,112 @@
     {{ form.hidden_tag() }}
 
     {# --- Expiration Fields --- #}
-    <div class="grid grid-cols-2 gap-4 mb-4">
-        <div class="form-control">
-            {{ form.expires_in_days.label(class="label text-sm") }}
-            {{ form.expires_in_days(class="input input-bordered " + ("input-error" if form.expires_in_days.errors else ""), type="number", min="0", id="edit_expires_in_days") }}
-        </div>
-        <div class="form-control justify-end pb-1">
-            <label class="label cursor-pointer justify-start">
-                {{ form.clear_expiry(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_expiry") }}
-                <span class="label-text text-sm">{{ form.clear_expiry.label.text }}</span>
-            </label>
+    <div class="mb-4">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-x-4 gap-y-1">
+            <div class="form-control w-full md:w-auto flex-grow">
+                {{ form.expires_in_days.label(class="label text-sm") }}
+                {{ form.expires_in_days(class="input input-sm input-bordered w-full " + ("input-error" if form.expires_in_days.errors else ""), type="number", min="0", id="edit_expires_in_days") }}
+            </div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start pt-2">
+                    {{ form.clear_expiry(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_expiry") }}
+                    <span class="label-text text-sm whitespace-normal">{{ form.clear_expiry.label.text }}</span>
+                </label>
+            </div>
         </div>
     </div>
     
-    {# --- Uses Fields --- #}
-    <div class="grid grid-cols-2 gap-4 mb-4">
-        <div class="form-control">
-            {{ form.number_of_uses.label(class="label text-sm") }}
-            {{ form.number_of_uses(class="input input-bordered " + ("input-error" if form.number_of_uses.errors else ""), type="number", min="0", id="edit_number_of_uses") }}
-        </div>
-        <div class="form-control justify-end pb-1">
-            <label class="label cursor-pointer justify-start">
-                {{ form.clear_max_uses(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_max_uses") }}
-                <span class="label-text text-sm">{{ form.clear_max_uses.label.text }}</span>
-            </label>
-        </div>
-    </div>
-
-    {# --- Membership Fields --- #}
-    <div class="grid grid-cols-2 gap-4 mb-4">
-        <div class="form-control">
-            {{ form.membership_duration_days.label(class="label text-sm") }}
-            {{ form.membership_duration_days(class="input input-bordered " + ("input-error" if form.membership_duration_days.errors else ""), type="number", min="1", id="edit_membership_duration_days") }}
-        </div>
-         <div class="form-control justify-end pb-1">
-            <label class="label cursor-pointer justify-start">
-                {{ form.clear_membership_duration(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_membership_duration") }}
-                <span class="label-text text-sm">{{ form.clear_membership_duration.label.text }}</span>
-            </label>
-        </div>
-    </div>
-
-    {# --- Other Options in Details Element --- #}
-    <details class="collapse collapse-arrow bg-base-100/50 border border-base-300 rounded-md">
-        <summary class="collapse-title text-md font-medium">Libraries & Advanced Options</summary>
-        <div class="collapse-content space-y-4 pt-4">
-            
-            {# Library Selector #}
+    <div class="mb-4">
+         <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-x-4 gap-y-1">
+            <div class="form-control w-full md:w-auto flex-grow">
+                {{ form.number_of_uses.label(class="label text-sm") }}
+                {{ form.number_of_uses(class="input input-sm input-bordered w-full " + ("input-error" if form.number_of_uses.errors else ""), type="number", min="0", id="edit_number_of_uses") }}
+            </div>
             <div class="form-control">
-                <label class="label">
-                    <span class="label-text">{{ form.libraries.label.text }}</span>
+                <label class="label cursor-pointer justify-start pt-2">
+                    {{ form.clear_max_uses(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_max_uses") }}
+                    <span class="label-text text-sm whitespace-normal">{{ form.clear_max_uses.label.text }}</span>
                 </label>
-                <div class="max-h-60 overflow-y-auto p-2 border border-base-300 rounded-md bg-base-100/30 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                    {% for value, label in form.libraries.choices %}
-                        <label class="label cursor-pointer justify-start py-1">
-                            <input type="checkbox" name="{{ form.libraries.name }}" value="{{ value }}" class="checkbox checkbox-primary checkbox-sm mr-2" {% if form.libraries.data and value in form.libraries.data %}checked{% endif %}>
-                            <span class="label-text" title="{{ label }}">{{ label | truncate(30, True) }}</span>
-                        </label>
-                    {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-x-4 gap-y-1">
+            <div class="form-control w-full md:w-auto flex-grow">
+                {{ form.membership_duration_days.label(class="label text-sm") }}
+                {{ form.membership_duration_days(class="input input-sm input-bordered w-full " + ("input-error" if form.membership_duration_days.errors else ""), type="number", min="1", id="edit_membership_duration_days") }}
+            </div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start pt-2">
+                    {{ form.clear_membership_duration(class="checkbox checkbox-warning checkbox-sm mr-2", id="edit_clear_membership_duration") }}
+                    <span class="label-text text-sm whitespace-normal">{{ form.clear_membership_duration.label.text }}</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <details class="border border-base-300 rounded-md">
+        <summary class="p-4 cursor-pointer font-medium flex justify-between items-center">
+            <span>Libraries & Advanced Options</span>
+            <i class="fa-solid fa-chevron-down transition-transform duration-200"></i>
+        </summary>
+        <div class="p-4 border-t border-base-300">
+            <div class="space-y-4">
+            
+                {# Grant Access to Libraries #}
+                <div class="form-control mt-4">
+                    <label class="label"><span class="label-text">Grant Access to Libraries</span></label>
+                    <div class="max-h-48 overflow-y-auto p-2 border border-base-300 rounded-md bg-base-100/30 flex flex-col">
+                        {# Simple stacking labels, guaranteed to wrap #}
+                        {% for value, label in form.libraries.choices %}
+                            <label class="label cursor-pointer justify-start py-1">
+                                <input type="checkbox" name="{{ form.libraries.name }}" value="{{ value }}" class="checkbox checkbox-primary checkbox-sm mr-2" {% if form.libraries.data and value in form.libraries.data %}checked{% endif %}>
+                                <span class="label-text">{{ label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {# All subsequent options are simple flex containers that will wrap naturally #}
+                <div class="form-control mt-4">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.allow_downloads(class="toggle toggle-accent mr-3") }}
+                        <span class="label-text font-medium whitespace-normal">{{ form.allow_downloads.label.text }}</span>
+                    </label>
+                </div>
+
+                <div class="divider text-xs">Discord Overrides</div>
+                
+                <div class="form-control">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.override_force_discord_auth(class="toggle toggle-info mr-3", id="edit_modal_override_sso") }}
+                        <span class="label-text font-medium whitespace-normal">{{ form.override_force_discord_auth.label.text }}</span>
+                    </label>
+                </div>
+                {% if global_require_guild %}
+                <div class="form-control mt-2">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.override_force_guild_membership(class="toggle toggle-warning mr-3", id="edit_modal_override_guild") }}
+                        <span class="label-text font-medium whitespace-normal">{{ form.override_force_guild_membership.label.text }}</span>
+                    </label>
+                </div>
+                {% endif %}
+
+                <div class="divider text-xs">Whitelist Grants</div>
+                <div class="form-control">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.grant_purge_whitelist(class="toggle toggle-accent mr-3") }}
+                        <span class="label-text font-medium whitespace-normal">{{ form.grant_purge_whitelist.label.text }}</span>
+                    </label>
+                </div>
+                <div class="form-control mt-2">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.grant_bot_whitelist(class="toggle toggle-info mr-3") }}
+                        <span class="label-text font-medium whitespace-normal">{{ form.grant_bot_whitelist.label.text }}</span>
+                    </label>
                 </div>
             </div>
-
-            {# Downloads Toggle #}
-            <div class="form-control">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.allow_downloads(class="toggle toggle-accent mr-3") }}
-                    <span class="label-text font-medium">{{ form.allow_downloads.label.text }}</span>
-                </label>
-            </div>
-            
-            {# Discord Overrides #}
-            <div class="divider text-xs">Discord Overrides</div>
-            <div class="form-control">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.override_force_discord_auth(class="toggle toggle-info mr-3", id="edit_modal_override_sso") }}
-                    <span class="label-text font-medium">{{ form.override_force_discord_auth.label.text }}</span>
-                </label>
-            </div>
-            {% if global_require_guild %}
-            <div class="form-control">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.override_force_guild_membership(class="toggle toggle-warning mr-3", id="edit_modal_override_guild") }}
-                    <span class="label-text font-medium">{{ form.override_force_guild_membership.label.text }}</span>
-                </label>
-            </div>
-            {% endif %}
-
-            {# Whitelist Grants #}
-            <div class="divider text-xs">Whitelist Grants</div>
-            <div class="form-control">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.grant_purge_whitelist(class="toggle toggle-accent mr-3") }}
-                    <span class="label-text font-medium">{{ form.grant_purge_whitelist.label.text }}</span>
-                </label>
-            </div>
-            <div class="form-control">
-                <label class="label cursor-pointer justify-start">
-                    {{ form.grant_bot_whitelist(class="toggle toggle-info mr-3") }}
-                    <span class="label-text font-medium">{{ form.grant_bot_whitelist.label.text }}</span>
-                </label>
-            </div>
-            
         </div>
     </details>
 
@@ -177,5 +182,19 @@
         ssoToggle.addEventListener('change', handleEditSsoDependency);
         handleEditSsoDependency(); // Set initial state
     }
+    const detailsElement = document.querySelector('#editInviteForm-{{ invite.id }} details');
+        if (detailsElement) {
+            const arrowIcon = detailsElement.querySelector('summary i.fa-chevron-down');
+            detailsElement.addEventListener('toggle', function() {
+                if (arrowIcon) {
+                    arrowIcon.classList.toggle('rotate-180', detailsElement.open);
+                }
+            });
+        }
 })();
 </script>
+<style>
+details[open] > summary i {
+    transform: rotate(180deg);
+}
+</style>
