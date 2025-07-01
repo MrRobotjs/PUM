@@ -132,7 +132,6 @@ The easiest way to deploy Plex User Manager is using Docker.
 ### Available Docker Image Tags
 
 *   `latest`: The latest stable build, usually from the `main` branch.
-*   `edge` or `main`: Bleeding-edge builds directly from the `main` branch (may be less stable).
 *   `vX.Y.Z` (e.g., `v0.1.0`): Specific release versions. It's recommended to use these versioned tags for stability in production.
 
 You can find all available image tags on the [GitHub Packages page for PUM](https://github.com/MrRobotjs/PUM/pkgs/container/pum).
