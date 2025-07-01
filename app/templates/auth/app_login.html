@@ -19,7 +19,7 @@
                 {% if login_methods_available.plex_sso %}
                 <div class="form-control">
                     <button formaction="{{ url_for('auth.plex_sso_login_admin') }}" type="submit" name="sso_method" value="plex" class="btn btn-primary bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black">
-                        <i class="fa-solid fa-right-to-bracket mr-2"> Sign In with Plex
+                        <i class="fa-solid fa-right-to-bracket mr-2"></i> Sign In with Plex
                     </button>
                 </div>
                 {% endif %}
