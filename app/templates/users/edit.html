@@ -26,17 +26,6 @@
                                 <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} Plex avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';" />
                             </div>
                         </div>
-
-                        {# Link Icon and Discord Avatar (if available) #}
-                        {% if user.discord_user_id and user.discord_avatar_hash %}
-                            <div class="text-2xl text-base-content/50"><i class="fa-solid fa-link"></i></div>
-                            <div class="avatar">
-                                {# THIS is the corrected line. Changed from w-16 to w-24 to match. #}
-                                <div class="w-24 rounded-full ring ring-info ring-offset-base-100 ring-offset-2">
-                                    <img src="https://cdn.discordapp.com/avatars/{{ user.discord_user_id }}/{{ user.discord_avatar_hash }}.png?size=128" alt="{{ user.discord_username or 'Discord' }} avatar" />
-                                </div>
-                            </div>
-                        {% endif %}
                     </div>
                     <h2 class="card-title text-2xl">{{ user.plex_username }}</h2>
                     <p class="text-base-content/70 text-sm" title="{{ user.plex_email or 'No email on file' }}">{{ user.plex_email or 'No email on file' }}</p>

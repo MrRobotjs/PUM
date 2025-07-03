@@ -18,13 +18,15 @@
                 {% for invite in invites.items %}
                 <tr id="invite-row-{{ invite.id }}" class="hover">
                     <td>
-                        <div class="font-semibold hover:underline" title="Full URL: {{ invite.get_full_url(g.app_base_url) }}">
-                            <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank">
-                                /invite/{{ invite.custom_path or (invite.token[:12] ~ '...') }}
-                                <i class="fa-solid fa-external-link-alt fa-xs ml-1"></i>
-                            </a>
-                        </div>
-                        <button class="btn btn-xs btn-ghost text-info p-0" onclick="copyToClipboard('{{ invite.get_full_url(g.app_base_url) }}', 'Invite link copied!')" title="Copy invite link"><i class="fa-regular fa-copy fa-sm"></i> Copy Link</button>
+                        {# The link is now a button that triggers the copy function #}
+                        <button class="font-semibold text-left link link-hover link-primary p-0"
+                                title="Click to copy invite link"
+                                onclick="copyToClipboard('{{ invite.get_full_url(g.app_base_url) }}', 'Invite link copied!')">
+                            {{ invite.custom_path or (invite.token[:12]) }}
+                        </button>
+                        <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank" class="btn btn-xs btn-ghost p-1" title="Open link in new tab">
+                            <i class="fa-solid fa-external-link-alt fa-xs"></i>
+                        </a>
                         <div class="text-xs opacity-60">Created: {{ invite.created_at | time_ago }}</div>
                     </td>
                     <td class="hidden md:table-cell text-xs">

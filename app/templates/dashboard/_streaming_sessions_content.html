@@ -19,12 +19,13 @@
 {% if sessions and sessions|length > 0 %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
         {% for session in sessions %}
-        <div class="card bg-base-200 shadow-lg w-full max-w-md relative group"> 
+        <div class="card bg-base-200 shadow-lg w-full max-w-md relative group" tabindex="0">
             {% if session.session_key %}
-            <button class="btn btn-xs btn-circle btn-error absolute top-2 right-2 
-                           opacity-0 group-hover:opacity-100 focus-within:opacity-100 
-                           pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto
-                           transition-opacity duration-200 ease-in-out z-10"
+            <button class="btn btn-xs btn-circle btn-error absolute top-2 right-2 z-10 
+                           opacity-0 pointer-events-none 
+                           transition-opacity duration-200 
+                           group-hover:opacity-100 group-hover:pointer-events-auto 
+                           group-focus:opacity-100 group-focus:pointer-events-auto"
                     title="Terminate Session"
                     onclick='openTerminateSessionModal({{ session.session_key | tojson }}, {{ session.user | tojson }}, {{ session.media_title | tojson }})'>
                 <i class="fa-solid fa-times"></i>

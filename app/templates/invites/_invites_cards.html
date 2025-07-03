@@ -6,11 +6,15 @@
     <div class="card bg-base-200 shadow-lg hover:shadow-xl transition-shadow duration-200 ease-in-out relative group" id="invite-row-{{ invite.id }}">
         <div class="card-body p-4">
             <div class="mb-3">
-                <div class="font-semibold text-primary truncate" title="Full URL: {{ invite.get_full_url(g.app_base_url) }}">
-                    <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank" class="link link-hover">
-                        {{ invite.custom_path or invite.token[:12] }}
-                    </a>
-                </div>
+                {# The link is now a button that triggers the copy function #}
+                <button class="font-semibold text-primary text-left link link-hover p-0"
+                        title="Click to copy invite link"
+                        onclick="copyToClipboard('{{ invite.get_full_url(g.app_base_url) }}', 'Invite link copied!')">
+                    {{ invite.custom_path or invite.token[:12] }}
+                </button>
+                <a href="{{ invite.get_full_url(g.app_base_url) }}" target="_blank" class="btn btn-xs btn-ghost p-1" title="Open link in new tab">
+                    <i class="fa-solid fa-external-link-alt fa-xs"></i>
+                </a>
             </div>
 
             <div class="text-xs space-y-1 mb-3">

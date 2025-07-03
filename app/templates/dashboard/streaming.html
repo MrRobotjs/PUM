@@ -55,7 +55,7 @@
          hx-get="{{ url_for('dashboard.streaming_sessions_partial') }}" 
          hx-trigger="load, every {{ streaming_refresh_interval | default(15) }}s"
          hx-swap="innerHTML"
-         hx-indicator="#streaming-auto-refresh-loader"> {# Point to the new persistent loader #}
+         hx-indicator="#streaming-auto-refresh-loader">
         
         {# Initial loading message - this will be replaced on first load #}
         <div id="streaming-initial-loader-msg-content"> {# Renamed to avoid conflict if selector used elsewhere #}

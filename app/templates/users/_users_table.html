@@ -41,7 +41,6 @@
                 <td class="hidden md:table-cell">
                     {% if user.is_home_user %}<span class="badge badge-primary badge-sm" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</span>{% endif %}
                     {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</span>{% endif %}
-                    {% if user.is_plex_friend is defined and user.is_plex_friend %}<span class="badge badge-accent badge-sm mt-1" title="Plex Friend"><i class="fa-solid fa-user-friends mr-1"></i> Friend</span>{% endif %}
                     {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Discord</span>{% endif %}
                     {% set has_any_special_badge = user.is_home_user or user.shares_back or (user.is_plex_friend is defined and user.is_plex_friend) or user.discord_user_id %}
                     {% if not has_any_special_badge %}
