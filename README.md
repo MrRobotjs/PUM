@@ -3,6 +3,7 @@
 [![Docker Image CI](https://github.com/MrRobotjs/PUM/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/MrRobotjs/PUM/actions/workflows/docker-publish.yml)
 [![GitHub stars](https://img.shields.io/github/stars/MrRobotjs/PUM.svg?style=social&label=Star&maxAge=2592000)](https://github.com/MrRobotjs/PUM/stargazers/)
 [![](https://dcbadge.limes.pink/api/server/https://discord.gg/QGHQWpGNgX)](https://discord.gg/QGHQWpGNgX)
+[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=D7BJAJ9ZY4GRC&no_recurring=0&currency_code=USD)
 
 
 Plex User Manager (PUM) is a web application designed to simplify and enhance the management of users on your Plex Media Server. It provides a user-friendly interface for administrators to handle user invitations, track activity, manage library access, and automate certain user lifecycle tasks.
