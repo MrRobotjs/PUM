@@ -49,15 +49,15 @@
                         {% endif %}
                     </div>
                     
-                    <div class="divider text-xs">Access Status</div>
+                    <div class="divider text-xs mb-0 mt-0">Access Status</div>
                     
                     <div class="stats bg-transparent w-full text-center">
                         <div class="stat p-2">
                             <div class="stat-title text-sm">Access Expires</div>
-                            <div class="stat-value text-lg {% if user.access_expires_at and user.access_expires_at < now_utc() %}text-error{% elif user.access_expires_at %}text-success{% endif %}">
-                                {{ user.access_expires_at | time_ago if user.access_expires_at else 'Never' }}
+                            <div class="stat-value text-lg {% if current_access_expires_at_for_display and current_access_expires_at_for_display < now_utc %}text-error{% elif current_access_expires_at_for_display %}text-success{% endif %}">
+                                {{ current_access_expires_at_for_display | time_ago if current_access_expires_at_for_display else 'Never' }}
                             </div>
-                            <div class="stat-desc text-xs">{{ user.access_expires_at | format_datetime_human(include_time=False) if user.access_expires_at else 'Permanent Access' }}</div>
+                            <div class="stat-desc text-xs">{{ current_access_expires_at_for_display | format_datetime_human(include_time=False) if current_access_expires_at_for_display else 'Permanent Access' }}</div>
                         </div>
                     </div>
                 </div>

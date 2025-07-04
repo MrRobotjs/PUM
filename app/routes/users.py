@@ -194,7 +194,13 @@ def edit_user(user_id):
     available_libraries = plex_service.get_plex_libraries_dict()
     form.libraries.choices = [(lib_id, name) for lib_id, name in available_libraries.items()]
     
-    current_access_expires_at_for_display = user.access_expires_at # For direct display in template
+    # --- FIX: Ensure both datetime objects for comparison are timezone-aware ---
+    now_utc_for_template = datetime.now(timezone.utc)
+    aware_expiry_for_template = None
+    if user.access_expires_at:
+        # Assume the naive time from the database is UTC and make it timezone-aware
+        aware_expiry_for_template = user.access_expires_at.replace(tzinfo=timezone.utc)
+    # --- END FIX ---
 
     if request.method == 'GET':
         form.libraries.data = list(user.allowed_library_ids or [])
@@ -203,33 +209,19 @@ def edit_user(user_id):
         form.notes.data = user.notes
         
         if user.access_expires_at:
-            # --- Make user.access_expires_at timezone-aware (assuming UTC from DB) ---
-            user_expiry_aware = user.access_expires_at
-            if user_expiry_aware.tzinfo is None: # If naive, assume it's UTC
-                user_expiry_aware = user_expiry_aware.replace(tzinfo=timezone.utc)
-            # --- End timezone awareness ---
+            # For pre-populating the form, use the newly created aware objects
+            if aware_expiry_for_template:
+                remaining_time = aware_expiry_for_template - now_utc_for_template
 
-            now_aware = datetime.now(timezone.utc)
-            remaining_time = user_expiry_aware - now_aware # Now both are aware
-
-            if remaining_time.total_seconds() > 0:
-                # Calculate days, rounding up if there are any remaining seconds/microseconds
-                days_remaining = remaining_time.days
-                if remaining_time.seconds > 0 or remaining_time.microseconds > 0:
-                    days_remaining += 1
-                form.access_expires_in_days.data = days_remaining
-            else:
-                form.access_expires_in_days.data = 0 # Expired or exactly now
-        # clear_access_expiration defaults to False
+                if remaining_time.total_seconds() > 0:
+                    duration_left = abs(remaining_time)
+                    days_remaining = duration_left.days
+                    if duration_left.seconds > 0 or duration_left.microseconds > 0:
+                        days_remaining += 1
+                    form.access_expires_in_days.data = days_remaining
+                else:
+                    form.access_expires_in_days.data = 0
     
-    # Add now_utc() to template context for comparison in template if needed
-    # This is already available via Jinja's default globals or you can add it explicitly
-    # For template: {{ current_access_expires_at < now_utc() }}
-    # Or pass datetime.now(timezone.utc) explicitly if you prefer direct comparison in template.
-    # For the sake_of_clarity, let's pass it for the template.
-    template_now_utc = datetime.now(timezone.utc)
-
-
     if form.validate_on_submit():
         original_library_ids = set(user.allowed_library_ids or [])
         new_library_ids_from_form = set(form.libraries.data or [])
@@ -249,28 +241,22 @@ def edit_user(user_id):
                 user.access_expires_at = None
                 access_expiration_changed = True
         elif form.access_expires_in_days.data is not None and form.access_expires_in_days.data > 0:
-            # When setting, always use aware datetime (UTC)
             new_expiry_date = datetime.now(timezone.utc) + timedelta(days=form.access_expires_in_days.data)
             
-            # Make existing user.access_expires_at aware for comparison, if it exists
+            # The current user.access_expires_at is naive, make it aware for comparison
             current_expiry_aware = None
             if user.access_expires_at:
-                current_expiry_aware = user.access_expires_at
-                if current_expiry_aware.tzinfo is None:
-                    current_expiry_aware = current_expiry_aware.replace(tzinfo=timezone.utc)
+                current_expiry_aware = user.access_expires_at.replace(tzinfo=timezone.utc)
             
-            # Compare date parts to avoid issues with time-of-day differences
+            # Compare just the date part to avoid small time differences
             if current_expiry_aware is None or current_expiry_aware.date() != new_expiry_date.date():
-                user.access_expires_at = new_expiry_date # Store the aware datetime
+                user.access_expires_at = new_expiry_date
                 access_expiration_changed = True
         
         try:
             user_service.update_user_details(user_id=user.id, **update_data_for_service)
             if access_expiration_changed:
-                # If access_expires_at was changed, it's on the 'user' object.
-                # SQLAlchemy tracks changes, so a commit will save it.
-                # It's good practice to commit after all modifications to the user object.
-                db.session.commit() # This will save changes to user.access_expires_at as well
+                db.session.commit()
                 log_event(EventType.SETTING_CHANGE,
                           f"User '{user.plex_username}' access expiration set to: {user.access_expires_at.strftime('%Y-%m-%d') if user.access_expires_at else 'Permanent'}.",
                           user_id=user.id, admin_id=current_user.id)
@@ -287,8 +273,8 @@ def edit_user(user_id):
                            title=f"Edit User {user.plex_username}", 
                            form=form, 
                            user=user,
-                           current_access_expires_at_for_display=current_access_expires_at_for_display, # Pass naive for display via filter
-                           now_utc_for_template=template_now_utc) # Pass aware 'now' for template comparison
+                           current_access_expires_at_for_display=aware_expiry_for_template, 
+                           now_utc=now_utc_for_template)
 
 
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])
