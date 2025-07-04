@@ -69,6 +69,8 @@ def list_users():
     default_inactive_days = 90
     default_exclude_sharers = True # Python boolean
 
+    admin_plex_uuids = {admin.plex_uuid for admin in AdminAccount.query.filter(AdminAccount.plex_uuid.isnot(None)).all()}
+
     purge_settings_context = {
         'inactive_days': request.form.get('inactive_days', default_inactive_days, type=int),
         'exclude_sharers': request.form.get('exclude_sharers', 'true' if default_exclude_sharers else 'false').lower() == 'true'
@@ -89,7 +91,8 @@ def list_users():
                                # mass_edit_form might not be needed by this partial if modal is separate
                                current_view=view_mode,
                                current_per_page=items_per_page, 
-                               users_count=users_count) # Pass users_count for the partial
+                               users_count=users_count,
+                               admin_plex_uuids=admin_plex_uuids) # Pass users_count for the partial
 
     return render_template('users/list.html',
                            title="Managed Users",
@@ -100,7 +103,8 @@ def list_users():
                            mass_edit_form=mass_edit_form,
                            selected_users_count=0, 
                            current_per_page=items_per_page,
-                           purge_settings=purge_settings_context) # Pass purge settings
+                           purge_settings=purge_settings_context,
+                           admin_plex_uuids=admin_plex_uuids) # Pass purge settings
 
 @bp.route('/sync', methods=['POST'])
 @login_required
@@ -202,6 +206,10 @@ def edit_user(user_id):
         aware_expiry_for_template = user.access_expires_at.replace(tzinfo=timezone.utc)
     # --- END FIX ---
 
+    is_admin = False
+    if user.plex_uuid: # Only check if the user has a UUID to match against
+        is_admin = AdminAccount.query.filter_by(plex_uuid=user.plex_uuid).first() is not None
+
     if request.method == 'GET':
         form.libraries.data = list(user.allowed_library_ids or [])
         form.is_discord_bot_whitelisted.data = user.is_discord_bot_whitelisted
@@ -274,7 +282,8 @@ def edit_user(user_id):
                            form=form, 
                            user=user,
                            current_access_expires_at_for_display=aware_expiry_for_template, 
-                           now_utc=now_utc_for_template)
+                           now_utc=now_utc_for_template,
+                           is_admin=is_admin)
 
 
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])

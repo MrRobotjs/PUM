@@ -46,47 +46,42 @@ def is_safe_url(target):
 
 @bp.route('/login', methods=['GET', 'POST'])
 def app_login():
-    if current_user.is_authenticated and hasattr(g, 'setup_complete') and g.setup_complete:
+    if current_user.is_authenticated and getattr(g, 'setup_complete', False):
         return redirect(url_for('dashboard.index'))
     
-    admin_account = None
+    # Check if any admin account exists at all for the setup redirect
     try:
-        admin_account = AdminAccount.query.first()
+        if not AdminAccount.query.first():
+            flash('App setup not complete. Please set up an admin account.', 'warning')
+            return redirect(url_for('setup.account_setup'))
     except Exception as e_db:
         current_app.logger.warning(f"Could not query AdminAccount in login: {e_db}")
-
-    if not admin_account: 
-        flash('App setup not complete. Set up admin account.', 'warning')
-        return redirect(url_for('setup.account_setup'))
+        # Allow rendering the login page even if DB check fails, it will likely fail on submit anyway
     
-    # --- MODIFICATION ---
-    # We will now always prepare and pass the form.
-    # The template will handle disabling the fields if necessary.
+    # The form is always prepared now.
     form = LoginForm()
-    is_sso_only = admin_account.is_plex_sso_only
-    # --- END MODIFICATION ---
 
-    if form.validate_on_submit() and not is_sso_only:
-        admin_to_check = AdminAccount.query.filter_by(username=form.username.data).first()
-        if admin_to_check and admin_to_check.check_password(form.password.data):
-            login_user(admin_to_check, remember=True)
-            admin_to_check.last_login_at = db.func.now()
+    if form.validate_on_submit():
+        # Find the admin by the submitted username
+        admin = AdminAccount.query.filter_by(username=form.username.data).first()
+        
+        # Check if an admin with that username exists AND if they have a password that matches.
+        # The check_password method will safely return False if password_hash is None.
+        if admin and admin.check_password(form.password.data):
+            login_user(admin, remember=True)
+            admin.last_login_at = db.func.now()
             db.session.commit()
-            log_event(EventType.ADMIN_LOGIN_SUCCESS, f"Admin '{admin_to_check.username}' logged in (password).")
+            log_event(EventType.ADMIN_LOGIN_SUCCESS, f"Admin '{admin.username}' logged in (password).")
             next_page = request.args.get('next')
             if not next_page or not is_safe_url(next_page):
                 next_page = url_for('dashboard.index')
             return redirect(next_page)
         else:
-            log_event(EventType.ADMIN_LOGIN_FAIL, f"Failed login for '{form.username.data}'.")
+            log_event(EventType.ADMIN_LOGIN_FAIL, f"Failed login attempt for username '{form.username.data}'.")
             flash('Invalid username or password.', 'danger')
-
-    return render_template(
-        'auth/app_login.html', 
-        title="Admin Login", 
-        form=form, 
-        is_sso_only=is_sso_only # Pass this flag to the template
-    )
+            
+    # Always render the login page with both options enabled.
+    return render_template('auth/app_login.html', title="Admin Login", form=form)
 
 @bp.route('/plex_sso_admin', methods=['POST'])
 def plex_sso_login_admin():

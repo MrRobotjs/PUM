@@ -45,7 +45,10 @@
                             <div class="badge badge-xs badge-accent" title="This user is immune to inactivity purging"><i class="fa-solid fa-shield-halved mr-1"></i> Purge WL</div>
                         {% endif %}
                         {% if user.is_discord_bot_whitelisted %}
-                            <div class="badge  badge-xs badge-success" title="This user is immune to automated Discord Bot actions"><i class="fa-solid fa-robot mr-1"></i> Bot WL</div>
+                            <div class="badge badge-xs badge-success" title="This user is immune to automated Discord Bot actions"><i class="fa-solid fa-robot mr-1"></i> Bot WL</div>
+                        {% endif %}
+                        {% if is_admin %}
+                            <div class="badge badge-xs badge-error badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>
                         {% endif %}
                     </div>
                     
@@ -126,7 +129,7 @@
 
                     <div class="form-control w-full mb-4">
                         {{ form.notes.label(class="label font-medium") }} {# WTForms adds for="notes" #}
-                        {{ form.notes(class="textarea textarea-bordered h-24 " + ("textarea-error" if form.notes.errors else ""), placeholder="Add any notes about this user...") }} {# WTForms adds id="notes" #}
+                        {{ form.notes(class="textarea textarea-bordered h-24 w-full " + ("textarea-error" if form.notes.errors else ""), placeholder="Add any notes about this user...") }} {# WTForms adds id="notes" #}
                     </div>
 
                     <div class="form-control w-full mb-4">

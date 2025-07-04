@@ -46,6 +46,9 @@
                     {% if not has_any_special_badge %}
                         <span class="text-xs opacity-60">Standard</span>
                     {% endif %}
+                    {% if user.plex_uuid and user.plex_uuid in admin_plex_uuids %}
+                        <span class="badge badge-error badge-sm badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</span>
+                    {% endif %}
                 </td>
                 <td class="hidden xl:table-cell text-xs" data-user-id-for-libs="{{ user.id }}"> {# Unique identifier for this user's library cell #}
                     {% if user.allowed_library_ids %} {# This should now always be a list from user_service #}

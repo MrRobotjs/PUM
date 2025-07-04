@@ -197,14 +197,11 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
     except Exception as e_all_libs:
         current_app.logger.error(f"Plex_Service.py - get_plex_server_users_raw(): Could not fetch all library IDs from server: {e_all_libs}.")
 
-    # Initialize detailed_shares_by_userid *before* the try block that populates it.
     detailed_shares_by_userid = {} 
-    
-    try: # This try block is for fetching and parsing the /shared_servers XML
+    try:
         if hasattr(admin_account, '_session') and admin_account._session is not None and \
            hasattr(admin_account, '_token') and admin_account._token is not None:
-            
-            base_plextv_url = "https://plex.tv" # Hardcoded, reliable
+            base_plextv_url = "https://plex.tv"
             shared_servers_url = f"{base_plextv_url}/api/servers/{server_machine_id}/shared_servers"
             
             current_app.logger.info(f"Plex_Service.py - get_plex_server_users_raw(): Fetching detailed shares from: {shared_servers_url}")
@@ -227,8 +224,7 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
                     current_app.logger.warning(f"Plex_Service.py - get_plex_server_users_raw(): Found SharedServer element with non-integer userID: '{user_id_str}'.")
                     continue
                 
-                all_libs_attr = shared_server_elem.get('allLibraries', "0") 
-                all_libs = (all_libs_attr == "1")
+                all_libs = (shared_server_elem.get('allLibraries', "0") == "1")
                 
                 shared_section_keys_for_user = []
                 if not all_libs: 
@@ -240,21 +236,9 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
                     'allLibraries': all_libs,
                     'sharedSectionKeys': shared_section_keys_for_user
                 }
-                if user_id_str == '537976225': # Assuming 537976225 is lucifea6's Plex User ID
-                    current_app.logger.info(f"Plex_Service.py - DEBUG lucifea6 IN /shared_servers PARSING: userID={user_id_str}, allLibraries_attr='{all_libs_attr}', all_libs_bool={all_libs}, sharedSectionKeys={shared_section_keys_for_user}")
-                current_app.logger.debug(f"  Parsed detailed share for userID {user_id_int_key}: allLibraries={all_libs}, sections={shared_section_keys_for_user}")
-                
-            current_app.logger.info(f"Plex_Service.py - get_plex_server_users_raw(): Successfully parsed {len(detailed_shares_by_userid)} user shares from /shared_servers endpoint.")
-        else:
-            current_app.logger.error("Plex_Service.py - get_plex_server_users_raw(): Could not get admin_account._session or _token to fetch detailed shared servers info.")
-            # detailed_shares_by_userid will remain empty if this path is taken
-
     except Exception as e_shared_servers:
-        current_app.logger.error(f"Plex_Service.py - get_plex_server_users_raw(): Error fetching or parsing detailed /shared_servers data: {type(e_shared_servers).__name__} - {e_shared_servers}", exc_info=True)
-        # detailed_shares_by_userid will be whatever state it was in before the error (likely empty if error was early)
+        current_app.logger.error(f"Plex_Service.py - Error fetching or parsing detailed /shared_servers data: {type(e_shared_servers).__name__} - {e_shared_servers}", exc_info=True)
 
-    # This is the main loop that processes users from admin_account.users()
-    # It should now correctly find detailed_shares_by_userid as it's defined in the same scope.
     processed_users_data = []
     try:
         all_associated_users = admin_account.users()
@@ -262,72 +246,69 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
             plex_user_id_int = getattr(plex_user_obj, 'id', None)
             if plex_user_id_int is None: continue
             if admin_plex_id and plex_user_id_int == admin_plex_id: continue
+            
+            plex_user_uuid_str = None
+            plex_thumb_url = getattr(plex_user_obj, 'thumb', None)
+            
+            # Extract the alphanumeric UUID from the thumbnail URL.
+            if plex_thumb_url and "/users/" in plex_thumb_url and "/avatar" in plex_thumb_url:
+                try:
+                    plex_user_uuid_str = plex_thumb_url.split('/users/')[1].split('/avatar')[0]
+                except IndexError:
+                    plex_user_uuid_str = None
+
+            # For safety, if we couldn't parse the UUID, we don't send one.
+            # user_service will then know this user can only be matched by their integer ID.
+            if not plex_user_uuid_str:
+                current_app.logger.warning(f"Could not parse alphanumeric UUID for user '{plex_user_obj.username}' (ID: {plex_user_id_int}). They will be matched by integer ID only.")
+
 
             user_data_basic = {
-                'id': plex_user_id_int, 'uuid': str(plex_user_id_int),
+                'id': plex_user_id_int,
+                'uuid': plex_user_uuid_str, # Will be alphanumeric if available, otherwise None
                 'username': getattr(plex_user_obj, 'username', None) or getattr(plex_user_obj, 'title', 'Unknown'),
-                'email': getattr(plex_user_obj, 'email', None), 'thumb': getattr(plex_user_obj, 'thumb', None),
+                'email': getattr(plex_user_obj, 'email', None), 
+                'thumb': plex_thumb_url,
                 'is_home_user': getattr(plex_user_obj, 'home', False),
                 'is_friend': not getattr(plex_user_obj, 'home', False),
                 'shares_back': users_sharing_back_ids is not None and plex_user_id_int in users_sharing_back_ids,
                 'allowed_library_ids_on_server': [],
             }
-            current_app.logger.info(f"Plex_Service.py - Processing User: {user_data_basic['username']} (ID: {user_data_basic['id']})")
+            current_app.logger.info(f"Plex_Service.py - Processing User: {user_data_basic['username']} (ID: {user_data_basic['id']}, UUID: {user_data_basic['uuid']})")
 
             user_share_details = detailed_shares_by_userid.get(plex_user_id_int)
             add_user_to_pum_list = False
-            effective_library_ids = [] # Initialize here for clarity
+            effective_library_ids = []
 
-            if user_data_basic['username'] == 'lucifea6': # Specific debug for lucifea6
+            if user_data_basic['username'] == 'lucifea6':
                 current_app.logger.info(f"Plex_Service.py - DEBUG lucifea6: Data from detailed_shares_by_userid: {user_share_details}")
 
             if user_share_details:
-                current_app.logger.info(f"  Plex_Service.py - {user_data_basic['username']}: Found in /shared_servers. AllLibraries: {user_share_details.get('allLibraries')}, SharedKeys: {user_share_details.get('sharedSectionKeys')}")
-                if user_share_details.get('allLibraries'): # Check key existence
+                if user_share_details.get('allLibraries'):
                     effective_library_ids = all_my_server_library_ids_as_strings[:] 
-                    add_user_to_pum_list = True 
-                    current_app.logger.info(f"    -> Granting ALL libraries.")
+                    add_user_to_pum_list = True
                 else: 
-                    specific_keys = user_share_details.get('sharedSectionKeys', []) # Default to empty list if key missing
+                    specific_keys = user_share_details.get('sharedSectionKeys', [])
                     effective_library_ids = specific_keys[:] 
-                    if effective_library_ids: 
-                        add_user_to_pum_list = True
-                        current_app.logger.info(f"    -> Granting SPECIFIC libraries: {effective_library_ids}")
-                    else:
-                        add_user_to_pum_list = False
-                        current_app.logger.info(f"    -> allLibraries=False and no specific sharedSectionKeys. Considered NO ACCESS.")
+                    if effective_library_ids: add_user_to_pum_list = True
             
             elif user_data_basic['is_home_user']:
-                current_app.logger.info(f"  Plex_Service.py - {user_data_basic['username']}: Is HOME USER. Granting all libraries.")
                 effective_library_ids = all_my_server_library_ids_as_strings[:] 
                 add_user_to_pum_list = True
-            else: # Not in detailed shares AND not a home user
-                current_app.logger.info(f"  Plex_Service.py - {user_data_basic['username']}: Not in /shared_servers and not home user. Checking user.servers list.")
+            else: 
                 server_resource_for_this_user = None
                 for res in getattr(plex_user_obj, 'servers', []):
                     if getattr(res, 'machineIdentifier', None) == server_machine_id:
                         server_resource_for_this_user = res
                         break
                 if server_resource_for_this_user:
-                    if getattr(server_resource_for_this_user, 'pending', False):
-                        current_app.logger.info(f"    -> Share is PENDING. No libraries.")
-                    else: 
-                        current_app.logger.warning(f"    -> Found in user.servers but not /shared_servers (non-pending, non-home). Odd state. No libraries.")
-                    effective_library_ids = [] # In both these sub-cases, no libs effectively
-                    add_user_to_pum_list = False # Don't add to PUM list if only pending or in this odd state
-                else:
-                     current_app.logger.info(f"    -> THIS server not found in user.servers list. Skipping.")
-                     add_user_to_pum_list = False
+                    if not getattr(server_resource_for_this_user, 'pending', False):
+                        add_user_to_pum_list = True
             
             if add_user_to_pum_list:
                 user_data_basic['allowed_library_ids_on_server'] = effective_library_ids
                 processed_users_data.append(user_data_basic)
-                current_app.logger.info(f"  Plex_Service.py - ADDING {user_data_basic['username']} to PUM list with libs: {effective_library_ids}")
-            else:
-                current_app.logger.info(f"  Plex_Service.py - SKIPPING {user_data_basic['username']} from PUM list.")
 
-
-        current_app.logger.info(f"Plex_Service.py - get_plex_server_users_raw(): Processed {len(all_associated_users)} MyPlexUser objects. Found {len(processed_users_data)} users to include in PUM list.")
         return processed_users_data, users_sharing_back_ids if users_sharing_back_ids is not None else set()
 
     except Exception as e_main_loop:

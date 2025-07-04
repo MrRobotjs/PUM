@@ -61,6 +61,9 @@
                         <i class="fa-brands fa-discord mr-1"></i> Linked
                     </div>
                 {% endif %}
+                {% if user.plex_uuid and user.plex_uuid in admin_plex_uuids %}
+                    <div class="badge badge-error badge-sm badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>
+                {% endif %}
             </div>
 
             <div class="card-actions justify-end mt-auto pt-3 border-t border-base-300/90"> {# Increased pt-3 #}
