@@ -293,3 +293,23 @@ class ChangePasswordForm(FlaskForm):
         validators=[DataRequired(), EqualTo('new_password', message='New passwords must match.')]
     )
     submit_change_password = SubmitField('Change Password')
+
+class AdminCreateForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
+    password = PasswordField('Temporary Password', validators=[DataRequired(), Length(min=8)])
+    confirm_password = PasswordField('Confirm Temporary Password', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Create Admin')
+    
+    def validate_username(self, username):
+        if AdminAccount.query.filter_by(username=username.data).first():
+            raise ValidationError('That username is already taken.')
+
+class AdminEditForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)], render_kw={'readonly': True})
+    
+    # Permissions
+    permission_manage_users = BooleanField('Can Manage Users and Invites')
+    # Add more permissions here as you create them
+    # permission_manage_settings = BooleanField('Can Manage App Settings')
+
+    submit = SubmitField('Save Permissions')

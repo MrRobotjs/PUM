@@ -1,0 +1,26 @@
+<!-- File: app/templates/admins/_create_admin_modal_form_content.html -->
+{{ form.hidden_tag() }}
+<div class="form-control">
+    {{ form.username.label(class="label block") }}
+    {{ form.username(class="input input-bordered " + ("input-error" if form.username.errors else "")) }}
+    {% if form.username.errors %}{% for e in form.username.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %}
+</div>
+ <div class="form-control">
+    {{ form.password.label(class="label block") }}
+    {{ form.password(class="input input-bordered " + ("input-error" if form.password.errors else "")) }}
+    {% if form.password.errors %}{% for e in form.password.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %}
+</div>
+<div class="form-control">
+    {{ form.confirm_password.label(class="label block") }}
+    {{ form.confirm_password(class="input input-bordered " + ("input-error" if form.confirm_password.errors else "")) }}
+    {% if form.confirm_password.errors %}{% for e in form.confirm_password.errors %}<p class="text-error text-xs mt-1">{{e}}</p>{% endfor %}{% endif %}
+</div>
+<p class="text-xs text-base-content/70 mt-2">New admin will be required to change this temporary password on their first login.</p>
+
+<div class="modal-action mt-6">
+    <button type="button" class="btn btn-ghost" onclick="document.getElementById('create_admin_modal').close()">Cancel</button>
+    <button type="submit" class="btn btn-primary">
+        <span id="create_admin_loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
+        Create Admin
+    </button>
+</div>

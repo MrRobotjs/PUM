@@ -176,6 +176,7 @@ def settings_account():
         # Verify the current password first
         if admin.check_password(change_password_form.current_password.data):
             admin.set_password(change_password_form.new_password.data)
+            admin.force_password_change = False
             db.session.commit()
             log_event(EventType.ADMIN_PASSWORD_CHANGE, "Admin changed their password.", admin_id=current_user.id)
             flash('Your password has been changed successfully.', 'success')

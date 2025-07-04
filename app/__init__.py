@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 import secrets
 from datetime import datetime 
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask import Flask, g, request, redirect, url_for, current_app, render_template
+from flask import Flask, g, request, redirect, url_for, current_app, render_template, flash
 from flask_login import current_user
 
 from .config import config
@@ -181,6 +181,13 @@ def create_app(config_name=None):
             app.logger.error(f"Init.py - load_user(): Error checking/loading user: {e_load_user}")
             return None
 
+    @app.before_request
+    def check_force_password_change():
+        if current_user.is_authenticated and \
+           getattr(current_user, 'force_password_change', False) and \
+           request.endpoint not in ['dashboard.settings_account', 'static', 'auth.logout']:
+            flash("For security, you must change your temporary password before proceeding.", "warning")
+            return redirect(url_for('dashboard.settings_account'))
 
     @app.before_request
     def before_request_tasks():
@@ -281,6 +288,8 @@ def create_app(config_name=None):
     app.register_blueprint(invites_bp) # url_prefix='/invites' is handled in invites.py itself for public link
     from .routes.api import bp as api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
+    from .routes.admins import bp as admins_bp
+    app.register_blueprint(admins_bp)
 
     register_error_handlers(app)
 

@@ -23,6 +23,18 @@
                     </div>
                     <h2 class="card-title text-2xl">{{ current_user.plex_username or current_user.username }}</h2>
                     <p class="text-base-content/70 text-sm mb-4">{{ current_user.email or 'No email on file' }}</p>
+                    {% if not current_user.plex_uuid %}
+                    <div class="w-full mb-4">
+                        {# This is a POST form to be consistent with the other SSO buttons #}
+                        <form method="POST" action="{{ url_for('auth.plex_sso_login_admin') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                             <button type="submit" class="btn btn-primary btn-sm btn-block bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black">
+                                <i class="fa-brands fa-plex fa-lg mr-2"></i> Link Plex Account
+                            </button>
+                        </form>
+                         <p class="text-xs text-base-content/60 mt-1">Link your Plex account to enable signing in with Plex.</p>
+                    </div>
+                    {% endif %}
 
                     {# Discord Details (if linked) #}
                     {% if current_user.discord_user_id %}

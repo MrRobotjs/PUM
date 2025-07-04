@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ super() }} - Edit Admin{% endblock %}
+{% block content %}
+<div class="max-w-xl mx-auto">
+    <a href="{{ url_for('admins.list_admins') }}">← Back to Admin List</a>
+    <h1 class="text-3xl font-bold mb-6">Edit Admin: {{ admin.username }}</h1>
+
+    <div class="card bg-base-200 shadow-xl">
+        <div class="card-body">
+            <h2 class="card-title">Permissions</h2>
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                <div class="form-control">
+                    <label class="label cursor-pointer">
+                        <span class="label-text">{{ form.permission_manage_users.label.text }}</span>
+                        {{ form.permission_manage_users(class="toggle toggle-primary") }}
+                    </label>
+                </div>
+                <div class="form-control mt-4">
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

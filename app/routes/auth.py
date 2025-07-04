@@ -90,81 +90,148 @@ def app_login():
 
 @bp.route('/plex_sso_admin', methods=['POST'])
 def plex_sso_login_admin():
-    if current_user.is_authenticated and g.setup_complete: return redirect(url_for('dashboard.index'))
+    # Only redirect to dashboard if already logged in AND already linked to Plex.
+    # This allows a logged-in, non-linked user to proceed.
+    if current_user.is_authenticated and current_user.plex_uuid and getattr(g, 'setup_complete', False):
+        return redirect(url_for('dashboard.index'))
+
     headers = _get_plex_sso_headers(client_identifier_suffix="AdminLogin")
     plex_client_id_used = headers['X-Plex-Client-Identifier']
-    current_app.logger.info(f"Plex SSO Admin Login: Requesting PIN with ClientID {plex_client_id_used}")
+    
     try:
         pin_request_url = f"{PLEX_API_V2_PINS_URL}?strong=true"
         response = requests.post(pin_request_url, headers=headers, timeout=10)
         response.raise_for_status()
+        
         pin_data_xml_root = ET.fromstring(response.content)
-        pin_code = pin_data_xml_root.get('code'); pin_id = pin_data_xml_root.get('id')
-        if not pin_code or not pin_id: raise Exception("Could not retrieve PIN details from Plex (code or id missing).")
-        session['plex_pin_id_admin_login'] = pin_id; session['plex_pin_code_admin_login'] = pin_code
+        pin_code = pin_data_xml_root.get('code')
+        pin_id = pin_data_xml_root.get('id')
+        
+        if not pin_code or not pin_id:
+            raise Exception("Could not retrieve PIN details from Plex.")
+
+        session['plex_pin_id_admin_login'] = pin_id
+        session['plex_pin_code_admin_login'] = pin_code
         session['plex_client_id_for_pin_check_admin_login'] = plex_client_id_used
+        
         app_base_url = Setting.get('APP_BASE_URL', request.url_root.rstrip('/'))
-        if not Setting.get('APP_BASE_URL'): current_app.logger.warning("Plex SSO Admin Login: APP_BASE_URL not set! Using request.url_root for callback.")
         callback_path_segment = url_for('auth.plex_sso_callback_admin', _external=False)
         forward_url_to_our_app = f"{app_base_url.rstrip('/')}{callback_path_segment}"
+        
         auth_app_params = {
             'clientID': plex_client_id_used, 'code': pin_code, 'forwardUrl': forward_url_to_our_app,
             'context[device][product]': headers.get('X-Plex-Product'),
             'context[device][deviceName]': headers.get('X-Plex-Device-Name'),
-            'context[device][platform]': headers.get('X-Plex-Platform'),}
+            'context[device][platform]': headers.get('X-Plex-Platform'),
+        }
         auth_url_for_user_to_visit = f"{PLEX_AUTH_APP_URL_BASE}#?{urlencode(auth_app_params, quote_via=url_quote)}"
-        session['plex_admin_login_next_url'] = request.args.get('next') or url_for('dashboard.index')
+        
+        # If user is already logged in, the "next page" should be their account settings.
+        # Otherwise, it's a fresh login, so go to the dashboard.
+        if current_user.is_authenticated:
+            session['plex_admin_login_next_url'] = url_for('dashboard.settings_account')
+        else:
+            session['plex_admin_login_next_url'] = request.args.get('next') or url_for('dashboard.index')
+
         return redirect(auth_url_for_user_to_visit)
-    except requests.exceptions.RequestException as e_req: current_app.logger.error(f"Plex SSO Admin Login: RequestException: {e_req}", exc_info=True); flash(f"Could not connect to Plex.tv for PIN: {str(e_req)[:100]}.", "danger")
-    except ET.ParseError as e_xml: current_app.logger.error(f"Plex SSO Admin Login: XML ParseError: {e_xml}", exc_info=True); flash("Error parsing PIN response from Plex.tv.", "danger")
-    except Exception as e: current_app.logger.error(f"Error initiating Plex PIN for admin login: {e}", exc_info=True); flash(f"Could not initiate Plex SSO PIN. Error: {e}", "danger")
-    return redirect(url_for('auth.app_login'))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error initiating Plex PIN for admin login: {e}", exc_info=True)
+        flash(f"Could not initiate Plex SSO. Error: {e}", "danger")
+
+    # If an error occurs, send the user back to the most relevant page
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard.settings_account'))
+    else:
+        return redirect(url_for('auth.app_login'))
 
 @bp.route('/plex_sso_callback_admin') 
 def plex_sso_callback_admin():
     pin_id_from_session = session.get('plex_pin_id_admin_login')
     client_id_used_for_pin = session.get('plex_client_id_for_pin_check_admin_login')
+    
+    # Context-aware fallback URL
+    fallback_url = url_for('dashboard.settings_account') if current_user.is_authenticated else url_for('auth.app_login')
+    
     if not pin_id_from_session or not client_id_used_for_pin:
-        flash('Plex login callback invalid or session expired.', 'danger'); current_app.logger.warning("Plex SSO Callback (Admin): Missing pin_id or client_id in session.")
-        return redirect(url_for('auth.app_login'))
-    current_app.logger.info(f"Plex SSO Callback (Admin): Checking PIN ID {pin_id_from_session} with ClientID {client_id_used_for_pin}")
+        flash('Plex login callback invalid or session expired.', 'danger')
+        return redirect(fallback_url)
+    
     try:
         headers_for_check = {'X-Plex-Client-Identifier': client_id_used_for_pin, 'Accept': 'application/xml'}
         check_pin_url = PLEX_CHECK_PIN_URL_TEMPLATE.format(pin_id=pin_id_from_session)
-        response = requests.get(check_pin_url, headers=headers_for_check, timeout=10); response.raise_for_status()
-        pin_data_xml_root = ET.fromstring(response.content); plex_auth_token = pin_data_xml_root.get('authToken')
+        response = requests.get(check_pin_url, headers=headers_for_check, timeout=10)
+        response.raise_for_status()
+        
+        pin_data_xml_root = ET.fromstring(response.content)
+        plex_auth_token = pin_data_xml_root.get('authToken')
+        
         if not plex_auth_token: 
-            flash('Plex PIN not yet linked or has expired.', 'warning'); current_app.logger.warning(f"Plex SSO Callback (Admin): PIN {pin_id_from_session} checked, no authToken.")
-            return redirect(url_for('auth.app_login', pin_check_retry=True, pin_code_to_display=session.get('plex_pin_code_admin_login')))
+            flash('Plex PIN not yet linked or has expired.', 'warning')
+            return redirect(fallback_url)
+        
         plex_account = MyPlexAccount(token=plex_auth_token)
-        admin = AdminAccount.query.filter_by(plex_uuid=plex_account.uuid).first()
-        if not admin:
-            flash(f"Plex account '{plex_account.username}' is not an admin.", "danger")
-            log_event(EventType.ADMIN_LOGIN_FAIL, f"Plex user '{plex_account.username}' attempted admin login but not configured admin.")
-            return redirect(url_for('auth.app_login'))
-        admin.plex_username = plex_account.username; admin.plex_thumb = plex_account.thumb # <<< CORRECTED HERE
-        admin.email = plex_account.email; admin.last_login_at = db.func.now(); 
-        db.session.commit(); login_user(admin, remember=True)
-        log_event(EventType.ADMIN_LOGIN_SUCCESS, f"Admin '{admin.plex_username}' logged in via Plex SSO.", admin_id=admin.id)
-        session.pop('plex_pin_id_admin_login', None); session.pop('plex_pin_code_admin_login', None); session.pop('plex_client_id_for_pin_check_admin_login', None)
+        
+        admin_to_update = None
+        log_message = ""
+        
+        # Determine if we're linking an existing account or logging in a new one
+        if current_user.is_authenticated:
+            admin_to_update = AdminAccount.query.get(current_user.id)
+            log_message = f"Admin '{admin_to_update.username}' linked their Plex account '{plex_account.username}'."
+        else:
+            admin_to_update = AdminAccount.query.filter_by(plex_uuid=plex_account.uuid).first()
+            log_message = f"Admin '{plex_account.username}' logged in via Plex SSO."
+        
+        if not admin_to_update:
+            flash(f"Plex account '{plex_account.username}' is not a configured admin.", "danger")
+            return redirect(fallback_url)
+        
+        # Check if the returning Plex account is already assigned to a different PUM admin
+        if admin_to_update.plex_uuid and admin_to_update.plex_uuid != plex_account.uuid:
+             flash("This Plex account is already linked to a different admin.", "danger")
+             return redirect(fallback_url)
+
+        # Update the admin record with the latest details from Plex
+        admin_to_update.plex_uuid = plex_account.uuid
+        admin_to_update.plex_username = plex_account.username
+        admin_to_update.plex_thumb = plex_account.thumb
+        admin_to_update.email = plex_account.email
+        admin_to_update.last_login_at = db.func.now()
+        db.session.commit()
+        
+        login_user(admin_to_update, remember=True)
+        log_event(EventType.ADMIN_LOGIN_SUCCESS, log_message, admin_id=admin_to_update.id)
+        
         next_url = session.pop('plex_admin_login_next_url', url_for('dashboard.index'))
-        if not is_safe_url(next_url): next_url = url_for('dashboard.index')
+        if not is_safe_url(next_url):
+            next_url = fallback_url
+        
+        # Clean up session
+        session.pop('plex_pin_id_admin_login', None)
+        session.pop('plex_pin_code_admin_login', None)
+        session.pop('plex_client_id_for_pin_check_admin_login', None)
+
         return redirect(next_url)
+
     except requests.exceptions.HTTPError as e_http:
         if e_http.response.status_code == 404:
             flash('Plex PIN invalid, expired, or not found. Please try again.', 'danger')
-            current_app.logger.warning(f"Plex SSO Callback (Admin): PIN {pin_id_from_session} check returned 404.")
         else:
-            flash(f'Plex API error checking PIN: {e_http.response.status_code}.', 'danger'); current_app.logger.error(f"Plex SSO Callback (Admin): HTTPError checking PIN {pin_id_from_session}: {e_http}", exc_info=True)
-    except ET.ParseError as e_xml: current_app.logger.error(f"Plex SSO Callback (Admin): XML ParseError: {e_xml}", exc_info=True); flash("Error parsing PIN check response from Plex.tv.", "danger")
-    except Exception as e: current_app.logger.error(f"Error during Plex PIN check for admin login: {e}", exc_info=True); flash(f'An unexpected error: {e}', 'danger')
-    session.pop('plex_pin_id_admin_login', None); session.pop('plex_pin_code_admin_login', None); session.pop('plex_client_id_for_pin_check_admin_login', None)
-    return redirect(url_for('auth.app_login'))
+            flash(f'Plex API error checking PIN: {e_http.response.status_code}.', 'danger')
+    except Exception as e:
+        current_app.logger.error(f"Error during Plex admin callback: {e}", exc_info=True)
+        flash(f'An unexpected error occurred: {e}', 'danger')
+    
+    # Cleanup session and redirect on error
+    session.pop('plex_pin_id_admin_login', None)
+    session.pop('plex_pin_code_admin_login', None)
+    session.pop('plex_client_id_for_pin_check_admin_login', None)
+    return redirect(fallback_url)
 
 @bp.route('/logout')
 @login_required
 def logout():
-    # ... (same)
     admin_name = current_user.username or current_user.plex_username
     log_event(EventType.ADMIN_LOGOUT, f"Admin '{admin_name}' logged out.", admin_id=current_user.id)
     logout_user(); flash('You have been logged out.', 'success'); return redirect(url_for('auth.app_login'))
