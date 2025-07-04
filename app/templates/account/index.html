@@ -1,0 +1,54 @@
+<!-- File: app/templates/account/index.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - My Account{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-2 max-w-5xl">
+    <div class="flex items-center mb-6">
+        <h1 class="text-3xl font-bold">My Account</h1>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+        {# --- COLUMN 1: Your Profile (Left) --- #}
+        <div class="md:col-span-1">
+            <div class="card bg-base-200 shadow-xl sticky top-24">
+                <div class="card-body items-center text-center">
+                    {# Main Admin Avatar #}
+                    <div class="avatar mb-4">
+                        <div class="w-32 rounded-full ring ring-primary ring-offset-base-100 ring-offset-4">
+                            <img src="{{ current_user.plex_thumb or url_for('static', filename='img/default_avatar.png') }}" alt="{{ current_user.plex_username or current_user.username }} avatar" />
+                        </div>
+                    </div>
+                    <h2 class="card-title text-2xl">{{ current_user.plex_username or current_user.username }}</h2>
+                    <p class="text-base-content/70 text-sm mb-4">{{ current_user.email or 'No email on file' }}</p>
+
+                    {# Discord Details (if linked) #}
+                    {% if current_user.discord_user_id %}
+                    <div class="divider text-xs">Linked Discord</div>
+                    <div class="flex items-center space-x-3 py-2">
+                        <div class="avatar">
+                            <div class="w-12 rounded-full">
+                                <img src="https://cdn.discordapp.com/avatars/{{ current_user.discord_user_id }}/{{ current_user.discord_avatar_hash }}.png?size=128" alt="Discord Avatar">
+                            </div>
+                        </div>
+                        <div class="text-left">
+                             <p class="font-semibold">{{ current_user.discord_username }}</p>
+                             <p class="text-xs text-base-content/70">ID: {{ current_user.discord_user_id }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# --- COLUMN 2: Account Settings Forms (Right) --- #}
+        <div class="md:col-span-2">
+            {# The actual forms are in a partial for cleanliness #}
+            {% include 'account/_forms.html' %}
+        </div>
+        
+    </div>
+</div>
+{% endblock %}

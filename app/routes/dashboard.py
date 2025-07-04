@@ -7,7 +7,7 @@ from flask_login import login_required, current_user, logout_user
 import secrets
 from app.models import User, Invite, HistoryLog, Setting, EventType, SettingValueType, AdminAccount
 from app.forms import (
-    GeneralSettingsForm, PlexSettingsForm, DiscordConfigForm
+    GeneralSettingsForm, PlexSettingsForm, DiscordConfigForm, SetPasswordForm, ChangePasswordForm
     # If you create an AdvancedSettingsForm, import it here too.
 )
 from app.extensions import db, scheduler # For db.func.now() if used, or db specific types
@@ -147,21 +147,59 @@ def history_partial():
 def settings_general():
     form = GeneralSettingsForm()
     if form.validate_on_submit():
-        Setting.set('APP_NAME', form.app_name.data, SettingValueType.STRING, "Application Name")
-        current_app.config['APP_NAME'] = form.app_name.data
-        if hasattr(g, 'app_name'): g.app_name = form.app_name.data
-
-        app_base_url = form.app_base_url.data.rstrip('/')
-        Setting.set('APP_BASE_URL', app_base_url, SettingValueType.STRING, "Application Base URL")
-        current_app.config['APP_BASE_URL'] = app_base_url
-        if hasattr(g, 'app_base_url'): g.app_base_url = app_base_url
-
-        log_event(EventType.SETTING_CHANGE, "General settings updated.", admin_id=current_user.id)
-        flash('General settings saved successfully.', 'success'); return redirect(url_for('dashboard.settings_general'))
+        # This route now ONLY handles general app settings.
+        Setting.set('APP_NAME', form.app_name.data, ...)
+        Setting.set('APP_BASE_URL', form.app_base_url.data.rstrip('/'), ...)
+        log_event(...)
+        flash('General settings saved successfully.', 'success')
+        return redirect(url_for('dashboard.settings_general'))
     elif request.method == 'GET':
-        form.app_name.data = Setting.get('APP_NAME', current_app.config.get('APP_NAME'))
-        form.app_base_url.data = Setting.get('APP_BASE_URL') # This will be pre-filled
-    return render_template('settings/index.html', title="General Settings", form=form, active_tab='general')
+        form.app_name.data = Setting.get('APP_NAME')
+        form.app_base_url.data = Setting.get('APP_BASE_URL')
+    return render_template(
+        'settings/index.html',
+        title="General Settings", 
+        form=form, 
+        active_tab='general'
+    )
+
+@bp.route('/settings/account', methods=['GET', 'POST'])
+@login_required
+@setup_required
+def settings_account():
+    set_password_form = SetPasswordForm()
+    change_password_form = ChangePasswordForm()
+    
+    # --- Handle "Change Password" Form Submission ---
+    if 'submit_change_password' in request.form and change_password_form.validate_on_submit():
+        admin = AdminAccount.query.get(current_user.id)
+        # Verify the current password first
+        if admin.check_password(change_password_form.current_password.data):
+            admin.set_password(change_password_form.new_password.data)
+            db.session.commit()
+            log_event(EventType.ADMIN_PASSWORD_CHANGE, "Admin changed their password.", admin_id=current_user.id)
+            flash('Your password has been changed successfully.', 'success')
+            return redirect(url_for('dashboard.settings_account'))
+        else:
+            flash('Incorrect current password.', 'danger')
+
+    # --- Handle "Set Initial Password" Form Submission (moved from general) ---
+    elif 'submit_set_password' in request.form and set_password_form.validate_on_submit():
+        admin = AdminAccount.query.get(current_user.id)
+        admin.username = set_password_form.username.data
+        admin.set_password(set_password_form.password.data)
+        admin.is_plex_sso_only = False
+        db.session.commit()
+        log_event(EventType.ADMIN_PASSWORD_CHANGE, "Admin added username/password to their SSO-only account.", admin_id=current_user.id)
+        flash('Username and password have been set successfully!', 'success')
+        return redirect(url_for('dashboard.settings_account'))
+
+    return render_template(
+        'account/index.html', #<-- Render the new standalone template
+        title="My Account",
+        set_password_form=set_password_form,
+        change_password_form=change_password_form,
+    )
 
 @bp.route('/settings/plex', methods=['GET', 'POST'])
 @login_required

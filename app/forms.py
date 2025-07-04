@@ -1,11 +1,12 @@
 # File: app/forms.py
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField, TextAreaField, HiddenField
-from wtforms.validators import DataRequired, EqualTo, Length, Optional, URL, NumberRange, Regexp
+from wtforms.validators import DataRequired, EqualTo, Length, Optional, URL, NumberRange, Regexp, ValidationError
 from wtforms import SelectMultipleField
-from app.models import Setting # For custom validator if checking existing secrets
+from app.models import Setting, AdminAccount # For custom validator if checking existing secrets
 from wtforms.widgets import ListWidget, CheckboxInput # <--- ADDED THIS IMPORT
 import urllib.parse 
+from flask_login import current_user
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
@@ -268,3 +269,27 @@ class PurgeUsersForm(FlaskForm):
     exclude_sharers = BooleanField('Exclude users who share back their servers', default=True)
     # No submit button here, it's handled by the modal interaction triggering HTMX on the main form
     # csrf_token is handled by form.hidden_tag() if this form is rendered
+
+class SetPasswordForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
+    password = PasswordField('New Password', validators=[DataRequired(), Length(min=8)])
+    confirm_password = PasswordField('Confirm New Password', validators=[DataRequired(), EqualTo('password', message='Passwords must match.')])
+    submit_set_password = SubmitField('Set Username & Password')
+
+    def validate_username(self, username):
+        # Ensure the new username isn't already taken by another admin account
+        user = AdminAccount.query.filter(
+            AdminAccount.username == username.data,
+            AdminAccount.id != current_user.id # Exclude the current user from the check
+        ).first()
+        if user:
+            raise ValidationError('That username is already taken. Please choose a different one.')
+        
+class ChangePasswordForm(FlaskForm):
+    current_password = PasswordField('Current Password', validators=[DataRequired()])
+    new_password = PasswordField('New Password', validators=[DataRequired(), Length(min=8)])
+    confirm_new_password = PasswordField(
+        'Confirm New Password', 
+        validators=[DataRequired(), EqualTo('new_password', message='New passwords must match.')]
+    )
+    submit_change_password = SubmitField('Change Password')

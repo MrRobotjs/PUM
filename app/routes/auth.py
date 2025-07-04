@@ -46,26 +46,47 @@ def is_safe_url(target):
 
 @bp.route('/login', methods=['GET', 'POST'])
 def app_login():
-    if current_user.is_authenticated and hasattr(g, 'setup_complete') and g.setup_complete: return redirect(url_for('dashboard.index'))
-    admin_account_query = None
-    try: admin_account_query = AdminAccount.query.first()
-    except Exception as e_db: current_app.logger.warning(f"Could not query AdminAccount in login (DB may not be ready): {e_db}")
-    if not admin_account_query: 
-        flash('App setup not complete. Set up admin account.', 'warning'); return redirect(url_for('setup.account_setup'))
-    login_methods_available = {'plex_sso': True, 'username_password': not admin_account_query.is_plex_sso_only}
+    if current_user.is_authenticated and hasattr(g, 'setup_complete') and g.setup_complete:
+        return redirect(url_for('dashboard.index'))
+    
+    admin_account = None
+    try:
+        admin_account = AdminAccount.query.first()
+    except Exception as e_db:
+        current_app.logger.warning(f"Could not query AdminAccount in login: {e_db}")
+
+    if not admin_account: 
+        flash('App setup not complete. Set up admin account.', 'warning')
+        return redirect(url_for('setup.account_setup'))
+    
+    # --- MODIFICATION ---
+    # We will now always prepare and pass the form.
+    # The template will handle disabling the fields if necessary.
     form = LoginForm()
-    if request.method == 'POST':
-        if form.validate_on_submit() and not admin_account_query.is_plex_sso_only:
-            admin = AdminAccount.query.filter_by(username=form.username.data).first()
-            if admin and admin.check_password(form.password.data):
-                login_user(admin, remember=True); admin.last_login_at = db.func.now(); db.session.commit()
-                log_event(EventType.ADMIN_LOGIN_SUCCESS, f"Admin '{admin.username}' logged in (password).")
-                next_page = request.args.get('next')
-                if not next_page or not is_safe_url(next_page): next_page = url_for('dashboard.index')
-                return redirect(next_page)
-            else:
-                log_event(EventType.ADMIN_LOGIN_FAIL, f"Failed login for '{form.username.data}'."); flash('Invalid username or password.', 'danger')
-    return render_template('auth/app_login.html', title="Admin Login", form=form, login_methods_available=login_methods_available)
+    is_sso_only = admin_account.is_plex_sso_only
+    # --- END MODIFICATION ---
+
+    if form.validate_on_submit() and not is_sso_only:
+        admin_to_check = AdminAccount.query.filter_by(username=form.username.data).first()
+        if admin_to_check and admin_to_check.check_password(form.password.data):
+            login_user(admin_to_check, remember=True)
+            admin_to_check.last_login_at = db.func.now()
+            db.session.commit()
+            log_event(EventType.ADMIN_LOGIN_SUCCESS, f"Admin '{admin_to_check.username}' logged in (password).")
+            next_page = request.args.get('next')
+            if not next_page or not is_safe_url(next_page):
+                next_page = url_for('dashboard.index')
+            return redirect(next_page)
+        else:
+            log_event(EventType.ADMIN_LOGIN_FAIL, f"Failed login for '{form.username.data}'.")
+            flash('Invalid username or password.', 'danger')
+
+    return render_template(
+        'auth/app_login.html', 
+        title="Admin Login", 
+        form=form, 
+        is_sso_only=is_sso_only # Pass this flag to the template
+    )
 
 @bp.route('/plex_sso_admin', methods=['POST'])
 def plex_sso_login_admin():
@@ -323,7 +344,6 @@ def discord_callback_admin():
 @bp.route('/discord/unlink_admin', methods=['POST'])
 @login_required
 def discord_unlink_admin():
-    # ... (same)
     discord_username_log = current_user.discord_username
     current_user.discord_user_id = None; current_user.discord_username = None; current_user.discord_avatar_hash = None
     current_user.discord_access_token = None; current_user.discord_refresh_token = None; current_user.discord_token_expires_at = None

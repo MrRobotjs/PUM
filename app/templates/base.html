@@ -67,6 +67,7 @@
                     <li><a href="{{ url_for('invites.list_invites') }}" class="{{ 'active menu-active' if request.endpoint and request.endpoint.startswith('invites.') else '' }}"><i class="fa-solid fa-ticket fa-fw mr-2"></i> Invites</a></li>
                     <li><a href="{{ url_for('dashboard.streaming_sessions') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.streaming_sessions' else '' }}"><i class="fa-solid fa-tower-broadcast fa-fw mr-2"></i> Streaming</a></li>
                     <li><a href="{{ url_for('dashboard.history') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.history' else '' }}"><i class="fa-solid fa-timeline fa-fw mr-2"></i> History</a></li>
+                    <li><a href="{{ url_for('dashboard.settings_account') }}" class="{{ 'active' if request.endpoint == 'dashboard.settings_account' else '' }}"><i class="fa-solid fa-user-cog fa-fw mr-2"></i> My Account</a></li>
                     
                     {# For the <details> element, we need a way to keep it open if a child is active. #}
                     {% set settings_is_active = request.endpoint and request.endpoint.startswith('dashboard.settings_') %}

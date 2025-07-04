@@ -1,69 +1,64 @@
-{% extends "base.html" %} {# MUST be the first line #}
+<!-- File: app/templates/auth/app_login.html -->
+{% extends "base.html" %}
 
 {% block title %}{{ super() }} - Admin Login{% endblock title %}
 
-{# This block name MUST match the one in base.html used for non-logged-in state #}
-{# Based on the last base.html, this should indeed be 'content' #}
 {% block content %} 
-<div class="hero min-h-[calc(100vh-10rem)] bg-base-100"> {# Adjust min-h based on navbar/footer height #}
+<div class="hero min-h-[calc(100vh-10rem)] bg-base-100">
     <div class="hero-content flex-col lg:flex-row-reverse">
         <div class="text-center lg:text-left lg:pl-8">
             <h1 class="text-5xl font-bold">{{ g.app_name or "Plex User Manager" }}</h1>
             <p class="py-6">Administrator login. Please use your Plex account or the credentials established during setup.</p>
-            <p class="text-sm text-base-content/70">If setup has not been completed, you will be redirected to the setup page after attempting to log in.</p>
         </div>
         <div class="card shrink-0 w-full max-w-sm shadow-2xl bg-base-200">
+            {# The formaction on the Plex button handles the separate POST destination #}
             <form method="POST" action="{{ url_for('auth.app_login') }}" class="card-body">
-                {{ form.hidden_tag() }} {# CSRF token #}
-
-                {% if login_methods_available.plex_sso %}
-                <div class="form-control">
-                    <button formaction="{{ url_for('auth.plex_sso_login_admin') }}" type="submit" name="sso_method" value="plex" class="btn btn-primary bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black">
-                        <i class="fa-solid fa-right-to-bracket mr-2"></i> Sign In with Plex
-                    </button>
-                </div>
-                {% endif %}
-
-                {% if login_methods_available.username_password and login_methods_available.plex_sso %}
-                <div class="divider">OR</div>
-                {% endif %}
-
-                {% if login_methods_available.username_password %}
+                {{ form.hidden_tag() }}
+                                
+                {# Username and Password fields are always visible #}
                 <div class="form-control">
                     {{ form.username.label(class="label") }}
-                    {{ form.username(class="input input-bordered " + ("input-error" if form.username.errors else ""), placeholder="Username") }}
+                    {# Add disabled attribute if is_sso_only is true #}
+                    {{ form.username(class="input input-bordered " + ("input-error" if form.username.errors else ""), placeholder="Username", disabled=is_sso_only) }}
                     {% if form.username.errors %}
                         {% for error in form.username.errors %}
-                            <label class="label">
-                                <span class="label-text-alt text-error">{{ error }}</span>
-                            </label>
+                        <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
                         {% endfor %}
                     {% endif %}
                 </div>
                 <div class="form-control">
                     {{ form.password.label(class="label") }}
-                    {{ form.password(class="input input-bordered " + ("input-error" if form.password.errors else ""), placeholder="Password") }}
+                    {# Add disabled attribute if is_sso_only is true #}
+                    {{ form.password(class="input input-bordered " + ("input-error" if form.password.errors else ""), placeholder="Password", disabled=is_sso_only) }}
                     {% if form.password.errors %}
                         {% for error in form.password.errors %}
-                            <label class="label">
-                                <span class="label-text-alt text-error">{{ error }}</span>
-                            </label>
+                        <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
                         {% endfor %}
                     {% endif %}
                 </div>
-                <div class="form-control mt-6">
-                    {{ form.submit(class="btn btn-primary") }}
+                
+                {# Add a helper message if fields are disabled #}
+                {% if is_sso_only %}
+                <div class="text-xs text-info text-center mt-2">
+                    Password login is disabled because this admin account was created with "Plex SSO Only".
                 </div>
                 {% endif %}
 
-                {% if not login_methods_available.plex_sso and not login_methods_available.username_password %}
-                  <p class="text-center text-warning">No login methods configured. Please complete application setup.</p>
-                  <div class="form-control mt-6">
-                    <a href="{{ url_for('setup.account_setup') }}" class="btn btn-secondary">Go to Setup</a>
-                  </div>
-                {% endif %}
+                <div class="form-control mt-6">
+                    {# Also disable this button if is_sso_only is true #}
+                    {{ form.submit(class="btn btn-primary", disabled=is_sso_only) }}
+                </div>
+
+                <div class="divider">OR</div>
+
+                {# Plex SSO button is always visible #}
+                <div class="form-control">
+                    <button formaction="{{ url_for('auth.plex_sso_login_admin') }}" type="submit" name="sso_method" value="plex" class="btn btn-primary w-full bg-[#e5a00d] hover:bg-[#c4880b] border-[#e5a00d] hover:border-[#c4880b] text-black">
+                        <i class="fa-solid fa-right-to-bracket mr-2"></i> Sign In with Plex
+                    </button>
+                </div>
             </form>
         </div>
     </div>
 </div>
-{% endblock content %} {# Ensure this is 'content' and properly closes #}
+{% endblock content %}

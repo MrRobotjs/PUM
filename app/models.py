@@ -121,9 +121,20 @@ class AdminAccount(db.Model, UserMixin): # ... (no changes needed for bot featur
     discord_refresh_token = db.Column(db.String(255), nullable=True); discord_token_expires_at = db.Column(db.DateTime, nullable=True)
     discord_email = db.Column(db.String(255), nullable=True)
     discord_email_verified = db.Column(db.Boolean, nullable=True)
+    force_password_change = db.Column(db.Boolean, default=False, nullable=False)
+    permissions = db.Column(MutableList.as_mutable(JSONEncodedDict), nullable=True, default=list)
     def set_password(self, password): self.password_hash = generate_password_hash(password)
     def check_password(self, password): return check_password_hash(self.password_hash, password) if self.password_hash else False
     def __repr__(self): return f'<AdminAccount {self.username or self.plex_username}>'
+    def has_permission(self, permission_name):
+        # A simple check. You might want a super-admin rule later.
+        # For now, if permissions list is None or empty, assume full access for the primary admin.
+        # Or check for a specific 'superuser' permission.
+        if self.permissions is None:
+             # This can happen for the very first admin created. We can treat them as a superuser.
+             # Let's assume the first admin (id=1) is always a superuser.
+            return self.id == 1 
+        return permission_name in self.permissions
 
 
 class User(db.Model):
