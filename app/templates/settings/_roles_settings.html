@@ -1,0 +1,48 @@
+<!-- File: app/templates/settings/_roles_settings.html -->
+<h2 class="text-xl font-semibold mb-6">Manage Roles</h2>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 card bg-base-100 shadow">
+        <div class="card-body">
+            <h2 class="card-title">Existing Roles</h2>
+            <table class="table">
+                <thead><tr><th>Name</th><th>Description</th><th>Assigned Admins</th><th>Actions</th></tr></thead>
+                <tbody>
+                {% for role in roles %}
+                <tr>
+                    <td class="font-semibold">{{ role.name }}</td>
+                    <td>{{ role.description }}</td>
+                    <td>{{ role.admins|length }}</td>
+                    <td class="space-x-1">
+                        <a href="{{ url_for('dashboard.edit_role', role_id=role.id) }}" class="btn btn-xs btn-outline">Edit</a>
+                        <form action="{{ url_for('dashboard.delete_role', role_id=role.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this role?');">
+                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-xs btn-error">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="lg:col-span-1 card bg-base-100 shadow">
+        <div class="card-body">
+            <h2 class="card-title">Create New Role</h2>
+             <form method="POST" action="{{ url_for('dashboard.settings_roles') }}">
+                {{ form.hidden_tag() }}
+                <div class="form-control">
+                    {{ form.name.label(class="label") }}
+                    {{ form.name(class="input input-bordered " + ("input-error" if form.name.errors else "")) }}
+                    {% if form.name.errors %}<p class="text-error text-xs mt-1">{{ form.name.errors[0] }}</p>{% endif %}
+                </div>
+                <div class="form-control">
+                    {{ form.description.label(class="label") }}
+                    {{ form.description(class="input input-bordered " + ("input-error" if form.description.errors else "")) }}
+                </div>
+                <div class="form-control mt-4">
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,42 @@
+<!-- File: app/templates/roles/edit.html -->
+{% extends "settings/index.html" %}
+
+{% block title %}{{ super() }} - Edit Role: {{ role.name }}{% endblock %}
+
+{% block settings_content %}
+    <div class="flex items-center mb-4">
+        <a href="{{ url_for('dashboard.settings_roles') }}" class="btn btn-sm btn-ghost"><i class="fa-solid fa-arrow-left mr-2"></i> Back to Role List</a>
+    </div>
+
+    <h2 class="text-xl font-semibold my-4">Edit Role: <span class="font-bold text-primary">{{ role.name }}</span></h2>
+    
+    <form method="POST" class="max-w-md space-y-4">
+        {{ form.hidden_tag() }}
+        <div class="form-control">
+            {{ form.name.label(class="label") }}
+            {{ form.name(class="input input-bordered " + ("input-error" if form.name.errors else "")) }}
+            {% if form.name.errors %}<p class="text-error text-xs mt-1">{{ form.name.errors[0] }}</p>{% endif %}
+        </div>
+
+        <div class="form-control">
+            {{ form.description.label(class="label") }}
+            {{ form.description(class="input input-bordered " + ("input-error" if form.description.errors else "")) }}
+        </div>
+
+        <div class="form-control mt-4">
+            <label class="label"><span class="label-text font-medium">Permissions for this Role</span></label>
+            <div class="p-4 border rounded-lg bg-base-100/50">
+                {% for subfield in form.permissions %}
+                    <label class="label cursor-pointer justify-start" title="{{ subfield.label.text }}">
+                        {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-3") }}
+                        <span class="label-text text-sm">{{ subfield.label.text }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card-actions justify-end mt-6">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </form>
+{% endblock %}

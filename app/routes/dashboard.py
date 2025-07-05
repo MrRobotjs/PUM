@@ -5,18 +5,28 @@ from flask import (
 )
 from flask_login import login_required, current_user, logout_user 
 import secrets
-from app.models import User, Invite, HistoryLog, Setting, EventType, SettingValueType, AdminAccount
+from app.models import User, Invite, HistoryLog, Setting, EventType, SettingValueType, AdminAccount, Role 
 from app.forms import (
-    GeneralSettingsForm, PlexSettingsForm, DiscordConfigForm, SetPasswordForm, ChangePasswordForm
+    GeneralSettingsForm, PlexSettingsForm, DiscordConfigForm, SetPasswordForm, ChangePasswordForm, AdminCreateForm, AdminEditForm, RoleEditForm, RoleCreateForm
     # If you create an AdvancedSettingsForm, import it here too.
 )
 from app.extensions import db, scheduler # For db.func.now() if used, or db specific types
-from app.utils.helpers import log_event, setup_required 
+from app.utils.helpers import log_event, setup_required, permission_required
 # No direct plexapi imports here, plex_service should handle that.
 from app.services import plex_service, history_service
 import json
 from urllib.parse import urlparse
 from datetime import datetime 
+from functools import wraps
+
+def super_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.id == 1:
+            flash("You do not have permission to access this page.", "danger")
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 bp = Blueprint('dashboard', __name__)
 
@@ -813,3 +823,161 @@ def streaming_sessions_partial():
     return render_template('dashboard/_streaming_sessions_content.html', 
                            sessions=active_sessions_data, 
                            summary_stats=summary_stats)
+
+@bp.route('/settings/admins')
+@login_required
+@permission_required('manage_admins') # <-- Use new decorator
+def settings_admins():
+    admins = AdminAccount.query.order_by(AdminAccount.id).all()
+    return render_template(
+        'settings/index.html',
+        title="Manage Admins",
+        admins=admins,
+        active_tab='admins'
+    )
+
+@bp.route('/settings/admins/create', methods=['POST'])
+@login_required
+@permission_required('manage_admins')
+def create_admin():
+    form = AdminCreateForm()
+    if form.validate_on_submit():
+        new_admin = AdminAccount(
+            username=form.username.data,
+            force_password_change=True,
+            permissions=[] # New admins start with no explicit permissions/roles
+        )
+        new_admin.set_password(form.password.data)
+        db.session.add(new_admin)
+        db.session.commit()
+        
+        toast = {"showToastEvent": {"message": f"Admin '{new_admin.username}' created.", "category": "success"}}
+        response = make_response("", 204) # No Content
+        response.headers['HX-Trigger'] = json.dumps({"refreshAdminList": True, **toast})
+        return response
+    
+    # If validation fails, re-render the form partial with errors
+    return render_template('admins/_create_admin_modal_form_content.html', form=form), 422
+
+@bp.route('/settings/admins/create_form')
+@login_required
+@permission_required('manage_admins')
+def get_admin_create_form():
+    form = AdminCreateForm()
+    return render_template('admins/_create_admin_modal_form_content.html', form=form)
+
+@bp.route('/settings/admins/edit/<int:admin_id>', methods=['GET', 'POST'])
+@login_required
+@permission_required('manage_admins')
+def edit_admin(admin_id):
+    admin = AdminAccount.query.get_or_404(admin_id)
+    if admin.id == 1:
+        flash("The primary admin's roles and permissions cannot be edited.", "warning")
+        return redirect(url_for('dashboard.settings_admins'))
+
+    form = AdminEditForm(obj=admin)
+    # Populate role choices for the multi-select field
+    form.roles.choices = [(r.id, r.name) for r in Role.query.order_by('name')]
+
+    if form.validate_on_submit():
+        # Get Role objects from the submitted list of IDs
+        admin.roles = Role.query.filter(Role.id.in_(form.roles.data)).all()
+        db.session.commit()
+        flash(f"Roles for '{admin.username}' updated successfully.", "success")
+        return redirect(url_for('dashboard.settings_admins'))
+    
+    # For GET request, pre-select the admin's current roles
+    if request.method == 'GET':
+        form.roles.data = [r.id for r in admin.roles]
+
+    return render_template(
+        'admins/edit.html',
+        title=f"Edit Admin", # Title for the page
+        admin=admin,
+        form=form,
+        active_tab='admins' # This tells the sidebar which item to highlight
+    )
+
+@bp.route('/settings/admins/delete/<int:admin_id>', methods=['POST'])
+@login_required
+@permission_required('manage_admins')
+def delete_admin(admin_id):
+    if admin_id == 1 or admin_id == current_user.id:
+        flash("The primary admin or your own account cannot be deleted.", "danger")
+        return redirect(url_for('dashboard.settings_admins'))
+    
+    admin_to_delete = AdminAccount.query.get_or_404(admin_id)
+    db.session.delete(admin_to_delete)
+    db.session.commit()
+    flash(f"Admin '{admin_to_delete.username}' has been deleted.", "success")
+    return redirect(url_for('dashboard.settings_admins'))
+
+@bp.route('/settings/roles', methods=['GET', 'POST'])
+@login_required
+@permission_required('manage_roles') # We'll add this permission later
+def settings_roles():
+    form = RoleCreateForm()
+    if form.validate_on_submit():
+        new_role = Role(name=form.name.data, description=form.description.data)
+        db.session.add(new_role)
+        db.session.commit()
+        flash(f"Role '{new_role.name}' created successfully.", "success")
+        return redirect(url_for('dashboard.settings_roles'))
+
+    roles = Role.query.order_by(Role.name).all()
+    return render_template(
+        'settings/index.html',
+        title="Manage Roles",
+        roles=roles,
+        form=form,
+        active_tab='roles'
+    )
+
+@bp.route('/settings/roles/edit/<int:role_id>', methods=['GET', 'POST'])
+@login_required
+@permission_required('manage_roles')
+def edit_role(role_id):
+    role = Role.query.get_or_404(role_id)
+    form = RoleEditForm(original_name=role.name, obj=role)
+    
+    # Define all available permissions in the system
+    available_permissions = {
+        'manage_users': 'Manage Users, Invites, & Purging',
+        'manage_settings': 'Manage Application-wide Settings',
+        'manage_admins': 'Manage Administrator Accounts',
+        'manage_roles': 'Manage Roles and Permissions'
+    }
+    form.permissions.choices = [(p, label) for p, label in available_permissions.items()]
+
+    if form.validate_on_submit():
+        role.name = form.name.data
+        role.description = form.description.data
+        role.permissions = form.permissions.data
+        db.session.commit()
+        flash(f"Role '{role.name}' updated successfully.", "success")
+        return redirect(url_for('dashboard.settings_roles'))
+    
+    if request.method == 'GET':
+        form.permissions.data = role.permissions
+
+    return render_template(
+        'roles/edit.html', #<-- New path
+        title=f"Edit Role", # Title for the page
+        role=role,
+        form=form,
+        active_tab='roles' # This keeps "Roles" highlighted in the sidebar
+    )
+
+@bp.route('/settings/roles/delete/<int:role_id>', methods=['POST'])
+@login_required
+@permission_required('manage_roles')
+def delete_role(role_id):
+    role = Role.query.get_or_404(role_id)
+    if role.admins:
+        flash(f"Cannot delete role '{role.name}' as it is currently assigned to one or more admins.", "danger")
+        return redirect(url_for('dashboard.settings_roles'))
+    
+    db.session.delete(role)
+    db.session.commit()
+    flash(f"Role '{role.name}' deleted.", "success")
+    return redirect(url_for('dashboard.settings_roles'))

@@ -1,79 +1,84 @@
 <!-- File: app/templates/settings/index.html -->
 {% extends "base.html" %}
 
-{% block title %}{{ super() }} - Application Settings{% endblock %}
+{% block title %}{{ super() }} - {{ title or "Application Settings" }}{% endblock %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-2">
-    <h1 class="text-3xl font-bold mb-8">Application Settings</h1>
+    <h1 class="text-3xl font-bold mb-8">{{ title or "Application Settings" }}</h1>
 
-    <div class="tabs tabs-lifted tabs-lg mb-6">
-        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'general' else '' }}"
-           href="{{ url_for('dashboard.settings_general') }}">
-           <i class="fa-solid fa-sliders mr-2"></i> General
-        </a>
-        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'plex' else '' }}"
-           href="{{ url_for('dashboard.settings_plex') }}">
-           <i class="fa-solid fa-network-wired mr-2"></i> Plex
-        </a>
-        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'discord' else '' }}"
-           href="{{ url_for('dashboard.settings_discord') }}">
-           <i class="fa-brands fa-discord mr-2"></i> Discord
-        </a>
-        <a role="tab" class="tab {{ 'tab-active font-semibold' if active_tab == 'advanced' else '' }}"
-           href="{{ url_for('dashboard.settings_advanced') }}">
-           <i class="fa-solid fa-cogs mr-2"></i> Advanced
-        </a>
-    </div>
-
-    <div class="bg-base-200 shadow-xl rounded-lg p-6 sm:p-8">
-        {% if active_tab == 'general' %}
-            {% include 'settings/_general_settings.html' %}
-        {% elif active_tab == 'plex' %}
-            {% include 'settings/_plex_settings.html' %}
-        {% elif active_tab == 'discord' %}
-            {% include 'settings/_discord_settings.html' %}
-        {% elif active_tab == 'advanced' %}
-            {% include 'settings/_advanced_settings.html' %}
-        {% else %}
-            <p>Select a settings category above.</p>
-        {% endif %}
-    </div>
-
-    {# Section to display current saved settings from DB (read-only) - Could be part of advanced or a separate tab #}
-    {% if active_tab == 'advanced' and all_db_settings %}
-    <div class="mt-10">
-        <h2 class="text-2xl font-semibold mb-4">Current Saved Settings (from Database - Read Only)</h2>
-        <div class="bg-base-200 shadow-lg rounded-lg p-6 max-h-96 overflow-y-auto">
-            <table class="table table-sm table-zebra w-full">
-                <thead>
-                    <tr>
-                        <th>Key</th>
-                        <th>Value</th>
-                        <th>Type</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for setting in all_db_settings %}
-                    <tr>
-                        <td class="font-mono text-xs">{{ setting.key }}</td>
-                        <td class="text-xs break-all">
-                            {% if setting.value_type == 'secret' and setting.value %}
-                                <span class="italic text-base-content/50" title="Secret value is hidden">********</span>
-                            {% else %}
-                                {{ setting.value | truncate(100, True) if setting.value else 'Not Set' }}
+    <div class="grid grid-cols-1 md:grid-cols-6 gap-8">
+        
+        {# --- COLUMN 1: Desktop Sidebar Navigation --- #}
+        <div class="hidden md:block md:col-span-1">
+            <ul class="menu bg-base-200 rounded-box p-2 space-y-1 sticky top-24 w-full shadow-xl">
+                <li>
+                    <h2 class="menu-title"><span><i class="fa-solid fa-cog fa-fw mr-2"></i> Settings</span></h2>
+                    <ul>
+                        <li><a href="{{ url_for('dashboard.settings_general') }}" class="{{ 'active menu-active' if active_tab == 'general' else '' }}"><i class="fa-solid fa-sliders mr-2"></i> General</a></li>
+                        <h2 class="menu-title"><span><i class="fa-solid fa-user-shield fa-fw mr-2"></i> Manage Admins</span></h2>
+                        <ul>
+                            {% if current_user.id == 1 or current_user.has_permission('manage_admins') or current_user.has_permission('manage_roles') %}
+                                {% if current_user.id == 1 or current_user.has_permission('manage_admins') %}
+                                    <li><a href="{{ url_for('dashboard.settings_admins') }}" class="{{ 'active menu-active' if active_tab in ['admins', 'admins_edit'] else '' }}"><i class="fa-solid fa-shield-halved mr-2"></i> Admins</a></li>
+                                {% endif %}
+                                {% if current_user.id == 1 or current_user.has_permission('manage_roles') %}
+                                    <li><a href="{{ url_for('dashboard.settings_roles') }}" class="{{ 'active menu-active' if active_tab in ['roles', 'roles_edit'] else '' }}"><i class="fa-solid fa-shield mr-2"></i> Roles</a></li>
+                                {% endif %}
                             {% endif %}
-                        </td>
-                        <td class="text-xs"><span class="badge badge-ghost badge-sm">{{ setting.value_type.value }}</span></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        </ul>
+                        <li><a href="{{ url_for('dashboard.settings_plex') }}" class="{{ 'active menu-active' if active_tab == 'plex' else '' }}"><i class="fa-solid fa-network-wired mr-2"></i> Plex</a></li>
+                        <li><a href="{{ url_for('dashboard.settings_discord') }}" class="{{ 'active menu-active' if active_tab == 'discord' else '' }}"><i class="fa-brands fa-discord mr-2"></i> Discord</a></li>
+                        <li><a href="{{ url_for('dashboard.settings_advanced') }}" class="{{ 'active menu-active' if active_tab == 'advanced' else '' }}"><i class="fa-solid fa-cogs mr-2"></i> Advanced</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        {# --- COLUMN 2: Main Content Area --- #}
+        <div class="md:col-span-5">
+            
+            {# --- Mobile Navigation Dropdown --- #}
+            <div class="form-control md:hidden mb-6">
+                <label class="label"><span class="label-text">Go to setting:</span></label>
+                <select class="select select-bordered" onchange="if (this.value) window.location.href=this.value;">
+                    <option value="{{ url_for('dashboard.settings_account') }}" {% if active_tab == 'account' %}selected{% endif %}>My Account</option>
+                    <option value="{{ url_for('dashboard.settings_general') }}" {% if active_tab == 'general' %}selected{% endif %}>General</option>
+                    <option value="{{ url_for('dashboard.settings_plex') }}" {% if active_tab == 'plex' %}selected{% endif %}>Plex</option>
+                    <option value="{{ url_for('dashboard.settings_discord') }}" {% if active_tab == 'discord' %}selected{% endif %}>Discord</option>
+                    <option value="{{ url_for('dashboard.settings_advanced') }}" {% if active_tab == 'advanced' %}selected{% endif %}>Advanced</option>
+                    {% if current_user.id == 1 or current_user.has_permission('manage_admins') %}
+                    <option value="{{ url_for('dashboard.settings_admins') }}" {% if active_tab == 'admins' %}selected{% endif %}>Manage Admins</option>
+                    {% endif %}
+                    {% if current_user.id == 1 or current_user.has_permission('manage_roles') %}
+                    <option value="{{ url_for('dashboard.settings_roles') }}" {% if active_tab == 'roles' %}selected{% endif %}>Manage Roles</option>
+                    {% endif %}
+                </select>
+            </div>
+            
+            <div class="bg-base-200 shadow-xl rounded-lg p-6 sm:p-8">
+            {% block settings_content %}
+                {% if active_tab %}
+                    {% include 'settings/_' + active_tab + '_settings.html' ignore missing %}
+                {% else %}
+                    <p>Select a settings category.</p>
+                {% endif %}
+            {% endblock settings_content %}
+            </div>
         </div>
     </div>
-    {% endif %}
-
 </div>
+
+<dialog id="create_admin_modal" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box">
+        <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" type="button" onclick="create_admin_modal.close()">✕</button></form>
+        <h3 class="font-bold text-lg mb-4">Create New Admin</h3>
+        <div id="create_admin_modal_content_div">
+             <!-- HTMX will load form content here -->
+             <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span></div>
+        </div>
+    </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}

@@ -1,8 +1,9 @@
 # File: app/utils/helpers.py
 import re
 from datetime import datetime, timezone, timedelta
-from flask import current_app, flash, url_for, g as flask_g # Use flask_g to avoid conflict with local g
+from flask import current_app, flash, url_for, g as flask_g, redirect # Use flask_g to avoid conflict with local g
 from functools import wraps
+from flask_login import current_user
 # app.models import HistoryLog, EventType # This creates circular import if models also import helpers
 # from app.extensions import db # Same here
 
@@ -124,3 +125,17 @@ def sanitize_filename(filename: str) -> str:
     filename = filename.strip('_.-')
     if not filename: return "sanitized_file"
     return filename
+
+def permission_required(permission_name):
+    """Decorator to check if a logged-in user has a specific permission."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for('auth.app_login'))
+            if not current_user.has_permission(permission_name):
+                flash("You do not have permission to access this page.", "danger")
+                return redirect(url_for('dashboard.index'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator

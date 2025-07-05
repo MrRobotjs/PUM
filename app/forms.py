@@ -2,7 +2,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField, TextAreaField, HiddenField
 from wtforms.validators import DataRequired, EqualTo, Length, Optional, URL, NumberRange, Regexp, ValidationError
-from wtforms import SelectMultipleField
+from wtforms import SelectMultipleField, RadioField
 from app.models import Setting, AdminAccount # For custom validator if checking existing secrets
 from wtforms.widgets import ListWidget, CheckboxInput # <--- ADDED THIS IMPORT
 import urllib.parse 
@@ -305,11 +305,54 @@ class AdminCreateForm(FlaskForm):
             raise ValidationError('That username is already taken.')
 
 class AdminEditForm(FlaskForm):
-    username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)], render_kw={'readonly': True})
+    username = StringField('Username', render_kw={'readonly': True})
     
-    # Permissions
-    permission_manage_users = BooleanField('Can Manage Users and Invites')
-    # Add more permissions here as you create them
-    # permission_manage_settings = BooleanField('Can Manage App Settings')
+    # THIS IS THE CORRECTED FIELD DEFINITION
+    roles = SelectMultipleField(
+        'Assigned Roles', 
+        coerce=int, 
+        validators=[Optional()],
+        widget=ListWidget(prefix_label=False), 
+        option_widget=CheckboxInput()
+    )
+    # END CORRECTION
 
-    submit = SubmitField('Save Permissions')
+    submit = SubmitField('Save Changes')
+
+class RoleCreateForm(FlaskForm):
+    name = StringField('Role Name', validators=[DataRequired(), Length(min=3, max=80)])
+    description = StringField('Description', validators=[Optional(), Length(max=255)])
+    submit = SubmitField('Create Role')
+
+    def validate_name(self, name):
+        # We need the Role model here, so import it locally to avoid circular dependencies
+        from app.models import Role
+        if Role.query.filter_by(name=name.data).first():
+            raise ValidationError('A role with this name already exists.')
+
+class RoleEditForm(FlaskForm):
+    name = StringField('Role Name', validators=[DataRequired(), Length(min=3, max=80)])
+    description = StringField('Description', validators=[Optional(), Length(max=255)])
+
+    # This will be a group of checkboxes for the available permissions
+    # We will define a list of all possible permissions in the app.
+    # For now, let's start with 'manage_users'.
+    permissions = SelectMultipleField(
+        'Permissions', 
+        coerce=str, 
+        validators=[Optional()],
+        widget=ListWidget(prefix_label=False), 
+        option_widget=CheckboxInput()
+    )
+
+    submit = SubmitField('Save Changes')
+
+    def __init__(self, original_name, *args, **kwargs):
+        super(RoleEditForm, self).__init__(*args, **kwargs)
+        self.original_name = original_name
+
+    def validate_name(self, name):
+        if name.data != self.original_name:
+            from app.models import Role
+            if Role.query.filter_by(name=name.data).first():
+                raise ValidationError('A role with this name already exists.')

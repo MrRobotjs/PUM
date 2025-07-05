@@ -288,8 +288,6 @@ def create_app(config_name=None):
     app.register_blueprint(invites_bp) # url_prefix='/invites' is handled in invites.py itself for public link
     from .routes.api import bp as api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
-    from .routes.admins import bp as admins_bp
-    app.register_blueprint(admins_bp)
 
     register_error_handlers(app)
 

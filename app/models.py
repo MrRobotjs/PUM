@@ -8,6 +8,13 @@ from sqlalchemy.ext.mutable import MutableDict, MutableList
 from app.extensions import db # Removed login_manager, not used here
 import secrets
 from flask import current_app 
+from sqlalchemy import Table, Column, Integer, ForeignKey
+
+# This is a standard SQLAlchemy pattern for a many-to-many relationship.
+admin_roles = db.Table('admin_roles',
+    db.Column('admin_id', db.Integer, db.ForeignKey('admin_accounts.id'), primary_key=True),
+    db.Column('role_id', db.Integer, db.ForeignKey('roles.id'), primary_key=True)
+)
 
 # (JSONEncodedDict, SettingValueType, EventType enums as before - no changes needed there yet for bot)
 class JSONEncodedDict(TypeDecorator): # ... (as before)
@@ -54,6 +61,17 @@ class EventType(enum.Enum): # ... (as before, will add bot-specific events later
     DISCORD_BOT_GUILD_MEMBER_CHECK_FAIL = "DISCORD_BOT_GUILD_MEMBER_CHECK_FAIL" # Failed guild check on invite page
     # Add Bot Specific Event Types Later, e.g., BOT_USER_PURGED, BOT_INVITE_SENT
 
+class Role(db.Model):
+    __tablename__ = 'roles'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    # Permissions for this role will be stored as a simple JSON list of strings.
+    permissions = db.Column(MutableList.as_mutable(JSONEncodedDict), nullable=True, default=list)
+
+    def __repr__(self):
+        return f'<Role {self.name}>'
+    
 class Setting(db.Model): # ... (Setting model remains the same structure, new keys will be added via UI/code) ...
     __tablename__ = 'settings'; id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), unique=True, nullable=False, index=True)
@@ -122,19 +140,23 @@ class AdminAccount(db.Model, UserMixin): # ... (no changes needed for bot featur
     discord_email = db.Column(db.String(255), nullable=True)
     discord_email_verified = db.Column(db.Boolean, nullable=True)
     force_password_change = db.Column(db.Boolean, default=False, nullable=False)
-    permissions = db.Column(MutableList.as_mutable(JSONEncodedDict), nullable=True, default=list)
+    roles = db.relationship('Role', secondary=admin_roles, lazy='subquery',
+                            backref=db.backref('admins', lazy=True))
+    def has_permission(self, permission_name):
+        # The primary admin (ID 1) is always a superuser.
+        if self.id == 1:
+            return True
+        
+        # Check if any of the user's roles contain the required permission.
+        # It iterates through `self.roles` now, not the non-existent `self.permissions`
+        for role in self.roles:
+            if permission_name in (role.permissions or []):
+                return True
+        return False
+    def __repr__(self): return f'<AdminAccount {self.username or self.plex_username}>'
     def set_password(self, password): self.password_hash = generate_password_hash(password)
     def check_password(self, password): return check_password_hash(self.password_hash, password) if self.password_hash else False
     def __repr__(self): return f'<AdminAccount {self.username or self.plex_username}>'
-    def has_permission(self, permission_name):
-        # A simple check. You might want a super-admin rule later.
-        # For now, if permissions list is None or empty, assume full access for the primary admin.
-        # Or check for a specific 'superuser' permission.
-        if self.permissions is None:
-             # This can happen for the very first admin created. We can treat them as a superuser.
-             # Let's assume the first admin (id=1) is always a superuser.
-            return self.id == 1 
-        return permission_name in self.permissions
 
 
 class User(db.Model):
