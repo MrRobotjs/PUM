@@ -1,43 +1,50 @@
 <!-- File: app/templates/admins/edit.html -->
 {% extends "settings/index.html" %}
 
+{% block title %}{{ super() }} - Edit Admin{% endblock %}
+
 {# This block will replace the `{% block settings_content %}` in settings/index.html #}
 {% block settings_content %}
-<div class="flex items-center mb-6">
-    <a href="{{ url_for('dashboard.settings_admins') }}" class="btn btn-ghost btn-sm mr-2">
-        <i class="fa-solid fa-arrow-left"></i> Back to Admin List
-    </a>
-    <h1 class="text-3xl font-bold">Edit Admin: {{ admin.username or admin.plex_username }}</h1>
-</div>
-
-<form method="POST">
-    {{ form.hidden_tag() }}
-
-    {# Display Username (read-only) #}
-    <div class="form-control">
-        <label class="label"><span class="label-text">Username</span></label>
-        <input type="text" readonly value="{{ admin.username or 'Plex SSO User' }}" class="input input-bordered input-disabled">
+    <div class="flex items-center mb-6">
+        <a href="{{ url_for('dashboard.settings_admins') }}" class="btn btn-ghost btn-sm mr-2">
+            <i class="fa-solid fa-arrow-left"></i> Back to Admin List
+        </a>
     </div>
 
-    {# Assign Roles Checkboxes #}
-    <div class="form-control mt-6">
-        <label class="label"><span class="label-text font-medium">Assign Roles</span></label>
-        <div class="p-4 border rounded-lg bg-base-100/50 space-y-2">
-            {% if form.roles.choices %}
-                {% for subfield in form.roles %}
-                    <label class="label cursor-pointer justify-start p-1">
-                        {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-3") }}
-                        <span class="label-text">{{ subfield.label.text }}</span> 
-                    </label>
-                {% endfor %}
-            {% else %}
-                <p class="text-xs italic text-base-content/70">No roles have been created yet. <a href="{{ url_for('dashboard.settings_roles') }}" class="link">Create one first.</a></p>
-            {% endif %}
+    <h2 class="text-xl font-semibold mb-4">Edit Admin: <span class="font-bold text-primary">{{ admin.username or admin.plex_username }}</span></h2>
+    
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <form method="POST" class="max-w-md space-y-4">
+                {{ form.hidden_tag() }}
+
+                {# Display Username (read-only) #}
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Username (Read-only)</span></label>
+                    <input type="text" readonly value="{{ admin.username or 'Plex SSO User' }}" class="input input-bordered input-disabled">
+                </div>
+
+                {# Assign Roles Checkboxes #}
+                <div class="form-control">
+                    <label class="label"><span class="label-text font-medium">Assign Roles</span></label>
+                    <div class="p-4 border rounded-lg bg-base-200/50 space-y-2">
+                        {% if form.roles.choices %}
+                            {% for subfield in form.roles %}
+                                <label class="label cursor-pointer justify-start p-1">
+                                    {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-3") }}
+                                    <span class="label-text">{{ subfield.label.text }}</span> 
+                                </label>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-xs italic text-base-content/70">No roles exist. <a href="{{ url_for('dashboard.settings_roles') }}" class="link link-primary">Create one first.</a></p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card-actions justify-end pt-4">
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
         </div>
     </div>
-
-    <div class="card-actions justify-end mt-6">
-        {{ form.submit(class="btn btn-primary") }}
-    </div>
-</form>
 {% endblock %}
