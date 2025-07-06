@@ -14,7 +14,7 @@
         {{ form.hidden_tag() }}
         <div class="form-control">
             {{ form.name.label(class="label") }}
-            {{ form.name(class="input input-bordered " + ("input-error" if form.name.errors else "")) }}
+            {{ form.name(class="input input-bordered " + ("input-error" if form.name.errors else ""), id="edit_role_name") }}
             {% if form.name.errors %}<p class="text-error text-xs mt-1">{{ form.name.errors[0] }}</p>{% endif %}
         </div>
 
@@ -35,8 +35,78 @@
             </div>
         </div>
 
+        <div class="form-control">
+            {{ form.color.label(class="label") }}
+            <div class="input-group">
+                <input type="color" value="{{ form.color.data or '#808080' }}" class="input input-bordered !p-1" id="edit_color_picker">
+                {{ form.color(class="input input-bordered " + ("input-error" if form.color.errors else ""), id="edit_color_text") }}
+            </div>
+            {% if form.color.errors %}<p class="text-error text-xs mt-1">{{ form.color.errors[0] }}</p>{% endif %}
+        </div>
+
+        <div class="form-control">
+            <label class="label"><span class="label-text">Badge Preview:</span></label>
+            <div class="p-2 border rounded-md border-base-300">
+                <span class="badge" id="edit_badge_preview">
+                    {{ role.name }}
+                </span>
+            </div>
+        </div>
+
         <div class="card-actions justify-end mt-6">
             {{ form.submit(class="btn btn-primary") }}
         </div>
     </form>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // Helper function for text color (JS version)
+    function getTextColorForBg(hexColor) {
+        if (!hexColor || hexColor.length !== 7) return '#FFFFFF';
+        try {
+            const r = parseInt(hexColor.substr(1, 2), 16);
+            const g = parseInt(hexColor.substr(3, 2), 16);
+            const b = parseInt(hexColor.substr(5, 2), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#FFFFFF';
+        } catch (e) { return '#FFFFFF'; }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const editPicker = document.getElementById('edit_color_picker');
+        const editText = document.getElementById('edit_color_text');
+        const editName = document.getElementById('edit_role_name');
+        const editBadgePreview = document.getElementById('edit_badge_preview');
+
+        function updateEditPreview() {
+            if (!editBadgePreview || !editName || !editText) return;
+            const name = editName.value.trim() || 'Role Name';
+            const color = editText.value;
+            editBadgePreview.textContent = name;
+            editBadgePreview.style.backgroundColor = color;
+            editBadgePreview.style.borderColor = color;
+            editBadgePreview.style.color = getTextColorForBg(color);
+        }
+
+        if (editPicker && editText) {
+            editPicker.addEventListener('input', () => { 
+                editText.value = editPicker.value; 
+                updateEditPreview(); 
+            });
+            editText.addEventListener('input', () => { 
+                if (/^#[0-9a-fA-F]{6}$/.test(editText.value)) {
+                    editPicker.value = editText.value; 
+                }
+                updateEditPreview();
+            });
+        }
+        if (editName) {
+            editName.addEventListener('input', updateEditPreview);
+        }
+        // Initial call to set the preview correctly on page load
+        updateEditPreview();
+    });
+</script>
 {% endblock %}

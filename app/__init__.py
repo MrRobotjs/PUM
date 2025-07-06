@@ -161,6 +161,7 @@ def create_app(config_name=None):
 
     app.jinja_env.filters['format_datetime_human'] = helpers.format_datetime_human
     app.jinja_env.filters['time_ago'] = helpers.time_ago
+    app.jinja_env.globals['get_text_color_for_bg'] = helpers.get_text_color_for_bg
 
     @app.context_processor
     def inject_current_year():

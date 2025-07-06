@@ -68,6 +68,7 @@ class Role(db.Model):
     description = db.Column(db.String(255), nullable=True)
     # Permissions for this role will be stored as a simple JSON list of strings.
     permissions = db.Column(MutableList.as_mutable(JSONEncodedDict), nullable=True, default=list)
+    color = db.Column(db.String(7), nullable=True, default='#808080') # Default to a neutral gray
 
     def __repr__(self):
         return f'<Role {self.name}>'

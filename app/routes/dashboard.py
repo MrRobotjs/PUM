@@ -845,7 +845,7 @@ def create_admin():
         new_admin = AdminAccount(
             username=form.username.data,
             force_password_change=True,
-            permissions=[] # New admins start with no explicit permissions/roles
+            roles=[] # New admins start with no explicit permissions/roles
         )
         new_admin.set_password(form.password.data)
         db.session.add(new_admin)
@@ -918,7 +918,7 @@ def delete_admin(admin_id):
 def settings_roles():
     form = RoleCreateForm()
     if form.validate_on_submit():
-        new_role = Role(name=form.name.data, description=form.description.data)
+        new_role = Role(name=form.name.data, description=form.description.data, color=form.color.data)
         db.session.add(new_role)
         db.session.commit()
         flash(f"Role '{new_role.name}' created successfully.", "success")
@@ -953,6 +953,7 @@ def edit_role(role_id):
         role.name = form.name.data
         role.description = form.description.data
         role.permissions = form.permissions.data
+        role.color = form.color.data
         db.session.commit()
         flash(f"Role '{role.name}' updated successfully.", "success")
         return redirect(url_for('dashboard.settings_roles'))

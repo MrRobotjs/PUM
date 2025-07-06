@@ -57,15 +57,19 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if admin.id == 1 %} 
-                            <span class="badge badge-success badge-xs whitespace-nowrap">Owner</span>
-                        {% else %}
-                            {% for role in admin.roles %}
-                                <span class="badge badge-ghost badge-xs whitespace-nowrap">{{ role.name }}</span>
+                        <div class="flex flex-col items-start space-y-1">
+                            {% if admin.id == 1 %} 
+                                <span class="badge badge-success badge-xs whitespace-nowrap">Owner</span>
                             {% else %}
-                                <span class="text-xs italic opacity-60">No roles</span>
-                            {% endfor %}
-                        {% endif %}
+                                {% for role in admin.roles %}
+                                    <span class="badge badge-xs whitespace-nowrap" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};">
+                                        {{ role.name }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-xs italic opacity-60">No roles assigned</span>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
                     </td>
                     <td class="space-x-1">
                     {% if admin.id != 1 %}

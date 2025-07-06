@@ -3685,6 +3685,9 @@
     padding: 0.125rem;
     --size: calc(var(--size-selector, 0.25rem) * 4);
   }
+  .\!p-1 {
+    padding: calc(var(--spacing) * 1) !important;
+  }
   .p-0 {
     padding: calc(var(--spacing) * 0);
   }

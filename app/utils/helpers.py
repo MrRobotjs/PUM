@@ -139,3 +139,19 @@ def permission_required(permission_name):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+def get_text_color_for_bg(hex_color):
+    """
+    Determines if black or white text is more readable on a given hex background color.
+    Returns '#FFFFFF' for white or '#000000' for black.
+    """
+    if not hex_color or len(hex_color) != 7:
+        return '#FFFFFF' # Default to white for invalid colors
+    try:
+        hex_color = hex_color.lstrip('#')
+        r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        # Formula for perceived brightness (luminance)
+        luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+        return '#000000' if luminance > 0.5 else '#FFFFFF'
+    except Exception:
+        return '#FFFFFF' # Fallback

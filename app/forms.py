@@ -322,6 +322,9 @@ class AdminEditForm(FlaskForm):
 class RoleCreateForm(FlaskForm):
     name = StringField('Role Name', validators=[DataRequired(), Length(min=3, max=80)])
     description = StringField('Description', validators=[Optional(), Length(max=255)])
+    color = StringField('Badge Color', default='#808080', validators=[
+        Optional(), Regexp(r'^#[0-9a-fA-F]{6}$', message='Must be a valid hex color code, e.g., #RRGGBB')
+    ])
     submit = SubmitField('Create Role')
 
     def validate_name(self, name):
@@ -333,6 +336,9 @@ class RoleCreateForm(FlaskForm):
 class RoleEditForm(FlaskForm):
     name = StringField('Role Name', validators=[DataRequired(), Length(min=3, max=80)])
     description = StringField('Description', validators=[Optional(), Length(max=255)])
+    color = StringField('Badge Color', default='#808080', validators=[
+        Optional(), Regexp(r'^#[0-9a-fA-F]{6}$', message='Must be a valid hex color code, e.g., #RRGGBB')
+    ])
 
     # This will be a group of checkboxes for the available permissions
     # We will define a list of all possible permissions in the app.

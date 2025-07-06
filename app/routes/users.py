@@ -52,6 +52,8 @@ def list_users():
     elif sort_by == 'created_at_asc': query = query.order_by(User.created_at.asc())
     else: query = query.order_by(User.plex_username.asc()) # Default 'username_asc'
 
+    admin_accounts = AdminAccount.query.filter(AdminAccount.plex_uuid.isnot(None)).all()
+    admins_by_uuid = {admin.plex_uuid: admin for admin in admin_accounts}
     users_pagination = query.paginate(page=page, per_page=items_per_page, error_out=False)
     users_count = query.count() 
 
@@ -92,7 +94,8 @@ def list_users():
                                current_view=view_mode,
                                current_per_page=items_per_page, 
                                users_count=users_count,
-                               admin_plex_uuids=admin_plex_uuids) # Pass users_count for the partial
+                               admin_plex_uuids=admin_plex_uuids,
+                               admins_by_uuid=admins_by_uuid) # Pass users_count for the partial
 
     return render_template('users/list.html',
                            title="Managed Users",
@@ -104,7 +107,8 @@ def list_users():
                            selected_users_count=0, 
                            current_per_page=items_per_page,
                            purge_settings=purge_settings_context,
-                           admin_plex_uuids=admin_plex_uuids) # Pass purge settings
+                           admin_plex_uuids=admin_plex_uuids,
+                           admins_by_uuid=admins_by_uuid) # Pass purge settings
 
 @bp.route('/sync', methods=['POST'])
 @login_required
@@ -206,9 +210,9 @@ def edit_user(user_id):
         aware_expiry_for_template = user.access_expires_at.replace(tzinfo=timezone.utc)
     # --- END FIX ---
 
-    is_admin = False
-    if user.plex_uuid: # Only check if the user has a UUID to match against
-        is_admin = AdminAccount.query.filter_by(plex_uuid=user.plex_uuid).first() is not None
+    admin_account = None
+    if user.plex_uuid:
+        admin_account = AdminAccount.query.filter_by(plex_uuid=user.plex_uuid).first()
 
     if request.method == 'GET':
         form.libraries.data = list(user.allowed_library_ids or [])
@@ -283,7 +287,7 @@ def edit_user(user_id):
                            user=user,
                            current_access_expires_at_for_display=aware_expiry_for_template, 
                            now_utc=now_utc_for_template,
-                           is_admin=is_admin)
+                           admin_account=admin_account)
 
 
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])
