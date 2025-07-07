@@ -520,3 +520,38 @@ def terminate_plex_session(session_key: str, reason_message: str = None):
             details={'session_key': session_key, 'message': reason_message, 'error': str(e)}
         )
         raise # Re-raise to be caught by the route
+
+def get_library_details():
+    """
+    Fetches all Plex libraries and returns a list of dictionaries
+    with detailed information for each library.
+    """
+    plex = get_plex_instance()
+    if not plex:
+        current_app.logger.warning("Plex Service: Cannot get library details, Plex instance not available.")
+        return []
+
+    library_details = []
+    try:
+        libraries = plex.library.sections()
+        for lib in libraries:
+            # The totalSize() method gives the number of items in the library
+            # For TV shows, this is the number of shows, not episodes.
+            item_count = lib.totalSize
+            
+            details = {
+                'key': lib.key,
+                'name': lib.title,
+                'type': lib.type.capitalize(),
+                'icon': 'fa-solid fa-film' if lib.type == 'movie' else 'fa-solid fa-tv' if lib.type == 'show' else 'fa-solid fa-music',
+                'item_count': item_count,
+            }
+            library_details.append(details)
+        
+        current_app.logger.info(f"Successfully fetched details for {len(library_details)} libraries.")
+        return library_details
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching detailed library info: {e}", exc_info=True)
+        log_event(EventType.ERROR_PLEX_API, f"Error fetching library details: {e}")
+        return [] # Return empty list on error

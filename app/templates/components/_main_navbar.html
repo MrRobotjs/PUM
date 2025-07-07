@@ -18,6 +18,7 @@
             <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.index' else '' }}"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</a></li>
             <li><a href="{{ url_for('users.list_users') }}" class="{{ 'font-bold' if request.endpoint and request.endpoint.startswith('users.') else '' }}"><i class="fa-solid fa-users mr-1"></i> Users</a></li>
             <li><a href="{{ url_for('invites.list_invites') }}" class="{{ 'font-bold' if request.endpoint and request.endpoint.startswith('invites.') else '' }}"><i class="fa-solid fa-ticket mr-1"></i> Invites</a></li>
+            <li><a href="{{ url_for('dashboard.libraries') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.libraries' else '' }}"><i class="fa-solid fa-layer-group mr-1"></i> Libraries</a></li>
             <li><a href="{{ url_for('dashboard.streaming_sessions') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.streaming_sessions' else '' }}"><i class="fa-solid fa-tower-broadcast mr-1"></i> Streaming</a></li>
             <li><a href="{{ url_for('dashboard.history') }}" class="{{ 'font-bold' if request.endpoint == 'dashboard.history' else '' }}"><i class="fa-solid fa-timeline mr-1"></i> History</a></li>
             {# Settings link can also be here for desktop, or just in user dropdown/sidebar #}

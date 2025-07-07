@@ -656,7 +656,6 @@ def streaming_sessions_partial():
                    current_app.logger.debug(f"STREAMING_DEBUG:   raw_plex_session._data.attrib: {json.dumps(raw_plex_session._data.attrib if hasattr(raw_plex_session._data, 'attrib') else raw_plex_session._data, indent=2, default=str)}")
                 
                 progress_value = 0.0
-                # ... (Progress calculation with its debug logs as before) ...
                 raw_duration = getattr(raw_plex_session, 'duration', None)
                 raw_view_offset = getattr(raw_plex_session, 'viewOffset', None)
                 # current_app.logger.debug(f"STREAMING_DEBUG (Progress): raw_duration='{raw_duration}', raw_view_offset='{raw_view_offset}'")
@@ -687,7 +686,6 @@ def streaming_sessions_partial():
                     if player_state: session_state = player_state.capitalize()
                 
                 thumb_url_for_template_final = None 
-                # ... (Thumb logic as before) ...
                 plex_image_path_relative = None
                 if media_type == 'Episode' and hasattr(raw_plex_session, 'grandparentThumb') and raw_plex_session.grandparentThumb:
                     plex_image_path_relative = raw_plex_session.grandparentThumb
@@ -806,7 +804,6 @@ def streaming_sessions_partial():
                 location_lan_wan = "LAN" if is_lan else "WAN" if location_ip != 'N/A' else "Unknown"
 
                 pum_user_id_for_link = None
-                # ... (PUM User ID lookup logic from previous correct version) ...
                 plex_user_id_from_session_int = None
                 if hasattr(raw_plex_session, 'user') and raw_plex_session.user and hasattr(raw_plex_session.user, 'id'):
                     try:
@@ -1184,3 +1181,16 @@ def reset_admin_password(admin_id):
     
     # For GET request, just render the form
     return render_template('admins/_reset_password_modal.html', form=form, admin=admin)
+
+@bp.route('/libraries')
+@login_required
+@setup_required
+# Optional: Add a new permission check here if desired
+# @permission_required('view_libraries')
+def libraries():
+    library_data = plex_service.get_library_details()
+    return render_template(
+        'libraries/index.html',
+        title="Libraries",
+        libraries=library_data
+    )

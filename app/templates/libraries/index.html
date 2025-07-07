@@ -1,0 +1,46 @@
+<!-- File: app/templates/libraries/index.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Libraries{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-2">
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">All Libraries</h1>
+        {# You could add a 'Refresh Libraries' button here later #}
+    </div>
+
+    <div class="card bg-base-200 shadow-xl">
+        <div class="card-body">
+            <div class="overflow-x-auto">
+                <table class="table table-zebra w-full">
+                    <thead>
+                        <tr>
+                            <th class="w-12"></th> {# For icon #}
+                            <th>Library Name</th>
+                            <th>Library Type</th>
+                            <th>Total Items</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lib in libraries %}
+                        <tr class="hover">
+                            <td><i class="{{ lib.icon }} text-base-content/70"></i></td>
+                            <td class="font-semibold">{{ lib.name }}</td>
+                            <td>{{ lib.type }}</td>
+                            <td>{{ lib.item_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-8">
+                                <p class="text-lg">No libraries found or could not connect to Plex.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
