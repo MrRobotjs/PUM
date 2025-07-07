@@ -2,7 +2,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField, TextAreaField, HiddenField
 from wtforms.validators import DataRequired, EqualTo, Length, Optional, URL, NumberRange, Regexp, ValidationError
-from wtforms import SelectMultipleField, RadioField
+from wtforms import SelectMultipleField
 from app.models import Setting, AdminAccount # For custom validator if checking existing secrets
 from wtforms.widgets import ListWidget, CheckboxInput # <--- ADDED THIS IMPORT
 import urllib.parse 
@@ -325,6 +325,11 @@ class RoleCreateForm(FlaskForm):
     color = StringField('Badge Color', default='#808080', validators=[
         Optional(), Regexp(r'^#[0-9a-fA-F]{6}$', message='Must be a valid hex color code, e.g., #RRGGBB')
     ])
+    icon = StringField('Badge Icon Classes', validators=[
+        Optional(), 
+        Regexp(r'^(fa-(?:[a-z]+-?)+\s?)+$', 
+               message='Invalid format. Must be Font Awesome classes starting with "fa-", separated by spaces (e.g., fa-solid fa-star).')
+    ])
     submit = SubmitField('Create Role')
 
     def validate_name(self, name):
@@ -338,6 +343,11 @@ class RoleEditForm(FlaskForm):
     description = StringField('Description', validators=[Optional(), Length(max=255)])
     color = StringField('Badge Color', default='#808080', validators=[
         Optional(), Regexp(r'^#[0-9a-fA-F]{6}$', message='Must be a valid hex color code, e.g., #RRGGBB')
+    ])
+    icon = StringField('Badge Icon Classes', validators=[
+        Optional(), 
+        Regexp(r'^(fa-(?:[a-z]+-?)+\s?)+$',
+               message='Invalid format. Must be Font Awesome classes starting with "fa-", separated by spaces.')
     ])
 
     # This will be a group of checkboxes for the available permissions
@@ -362,3 +372,25 @@ class RoleEditForm(FlaskForm):
             from app.models import Role
             if Role.query.filter_by(name=name.data).first():
                 raise ValidationError('A role with this name already exists.')
+            
+class RoleMemberForm(FlaskForm):
+    # This is the corrected field definition
+    admins_to_add = SelectMultipleField(
+        'Add Admins to Role', 
+        coerce=int, 
+        validators=[Optional()],
+        widget=ListWidget(prefix_label=False), 
+        option_widget=CheckboxInput()
+    )
+    submit_add_members = SubmitField('Add to Role')
+
+class AdminResetPasswordForm(FlaskForm):
+    new_password = PasswordField(
+        'New Temporary Password', 
+        validators=[DataRequired(), Length(min=8)]
+    )
+    confirm_new_password = PasswordField(
+        'Confirm Temporary Password', 
+        validators=[DataRequired(), EqualTo('new_password', message='Passwords must match.')]
+    )
+    submit_reset_password = SubmitField('Set New Password')

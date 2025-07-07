@@ -6,7 +6,7 @@ from app.utils.helpers import log_event
 from app.models import User, Setting, EventType, AdminAccount # AdminAccount might not be needed directly here
 from app.forms import UserEditForm, MassUserEditForm
 from app.extensions import db
-from app.utils.helpers import log_event, setup_required
+from app.utils.helpers import log_event, setup_required, permission_required
 from app.services import plex_service, user_service 
 import json
 from datetime import datetime, timezone, timedelta # Ensure these are imported
@@ -195,6 +195,7 @@ def sync_plex_users():
 @bp.route('/edit/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 @setup_required
+@permission_required('edit_user')
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
     form = UserEditForm(obj=user if request.method == 'GET' else None)
@@ -293,6 +294,7 @@ def edit_user(user_id):
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])
 @login_required
 @setup_required
+@permission_required('delete_user')
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
     username = user.plex_username
@@ -334,6 +336,7 @@ def delete_user(user_id):
 @bp.route('/mass_edit', methods=['POST'])
 @login_required
 @setup_required
+@permission_required('mass_edit_users')
 def mass_edit_users():
     current_app.logger.debug("--- MASS EDIT ROUTE START ---")
     
@@ -443,8 +446,8 @@ def mass_edit_users():
 @bp.route('/purge_inactive', methods=['POST'])
 @login_required
 @setup_required
+@permission_required('purge_users')
 def purge_inactive_users():
-    from flask import make_response # Local import
     try:
         inactive_days = request.form.get('inactive_days', type=int)
         exclude_sharers = request.form.get('exclude_sharers') == 'true'

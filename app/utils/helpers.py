@@ -140,6 +140,29 @@ def permission_required(permission_name):
         return decorated_function
     return decorator
 
+def any_permission_required(permissions):
+    """
+    Checks if a user has at least one of the permissions in the provided list.
+    'permissions' should be a list of permission name strings.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for('auth.app_login'))
+            # Super admin always passes
+            if current_user.id == 1:
+                return f(*args, **kwargs)
+            # Check if user has ANY of the permissions in the list
+            for perm in permissions:
+                if current_user.has_permission(perm):
+                    return f(*args, **kwargs)
+            # If loop finishes without returning, user has none of the permissions
+            flash("You do not have permission to access this page.", "danger")
+            return redirect(url_for('dashboard.index'))
+        return decorated_function
+    return decorator
+
 def get_text_color_for_bg(hex_color):
     """
     Determines if black or white text is more readable on a given hex background color.

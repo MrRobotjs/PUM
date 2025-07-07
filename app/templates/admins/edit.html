@@ -27,7 +27,7 @@
                 {# Assign Roles Checkboxes #}
                 <div class="form-control">
                     <label class="label"><span class="label-text font-medium">Assign Roles</span></label>
-                    <div class="p-4 border rounded-lg bg-base-200/50 space-y-2">
+                    <div class="p-4 border rounded-lg bg-base-200/50 space-y-2 flex flex-col">
                         {% if form.roles.choices %}
                             {% for subfield in form.roles %}
                                 <label class="label cursor-pointer justify-start p-1">
@@ -41,6 +41,26 @@
                     </div>
                 </div>
 
+                {% if not admin.is_plex_sso_only %} {# Can only reset password for accounts that have one #}
+                <div class="card bg-base-100 shadow mt-6">
+                    <div class="card-body">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3 class="card-title text-warning"><i class="fa-solid fa-key mr-2"></i> Reset Password</h3>
+                                <p class="text-sm text-base-content/70">Generate a new temporary password for this admin. They will be forced to change it on their next login.</p>
+                            </div>
+                            <button class="btn btn-warning btn-sm"
+                                    hx-get="{{ url_for('dashboard.reset_admin_password', admin_id=admin.id) }}"
+                                    hx-target="#reset_password_modal_content"
+                                    hx-swap="innerHTML"
+                                    onclick="document.getElementById('reset_password_modal').showModal()">
+                                Reset Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="card-actions justify-end pt-4">
                     {{ form.submit(class="btn btn-primary") }}
                 </div>
@@ -48,3 +68,16 @@
         </div>
     </div>
 {% endblock %}
+
+{% block modals %}
+    {{ super() }} {# Include any modals from parent templates, just in case #}
+    <dialog id="reset_password_modal" class="modal">
+        <div class="modal-box">
+            <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="document.getElementById('reset_password_modal').close()">✕</button></form>
+            <div id="reset_password_modal_content">
+                 <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span></div>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+{% endblock modals %}

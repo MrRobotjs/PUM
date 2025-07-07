@@ -3,7 +3,7 @@ from flask import Blueprint, request, current_app, render_template, Response, ab
 from flask_login import login_required, current_user
 import requests
 from app.models import EventType, Invite 
-from app.utils.helpers import log_event
+from app.utils.helpers import log_event, permission_required
 from app.extensions import csrf, db
 from app.services import plex_service # Ensure plex_service is imported
 
@@ -107,6 +107,7 @@ def plex_image_proxy():
 @bp.route('/terminate_plex_session', methods=['POST'])
 @login_required
 @csrf.exempt # Or ensure your JS sends CSRF token for POST via HTMX
+@permission_required('kill_stream')
 def terminate_plex_session_route():
     session_key = request.form.get('session_key')
     message = request.form.get('message', None) # Optional message

@@ -20,6 +20,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
         {% for session in sessions %}
         <div class="card bg-base-200 shadow-lg w-full max-w-md relative group" tabindex="0">
+            {% if current_user.has_permission('kill_stream') %}
             {% if session.session_key %}
             <button class="btn btn-xs btn-circle btn-error absolute top-2 right-2 z-10 
                            opacity-0 pointer-events-none 
@@ -30,6 +31,7 @@
                     onclick='openTerminateSessionModal({{ session.session_key | tojson }}, {{ session.user | tojson }}, {{ session.media_title | tojson }})'>
                 <i class="fa-solid fa-times"></i>
             </button>
+            {% endif %}
             {% endif %}
             
             <div class="card-body p-3">

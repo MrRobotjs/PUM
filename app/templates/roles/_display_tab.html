@@ -1,0 +1,110 @@
+<!-- File: app/templates/roles/_display_tab.html -->
+{# Expects 'edit_form' and 'role' in context #}
+
+<form method="POST" action="{{ url_for('dashboard.edit_role', role_id=role.id, tab='display') }}" class="max-w-md space-y-4">
+    {{ edit_form.hidden_tag() }}
+    
+    <div class="form-control">
+        {{ edit_form.name.label(class="label") }}
+        {{ edit_form.name(class="input input-bordered " + ("input-error" if edit_form.name.errors else ""), id="edit_role_name") }}
+        {% if edit_form.name.errors %}<p class="text-error text-xs mt-1">{{ edit_form.name.errors[0] }}</p>{% endif %}
+    </div>
+
+    <div class="form-control">
+        {{ edit_form.description.label(class="label") }}
+        {{ edit_form.description(class="input input-bordered " + ("input-error" if edit_form.description.errors else "")) }}
+    </div>
+    
+    <div class="form-control">
+        {{ edit_form.color.label(class="label") }}
+        <div class="input-group">
+            <input type="color" value="{{ edit_form.color.data or '#808080' }}" class="input input-bordered !p-1" id="edit_color_picker">
+            {{ edit_form.color(class="input input-bordered " + ("input-error" if edit_form.color.errors else ""), id="edit_color_text") }}
+        </div>
+         {% if edit_form.color.errors %}<p class="text-error text-xs mt-1">{{ edit_form.color.errors[0] }}</p>{% endif %}
+    </div>
+
+    <div class="form-control">
+        {{ edit_form.icon.label(class="label") }}
+        {{ edit_form.icon(class="input input-bordered " + ("input-error" if edit_form.icon.errors else ""), id="edit_role_icon", placeholder="e.g., fa-solid fa-star") }}
+        <label class="label"><span class="label-text-alt">Find icons on <a href="https://fontawesome.com/search" target="_blank" class="link">Font Awesome</a>.</span></label>
+        {% if edit_form.icon.errors %}<p class="text-error text-xs mt-1">{{ edit_form.icon.errors[0] }}</p>{% endif %}
+    </div>
+
+    <div class="form-control mt-4">
+        <label class="label"><span class="label-text">Badge Preview:</span></label>
+        <div class="p-2 border rounded-md border-base-300">
+            <span class="badge" id="edit_badge_preview">
+                {% if role.icon %}
+                <i id="edit_badge_icon_preview" class="{{ role.icon }}"></i>
+                {% endif %}
+                <span id="edit_badge_text_preview">{{ role.name }}</span>
+            </span>
+        </div>
+    </div>
+    
+    <div class="card-actions justify-end mt-4">
+        <button type="submit" name="submit_display" value="Save" class="btn btn-primary">Save Display Settings</button>
+    </div>
+</form>
+
+<script>
+    // Helper function for calculating text color based on background
+    function getTextColorForBg(hexColor) {
+        if (!hexColor || hexColor.length !== 7) return '#FFFFFF';
+        try {
+            const r = parseInt(hexColor.substr(1, 2), 16);
+            const g = parseInt(hexColor.substr(3, 2), 16);
+            const b = parseInt(hexColor.substr(5, 2), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#FFFFFF';
+        } catch (e) { return '#FFFFFF'; }
+    }
+    
+    const editPicker = document.getElementById('edit_color_picker');
+    const editText = document.getElementById('edit_color_text');
+    const editName = document.getElementById('edit_role_name');
+    const editBadgePreview = document.getElementById('edit_badge_preview');
+    const editIconInput = document.getElementById('edit_role_icon');
+    const editBadgeIcon = document.getElementById('edit_badge_icon_preview');
+    const editBadgeText = document.getElementById('edit_badge_text_preview');
+
+    function updateEditPreview() {
+        if (!editBadgePreview || !editName || !editText || !editIconInput || !editBadgeIcon || !editBadgeText) return;
+        const name = editName.value.trim() || 'Role Name';
+        const color = editText.value;
+        const iconClasses = editIconInput.value.trim();
+
+        // Update the text and icon independently
+        editBadgeText.textContent = name;
+        editBadgeIcon.className = iconClasses ? `${iconClasses}` : '';
+
+        // Update the parent badge's style
+        editBadgePreview.style.backgroundColor = color;
+        editBadgePreview.style.borderColor = color;
+        editBadgePreview.style.color = getTextColorForBg(color);
+    }
+
+    // Attach all event listeners
+    if (editPicker && editText) {
+        editPicker.addEventListener('input', () => { 
+            editText.value = editPicker.value; 
+            updateEditPreview(); 
+        });
+        editText.addEventListener('input', () => { 
+            if (/^#[0-9a-fA-F]{6}$/.test(editText.value)) {
+                editPicker.value = editText.value; 
+            }
+            updateEditPreview();
+        });
+    }
+    if (editName) {
+        editName.addEventListener('input', updateEditPreview);
+    }
+    if (editIconInput) {
+        editIconInput.addEventListener('input', updateEditPreview);
+    }
+    
+    // Set the initial state of the preview on page load
+    updateEditPreview();
+</script>

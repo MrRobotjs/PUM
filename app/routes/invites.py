@@ -10,7 +10,7 @@ from plexapi.myplex import MyPlexAccount
 from app.models import Invite, Setting, EventType, User, InviteUsage, AdminAccount, SettingValueType 
 from app.forms import InviteCreateForm, InviteEditForm
 from app.extensions import db
-from app.utils.helpers import log_event, setup_required, calculate_expiry_date
+from app.utils.helpers import log_event, setup_required, calculate_expiry_date, permission_required
 from app.services import plex_service, user_service, invite_service 
 import json
 from flask_login import login_required, current_user # <<< MAKE SURE login_required IS HERE
@@ -89,6 +89,7 @@ def list_invites():
 @bp.route('/manage/create', methods=['POST'])
 @login_required
 @setup_required
+@permission_required('create_invites')
 def create_invite():
     form = InviteCreateForm()
     available_libraries = plex_service.get_plex_libraries_dict()
@@ -175,6 +176,7 @@ def create_invite():
 @bp.route('/manage/delete/<int:invite_id>', methods=['DELETE'])
 @login_required
 @setup_required
+@permission_required('delete_invites')
 def delete_invite(invite_id):
     invite = Invite.query.get_or_404(invite_id)
     path_or_token = invite.custom_path or invite.token # For logging and toast message
@@ -596,6 +598,7 @@ def get_edit_invite_form(invite_id):
 @bp.route('/manage/edit/<int:invite_id>', methods=['POST'])
 @login_required
 @setup_required
+@permission_required('edit_invites')
 def update_invite(invite_id):
     invite = Invite.query.get_or_404(invite_id)
     form = InviteEditForm()

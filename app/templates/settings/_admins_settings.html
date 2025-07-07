@@ -51,7 +51,7 @@
 
                     <td>
                         {% if admin.plex_uuid %}
-                            <span class="badge badge-outline badge-xs whitespace-nowrap" style="border-color: #e5a00d; color: #e5a00d;"><i class="fa-brands fa-plex mr-2"></i> Plex Linked</span>
+                            <span class="badge badge-outline badge-xs whitespace-nowrap" style="border-color: #e5a00d; color: #e5a00d;"><i class="fa-solid fa-link"></i> Plex Linked</span>
                         {% else %}
                              <span class="badge badge-ghost badge-xs whitespace-nowrap">Local Only</span>
                         {% endif %}
@@ -63,6 +63,7 @@
                             {% else %}
                                 {% for role in admin.roles %}
                                     <span class="badge badge-xs whitespace-nowrap" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};">
+                                        {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}
                                         {{ role.name }}
                                     </span>
                                 {% else %}
@@ -73,18 +74,24 @@
                     </td>
                     <td class="space-x-1">
                     {% if admin.id != 1 %}
-                        <a href="{{ url_for('dashboard.edit_admin', admin_id=admin.id) }}" class="btn btn-xs btn-outline btn-primary" title="Edit Roles">
-                            <i class="fa-solid fa-pen-to-square md:mr-2"></i> {# Margin only on medium+ screens #}
-                            <span class="hidden md:inline">Edit Roles</span> {# Text only on medium+ screens #}
+                        {% if admin.id != current_user.id %}
+                        <a href="{{ url_for('dashboard.edit_admin', admin_id=admin.id) }}" class="btn btn-xs btn-outline btn-primary" title="Edit Admin">
+                            <i class="fa-solid fa-pen-to-square"></i> {# Margin only on medium+ screens #}
+                            <span class="hidden md:inline">Edit</span> {# Text only on medium+ screens #}
                         </a>
+                        {% else %}
+                            <span class="btn btn-xs btn-outline btn-primary text-xs italic opacity-60" title="You cannot edit your own account."><i class="fa-solid fa-pen-to-square"></i>Locked</span>
+                        {% endif %}
                         {% if admin.id != current_user.id %}
                         <form action="{{ url_for('dashboard.delete_admin', admin_id=admin.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this admin?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-xs btn-error" title="Delete Admin">
-                                <i class="fa-solid fa-trash-can md:mr-2"></i>
+                                <i class="fa-solid fa-trash-can"></i>
                                 <span class="hidden md:inline">Delete</span>
                             </button>
                         </form>
+                        {% else %}
+                            <span class="btn btn-xs btn-error text-xs italic opacity-60" title="You cannot delete your own account."><i class="fa-solid fa-trash-can"></i>Locked</span>
                         {% endif %}
                     {% endif %}
                     </td>

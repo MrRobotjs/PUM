@@ -1,0 +1,113 @@
+<!-- File: app/templates/roles/_permissions_tab.html -->
+<form method="POST" action="{{ url_for('dashboard.edit_role', role_id=role.id, tab='permissions') }}">
+    {{ form.hidden_tag() }}
+    
+    <div class="form-control">
+        <label class="label"><span class="label-text font-medium">Permissions for this Role</span></label>
+        <p class="text-sm text-base-content/70 mb-4">Select the permissions that members of this role will have.</p>
+    </div>
+    
+    <div class="space-y-6" id="permissions-container">
+        {% for category, data in permissions_structure.items() %}
+        <fieldset class="border border-base-300 p-3 rounded-lg">
+            <legend class="px-2 font-semibold">
+                <label class="label cursor-pointer p-0">
+                     <input type="checkbox" class="checkbox checkbox-primary mr-3 permission-parent" data-category="{{ category }}">
+                     <span class="label-text">{{ data.label }}</span>
+                </label>
+            </legend>
+            
+            {% if data.children %}
+            <div class="pl-8 pt-2 space-y-1">
+                {# Loop through the permission dictionary now #}
+                {% for p_key, p_data in data.children.items() %}
+                    {# Find the corresponding WTForms field #}
+                    {% set field = form.permissions | selectattr('data', '==', p_key) | first %}
+                    {% if field %}
+                        <div class="py-1 {% if p_key == 'view_admins_tab' %}hidden{% endif %}">
+                             <label class="label cursor-pointer justify-start" title="{{ p_data.description }}">
+                                 {# Child checkboxes need their class and data attributes restored #}
+                                 {{ field(class="toggle toggle-secondary permission-child", **{'data-category': category, 'data-permission-key': p_key}) }}
+                                 <span class="label-text text-sm ml-2">{{ p_data.label }}</span>
+                            </label>
+                            <p class="text-xs text-base-content/60 pl-14">{{ p_data.description }}</p>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </fieldset>
+        {% endfor %}
+    </div>
+
+    <div class="card-actions justify-end mt-6">
+        <button type="submit" name="submit_permissions" value="Save" class="btn btn-primary">Save Permissions</button>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('permissions-container');
+    if (!container) return;
+
+    // --- Selectors ---
+    const adminVisibleToggles = container.querySelectorAll('.permission-child[data-category="Admins"]:not([data-permission-key="view_admins_tab"])');
+    const adminViewToggle = container.querySelector('.permission-child[data-permission-key="view_admins_tab"]');
+
+    // --- Function to sync the implicit view permission ---
+    function syncAdminViewPermission() {
+        if (!adminViewToggle) return;
+        const anyAdminActionChecked = Array.from(adminVisibleToggles).some(toggle => toggle.checked);
+        adminViewToggle.checked = anyAdminActionChecked;
+        // After syncing the hidden toggle, we must also re-sync its parent
+        syncParent('Admins'); 
+    }
+
+    // --- Function to sync parent checkboxes based on YOUR rules ---
+    function syncParent(category) {
+        const parent = container.querySelector(`.permission-parent[data-category="${category}"]`);
+        if (!parent) return;
+        const children = container.querySelectorAll(`.permission-child[data-category="${category}"]`);
+        if (children.length === 0) return;
+
+        // Your rule: if AT LEAST ONE child is checked, the parent is checked.
+        const anyChecked = Array.from(children).some(c => c.checked);
+        parent.checked = anyChecked;
+    }
+
+    // --- Main Event Listener ---
+    container.addEventListener('change', function (event) {
+        const target = event.target;
+        const category = target.dataset.category;
+
+        // A parent was clicked: update all children
+        if (target.matches('.permission-parent')) {
+            const children = container.querySelectorAll(`.permission-child[data-category="${category}"]`);
+            children.forEach(child => {
+                child.checked = target.checked;
+            });
+            // After a bulk change, if it was the Admins parent, sync the view permission
+            if (category === 'Admins') {
+                syncAdminViewPermission();
+            }
+        }
+        
+        // A visible child was clicked: update its parent
+        if (target.matches('.permission-child') && target !== adminViewToggle) {
+             syncParent(category);
+             // If it was an Admin child, sync the view permission
+             if (category === 'Admins') {
+                 syncAdminViewPermission();
+             }
+        }
+    });
+
+    // --- Initial State Setup on Page Load ---
+    // 1. First, set the correct state for the implicit view permission
+    syncAdminViewPermission();
+    // 2. Then, set the state for all parent checkboxes based on their children (including the now-correct view perm)
+    container.querySelectorAll('.permission-parent').forEach(parent => {
+        syncParent(parent.dataset.category);
+    });
+});
+</script>

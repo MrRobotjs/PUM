@@ -5,10 +5,11 @@
     <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
         <h1 class="text-3xl font-bold">Manage Invites ({{ invites_count or 0 }})</h1>
         <div class="flex mt-4 sm:mt-0">
+            {% if current_user.has_permission('create_invites') %}
             <button class="btn btn-primary mr-2" onclick="create_invite_modal.showModal()">
                 <i class="fa-solid fa-plus mr-2"></i> Create Invite
             </button>
-            {# --- NEW: View Switcher Dropdown --- #}
+            {% endif %}
             <div class="dropdown dropdown-end">
                 <label tabindex="0" class="btn btn-ghost" title="Change view">
                     <i class="fa-solid fa-display mr-1"></i> View <i class="fa-solid fa-chevron-down fa-xs ml-1"></i>

@@ -94,6 +94,7 @@
         </div>
     </form>
 
+    {% if current_user.has_permission('purge_users') %}
     <!-- Purge Users Section -->
     <div class="card bg-base-200 shadow-lg my-6">
         <div class="card-body">
@@ -154,6 +155,7 @@
         </div>
     </div>
     <!-- End Purge Users Section -->
+    {% endif %}
 
     <div id="mass-edit-container" class="mb-4 hidden">
         <div class="flex items-center space-x-2"> {# Wrapper div #}

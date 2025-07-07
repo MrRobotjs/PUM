@@ -67,7 +67,7 @@
                     <li><a href="{{ url_for('invites.list_invites') }}" class="{{ 'active menu-active' if request.endpoint and request.endpoint.startswith('invites.') else '' }}"><i class="fa-solid fa-ticket fa-fw mr-2"></i> Invites</a></li>
                     <li><a href="{{ url_for('dashboard.streaming_sessions') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.streaming_sessions' else '' }}"><i class="fa-solid fa-tower-broadcast fa-fw mr-2"></i> Streaming</a></li>
                     <li><a href="{{ url_for('dashboard.history') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.history' else '' }}"><i class="fa-solid fa-timeline fa-fw mr-2"></i> History</a></li>
-                    
+                    {% if current_user.id == 1 or current_user.has_permission('manage_general_settings') or current_user.has_permission('manage_plex_settings') or current_user.has_permission('manage_discord_settings') or current_user.has_permission('manage_advanced_settings') or current_user.has_permission('view_admins_tab')  %}
                     {# For the <details> element, we need a way to keep it open if a child is active. #}
                     {% set settings_is_active = request.endpoint and request.endpoint.startswith('dashboard.settings_') %}
                     <li>
@@ -78,10 +78,11 @@
                                 Settings
                             </summary>
                             <ul class="ml-4"> {# DaisyUI recommends a nested <ul> for submenus #}
+                                {% if current_user.id == 1 or current_user.has_permission('manage_general_settings') %}
                                 <li><a href="{{ url_for('dashboard.settings_general') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_general' else '' }}"><i class="fa-solid fa-sliders fa-fw"></i> General</a></li>
-                                {# --- NEW: Admin Management Submenu --- #}
+                                {% endif %}
                                 {# This entire section will only show if the user has the required permissions #}
-                                {% if current_user.has_permission('manage_admins') or current_user.has_permission('manage_roles') %}
+                                {% if current_user.id == 1 or current_user.has_permission('view_admins_tab') %}
                                     {% set admin_area_active = request.endpoint.startswith('dashboard.settings_admin') or request.endpoint.startswith('dashboard.settings_role') %}
                                     <li>
                                         <details {% if admin_area_active %}open{% endif %}>
@@ -89,22 +90,29 @@
                                                 <i class="fa-solid fa-user-shield fa-fw mr-2"></i> Manage Admins
                                             </summary>
                                             <ul class="ml-4">
-                                                {% if current_user.has_permission('manage_admins') %}
+                                                {% if current_user.id == 1 or current_user.has_permission('create_admin') or current_user.has_permission('edit_admin') or current_user.has_permission('delete_admin') %}
                                                 <li><a href="{{ url_for('dashboard.settings_admins') }}" class="{{ 'active menu-active' if request.endpoint.startswith('dashboard.settings_admin') else '' }}"><i class="fa-solid fa-shield-halved mr-2"></i> Admins</a></li>
                                                 {% endif %}
-                                                {% if current_user.has_permission('manage_roles') %}
+                                                {% if current_user.id == 1 or current_user.has_permission('create_role') or current_user.has_permission('edit_role') or current_user.has_permission('delete_role') %}
                                                 <li><a href="{{ url_for('dashboard.settings_roles') }}" class="{{ 'active menu-active' if request.endpoint.startswith('dashboard.settings_role') else '' }}"><i class="fa-solid fa-shield mr-2"></i> Roles</a></li>
                                                 {% endif %}
                                             </ul>
                                         </details>
                                     </li>
                                 {% endif %}
+                                {% if current_user.id == 1 or current_user.has_permission('manage_plex_settings') %}
                                 <li><a href="{{ url_for('dashboard.settings_plex') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_plex' else '' }}"><i class="fa-solid fa-network-wired fa-fw"></i> Plex</a></li>
+                                {% endif %}
+                                {% if current_user.id == 1 or current_user.has_permission('manage_discord_settings') %}
                                 <li><a href="{{ url_for('dashboard.settings_discord') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_discord' else '' }}"><i class="fa-brands fa-discord fa-fw"></i> Discord</a></li>
+                                {% endif %}
+                                {% if current_user.id == 1 or current_user.has_permission('manage_advanced_settings') %}
                                 <li><a href="{{ url_for('dashboard.settings_advanced') }}" class="{{ 'active menu-active' if request.endpoint == 'dashboard.settings_advanced' else '' }}"><i class="fa-solid fa-gears fa-fw"></i> Advanced</a></li>
+                                {% endif %}
                             </ul>
                         </details>
                     </li>
+                    {% endif %}
                     
                     <div class="divider"></div>
                     <li><a href="{{ url_for('auth.logout') }}"><i class="fa-solid fa-arrow-right-from-bracket fa-fw mr-2"></i> Logout</a></li>
@@ -114,6 +122,8 @@
         {% else %}
     </div> {# Closes simple flex-col div for non-logged-in state #}
     {% endif %}
+
+    {% block modals %}{% endblock modals %}
 
     <div id="toast-container" class="toast toast-bottom toast-center sm:toast-end z-50 space-y-2"></div>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

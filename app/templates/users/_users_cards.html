@@ -69,6 +69,7 @@
                     {% set admin = admins_by_uuid[user.plex_uuid] %}
                     {% for role in admin.roles %}
                     <span class="badge" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
+                        {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}
                         {{ role.name }}
                     </span>
                     {% endfor %}
@@ -76,9 +77,12 @@
             </div>
 
             <div class="card-actions justify-end mt-auto pt-3 border-t border-base-300/90"> {# Increased pt-3 #}
+                {% if current_user.has_permission('edit_user') %}
                 <a href="{{ url_for('users.edit_user', user_id=user.id) }}" class="btn btn-xs btn-ghost text-primary hover:bg-primary/10 card-action-button" title="Edit User">
                     <i class="fa-solid fa-pen-to-square"></i>
                 </a>
+                {% endif %}
+                {% if current_user.has_permission('delete_user') %}
                 <button class="btn btn-xs btn-ghost text-error hover:bg-error/10 card-action-button" title="Remove User"
                         hx-confirm="Are you sure you want to remove '{{ user.plex_username }}' from PUM and Plex Server?"
                         hx-delete="{{ url_for('users.delete_user', user_id=user.id) }}"
@@ -88,6 +92,7 @@
                     <i class="fa-solid fa-trash-can htmx-indicator-hide"></i>
                     <span class="htmx-indicator loading loading-spinner loading-xs"></span>
                 </button>
+                {% endif %}
             </div>
         </div>
     </div>

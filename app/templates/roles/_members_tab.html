@@ -1,0 +1,80 @@
+<!-- File: app/templates/roles/_members_tab.html -->
+{# Expects 'role', 'current_members', and 'member_form' in context #}
+
+<div class="flex justify-between items-center mb-4">
+    <h3 class="font-semibold text-lg">Members in '{{ role.name }}'</h3>
+    <button class="btn btn-sm btn-primary" onclick="add_member_modal.showModal()">
+        <i class="fa-solid fa-user-plus mr-2"></i> Add Admin
+    </button>
+</div>
+
+{# Container for the member list, with HTMX refresh trigger #}
+<div id="role-members-list-container"
+     hx-get="{{ url_for('dashboard.edit_role', role_id=role.id, tab='members') }}"
+     hx-trigger="load, refreshMembersList from:body"
+     hx-select="#role-members-list-container > *"
+     hx-swap="innerHTML">
+
+    <div class="form-control mb-4">
+        <input class="input input-bordered"
+               type="text"
+               name="search_members"
+               placeholder="Search current members..."
+               value="{{ request.args.get('search_members', '') }}"
+               hx-get="{{ url_for('dashboard.edit_role', role_id=role.id, tab='members') }}"
+               hx-trigger="keyup changed delay:500ms"
+               hx-target="#role-members-list-container"
+               hx-select="#role-members-list-container > *"
+               hx-indicator="next .htmx-indicator">
+        <span class="htmx-indicator loading loading-dots loading-xs"></span>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="table table-sm">
+            <tbody>
+                {% for admin in current_members %}
+                    <tr id="member-row-{{ admin.id }}" class="hover">
+                        {# --- THIS IS THE CORRECTED TD --- #}
+                        <td>
+                            <div class="flex items-center space-x-3">
+                                <div class="avatar">
+                                    <div class="mask mask-squircle w-8 h-8">
+                                        <img src="{{ admin.plex_thumb or url_for('static', filename='img/default_avatar.png') }}" alt="{{ admin.username or admin.plex_username }} avatar"/>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="font-semibold">{{ admin.username or admin.plex_username }}</div>
+                                    {% if admin.plex_username and admin.username %}<div class="text-xs opacity-60">{{ admin.plex_username }}</div>{% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        {# --- END CORRECTION --- #}
+                        <td class="text-right">
+                            <button class="btn btn-xs btn-ghost text-error"
+                                    hx-post="{{ url_for('dashboard.remove_role_member', role_id=role.id, admin_id=admin.id) }}"
+                                    hx-target="closest tr"
+                                    hx-swap="outerHTML"
+                                    hx-confirm="Remove {{ admin.username or admin.plex_username }} from this role?">
+                                <i class="fa-solid fa-user-minus"></i>
+                            </button>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="2" class="text-center text-sm italic text-base-content/70 py-4">No members are in this role.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Member Modal -->
+<dialog id="add_member_modal" class="modal">
+  <div class="modal-box">
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
+    <h3 class="font-bold text-lg">Add Admins to Role</h3>
+    <div id="add_member_modal_content">
+        {# Pass role and member_form from the parent template's context #}
+        {% include 'roles/_add_member_modal.html' %}
+    </div>
+  </div>
+</dialog>

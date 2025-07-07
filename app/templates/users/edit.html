@@ -51,6 +51,7 @@
                             <div class="badge badge-error badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>
                             {% for role in admin_account.roles %}
                             <span class="badge" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
+                                {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}
                                 {{ role.name }}
                             </span>
                             {% endfor %}

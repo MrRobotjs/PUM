@@ -66,6 +66,7 @@
                     </td>
                     <td class="text-center">
                         <div class="flex items-center justify-center space-x-1">
+                            {% if current_user.has_permission('edit_invites') %}
                             <button class="btn btn-xs btn-ghost text-primary hover:bg-primary/10" title="Edit Invite"
                                     hx-get="{{ url_for('invites.get_edit_invite_form', invite_id=invite.id) }}"
                                     hx-target="#edit_invite_modal_content_div"
@@ -73,8 +74,11 @@
                                     onclick="edit_invite_modal.showModal()">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
+                            {% endif %}
                             <button class="btn btn-xs btn-ghost text-info hover:bg-info/10" title="View Usages" hx-get="{{ url_for('invites.view_invite_usages', invite_id=invite.id) }}" hx-target="#invite_usages_modal_content_div" hx-swap="innerHTML" onclick="invite_usages_modal.showModal(); document.getElementById('invite_usages_modal_content_div').innerHTML = '<div class=text-center p-8><span class=loading loading-lg loading-spinner></span></div>';"><i class="fa-solid fa-eye"></i></button>
+                            {% if current_user.has_permission('delete_invites') %}
                             <button class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Delete Invite" hx-confirm="Are you sure you want to delete this invite? Users who have already accepted it will retain access." hx-delete="{{ url_for('invites.delete_invite', invite_id=invite.id) }}" hx-target="#invite-row-{{ invite.id }}" hx-swap="outerHTML swap:0.5s" hx-indicator="this"><i class="fa-solid fa-trash-can htmx-indicator-hide"></i><span class="htmx-indicator loading loading-spinner loading-xs"></span></button>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

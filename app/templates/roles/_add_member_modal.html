@@ -1,0 +1,29 @@
+<!-- File: app/templates/roles/_add_member_modal.html -->
+
+<form method="POST"
+      id="addMemberForm"
+      hx-post="{{ url_for('dashboard.edit_role', role_id=role.id, tab='members') }}"
+      hx-target="#add_member_modal_content"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { add_member_modal.close(); }">
+    {{ member_form.hidden_tag() }}
+
+    {% if member_form.admins_to_add.choices %}
+        <div class="form-control mt-4">
+            <p class="text-sm mb-2">Select admins to add to the '{{ role.name }}' role.</p>
+            <div class="p-2 border rounded-lg max-h-60 overflow-y-auto space-y-1">
+                {% for subfield in member_form.admins_to_add %}
+                    <label class="label cursor-pointer p-1 justify-start">
+                        {{ subfield(class="checkbox checkbox-sm checkbox-primary mr-3") }}
+                        <span class="label-text">{{ subfield.label.text }}</span> 
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="modal-action mt-6">
+            {{ member_form.submit_add_members(class="btn btn-primary") }}
+        </div>
+    {% else %}
+        <p class="text-sm italic text-base-content/70 py-4">All available admins are already in this role.</p>
+    {% endif %}
+</form>

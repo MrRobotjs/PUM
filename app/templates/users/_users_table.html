@@ -54,6 +54,7 @@
                         {% set admin = admins_by_uuid[user.plex_uuid] %}
                         {% for role in admin.roles %}
                         <span class="badge" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
+                            {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}
                             {{ role.name }}
                         </span>
                         {% endfor %}
