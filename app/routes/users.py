@@ -9,6 +9,7 @@ from app.utils.helpers import log_event, setup_required, permission_required
 from app.services import plex_service, user_service 
 import json
 from datetime import datetime, timezone, timedelta # Ensure these are imported
+from sqlalchemy.exc import IntegrityError
 
 bp = Blueprint('users', __name__)
 
@@ -115,35 +116,18 @@ def sync_plex_users():
     current_app.logger.info(f"User_Routes.py - sync_plex_users(): Sync process started by admin ID {current_user.id}")
     log_event(EventType.PLEX_SYNC_USERS_START, "Plex user synchronization started by admin.", admin_id=current_user.id)
     
-    sync_results = {} # Initialize to an empty dict
-    try:
-        sync_results = user_service.sync_users_from_plex()
-    except Exception as e:
-        current_app.logger.error(f"User_Routes.py - sync_plex_users(): Critical error calling user_service.sync_users_from_plex: {e}", exc_info=True)
-        # Populate sync_results with error information for consistent handling
-        sync_results = {
-            'added': [], 
-            'updated': [], 
-            'removed': [], 
-            'errors': 1, # Indicate at least one error
-            'error_messages': [f"A critical error occurred during the sync process: {str(e)}"]
-        }
+    sync_results = user_service.sync_users_from_plex()
 
     added_list = sync_results.get('added', [])
     updated_list = sync_results.get('updated', [])
     removed_list = sync_results.get('removed', [])
     error_count = sync_results.get('errors', 0)
-    error_messages = sync_results.get('error_messages', []) # Ensure this is fetched
+    error_messages = sync_results.get('error_messages', [])
 
     has_changes_or_errors = bool(added_list or updated_list or removed_list or error_count > 0)
     
-    response_headers = {}
-    
     if has_changes_or_errors:
-        current_app.logger.info(f"Sync results: Added: {len(added_list)}, Updated: {len(updated_list)}, Removed: {len(removed_list)}, Errors: {error_count}")
-        if error_messages:
-            current_app.logger.warning(f"Sync error messages: {error_messages}")
-
+        # Render the HTML for the modal's content using the results.
         modal_html = render_template('users/_sync_results_modal_content.html', 
                                      added_users=added_list,
                                      updated_users=updated_list,
@@ -151,44 +135,22 @@ def sync_plex_users():
                                      error_count=error_count,
                                      error_messages=error_messages)
         
-        response_headers['HX-Retarget'] = '#syncResultModalContainer'
-        response_headers['HX-Reswap'] = 'innerHTML' # Swaps the content of the modal's container
-        
-        toast_message_for_modal = "Sync complete. Changes detected, see details."
-        toast_category_for_modal = "success" # Default to success
-        
-        if error_count > 0 and not (added_list or updated_list or removed_list):
-            # Only errors, no other changes
-            toast_message_for_modal = f"Sync encountered {error_count} error(s). See details."
-            toast_category_for_modal = "error"
-        elif error_count > 0:
-            # Changes AND errors
-            toast_message_for_modal = f"Sync complete with {error_count} error(s) and other changes. See details."
-            toast_category_for_modal = "warning"
-        
-        trigger_payload = {
-            "showToastEvent": {"message": toast_message_for_modal, "category": toast_category_for_modal},
-            "openSyncResultsModal": True, # Custom event for JS to open the modal
-            "refreshUserList": True       # Custom event for JS/HTMX to refresh the main user list
+        # Prepare headers to tell HTMX to show the modal AND refresh the user list.
+        trigger_payload = {"openSyncResultsModal": True, "refreshUserList": True}
+        response_headers = {
+            'HX-Retarget': '#syncResultModalContainer',
+            'HX-Reswap': 'innerHTML',
+            'HX-Trigger-After-Swap': json.dumps(trigger_payload)
         }
-        response_headers['HX-Trigger-After-Swap'] = json.dumps(trigger_payload)
         
-        # The main content of the response will be the modal's HTML
+        # Return the rendered HTML with the special headers.
         return make_response(modal_html, 200, response_headers)
-    else: 
-        # No changes and no errors
-        toast_message = "Sync complete. No changes were made."
-        toast_category = "success" # Changed from "info" to "success" for a successful no-op
-        trigger_payload = {
-            "showToastEvent": {"message": toast_message, "category": toast_category},
-            "refreshUserList": True 
-        }
-        # Use HX-Trigger because we are not swapping any primary content from this branch
-        response_headers['HX-Trigger'] = json.dumps(trigger_payload) 
-        
-        current_app.logger.info(f"Sync results: No changes and no errors. Sending toast trigger.")
-        # Return an empty 200 OK response, as HTMX will act on the HX-Trigger header.
-        return make_response("", 200, response_headers)
+    else:
+        # This logic for "no changes" is correct and will show a toast.
+        toast_payload = {"showToastEvent": {"message": "Sync complete. No changes were made.", "category": "success"}}
+        response = make_response("<!-- no-op -->", 200)
+        response.headers['HX-Trigger'] = json.dumps(toast_payload)
+        return response
 
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])
 @login_required

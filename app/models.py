@@ -192,6 +192,7 @@ class User(db.Model):
     discord_avatar_hash = db.Column(db.String(255), nullable=True)
     is_discord_bot_whitelisted = db.Column(db.Boolean, default=False, nullable=False) # Req #13
     is_purge_whitelisted = db.Column(db.Boolean, default=False, nullable=False)      # Req #16
+    plex_join_date = db.Column(db.DateTime, nullable=True) # Date user accepted the Plex share
 
     def __repr__(self): return f'<User {self.plex_username}>'
     def get_avatar(self, fallback='/static/img/default_avatar.png'): return self.plex_thumb_url or fallback

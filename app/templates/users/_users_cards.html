@@ -26,6 +26,9 @@
                 <p class="text-xs text-base-content/70 truncate" title="{{ user.plex_email or 'No email' }}"><i class="fa-solid fa-at fa-fw mr-1 text-info"></i> Email: {{ user.plex_email or 'No email available' }}</p>
                 <p><i class="fa-solid fa-calendar-plus fa-fw mr-1 text-info"></i> Added: {{ user.created_at | time_ago if user.created_at else 'N/A' }}</p>
                 <p><i class="fa-solid fa-clock fa-fw mr-1 {{ 'text-success' if user.last_streamed_at else 'text-warning' }}"></i> Streamed: {{ user.last_streamed_at | time_ago if user.last_streamed_at else 'Never' }}</p>
+                {% if user.plex_join_date %}
+                <p><i class="fa-solid fa-server fa-fw mr-1 text-info"></i> Plex Join Date: {{ user.plex_join_date | format_datetime_human(include_time=False) }}</p>
+                {% endif %}
                 {% if user.access_expires_at %}
                     <p class="text-warning"> {# Or choose another color like text-error if very soon #}
                         <i class="fa-solid fa-hourglass-end fa-fw mr-1"></i> 

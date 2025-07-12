@@ -225,6 +225,7 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
                     continue
                 
                 all_libs = (shared_server_elem.get('allLibraries', "0") == "1")
+                accepted_at_timestamp = shared_server_elem.get('acceptedAt')
                 
                 shared_section_keys_for_user = []
                 if not all_libs: 
@@ -234,7 +235,8 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
                 
                 detailed_shares_by_userid[user_id_int_key] = {
                     'allLibraries': all_libs,
-                    'sharedSectionKeys': shared_section_keys_for_user
+                    'sharedSectionKeys': shared_section_keys_for_user,
+                    'acceptedAt': accepted_at_timestamp
                 }
     except Exception as e_shared_servers:
         current_app.logger.error(f"Plex_Service.py - Error fetching or parsing detailed /shared_servers data: {type(e_shared_servers).__name__} - {e_shared_servers}", exc_info=True)
@@ -262,6 +264,8 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
             if not plex_user_uuid_str:
                 current_app.logger.warning(f"Could not parse alphanumeric UUID for user '{plex_user_obj.username}' (ID: {plex_user_id_int}). They will be matched by integer ID only.")
 
+            user_share_details = detailed_shares_by_userid.get(plex_user_id_int)
+            accepted_at_val = user_share_details.get('acceptedAt') if user_share_details else None
 
             user_data_basic = {
                 'id': plex_user_id_int,
@@ -273,6 +277,7 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
                 'is_friend': not getattr(plex_user_obj, 'home', False),
                 'shares_back': users_sharing_back_ids is not None and plex_user_id_int in users_sharing_back_ids,
                 'allowed_library_ids_on_server': [],
+                'acceptedAt': accepted_at_val,
             }
             current_app.logger.info(f"Plex_Service.py - Processing User: {user_data_basic['username']} (ID: {user_data_basic['id']}, UUID: {user_data_basic['uuid']})")
 
