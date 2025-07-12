@@ -173,7 +173,7 @@ class UserEditForm(FlaskForm): # As updated for whitelist fields
     )
     allow_4k_transcode = BooleanField(
         'Allow 4K Transcoding',
-        description="Allow this user to transcode 4K content. Disabling may require a companion script (e.g., via Tautulli) to enforce."
+        description="Allow this user to transcode 4K content."
     )
     
     submit = SubmitField('Save Changes')
