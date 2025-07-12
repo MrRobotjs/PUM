@@ -1,0 +1,64 @@
+<!-- File: app/templates/settings/_logs_settings.html -->
+<h2 class="text-xl font-semibold mb-2">Application Logs</h2>
+<p class="text-sm text-base-content/70 mb-6">View system events, user actions, and errors.</p>
+
+<div class="flex justify-end mb-4">
+    <button class="btn btn-error btn-sm" onclick="clear_logs_modal.showModal()">
+        <i class="fa-solid fa-trash-can mr-2"></i> Clear Logs
+    </button>
+</div>
+
+<!-- Filter Form -->
+<form method="GET" action="{{ url_for('dashboard.settings_logs_partial') }}" 
+      class="mb-6 p-4 bg-base-100 rounded-lg shadow" 
+      id="logsFilterForm"
+      hx-get="{{ url_for('dashboard.settings_logs_partial') }}"
+      hx-target="#logs_table_container"
+      hx-swap="innerHTML"
+      hx-indicator="#logs_loading_indicator">
+    
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
+        <div class="form-control">
+            <label class="label"><span class="label-text">Search Message</span></label>
+            <input type="text" name="search_message" placeholder="Keywords" class="input input-sm input-bordered" value="{{ request.args.get('search_message', '') }}">
+        </div>
+        <div class="form-control">
+            <label class="label"><span class="label-text">Event Type</span></label>
+            <select name="event_type" class="select select-sm select-bordered">
+                <option value="" {% if not request.args.get('event_type') %}selected{% endif %}>All Types</option>
+                {# This now uses the global EventType enum #}
+                {% for type in EventType %}
+                <option value="{{ type.name }}" {% if request.args.get('event_type') == type.name %}selected{% endif %}>
+                    {{ type.name | title | replace('_', ' ') }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-control">
+            <label class="label"><span class="label-text">Related User/Admin</span></label>
+            <input type="text" name="related_user" placeholder="Username or ID" class="input input-sm input-bordered" value="{{ request.args.get('related_user', '') }}">
+        </div>
+        <div class="form-control">
+            <label class="label"><span class="label-text">Per Page</span></label>
+            <select name="per_page" class="select select-sm select-bordered" onchange="document.getElementById('logsFilterForm').dispatchEvent(new Event('submit'))">
+                {% for count in [20, 50, 100, 200] %}
+                    <option value="{{ count }}" {% if session.get('logs_list_per_page', 20) == count %}selected{% endif %}>{{ count }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-control">
+            <button type="submit" class="btn btn-sm btn-primary w-full"><i class="fa-solid fa-filter mr-2"></i> Apply</button>
+        </div>
+    </div>
+    <div id="logs_loading_indicator" class="htmx-indicator text-center p-2"><span class="loading loading-dots loading-sm"></span></div>
+</form>
+
+<!-- Container for the log entries -->
+<div id="logs_table_container"
+     hx-get="{{ url_for('dashboard.settings_logs_partial') }}"
+     hx-trigger="load, refreshHistoryList from:body"
+     hx-swap="innerHTML">
+    <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading logs...</p></div>
+</div>
+
+<!-- The "Clear Logs" modal remains the same as before, just needs to be included -->
+<!-- (This will be included in settings/index.html) -->

@@ -1,3 +1,4 @@
+# File: app/models.py
 import enum
 import json
 from datetime import datetime, timedelta
@@ -5,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from sqlalchemy.types import TypeDecorator, TEXT
 from sqlalchemy.ext.mutable import MutableDict, MutableList
-from app.extensions import db # Removed login_manager, not used here
+from app.extensions import db
 import secrets
 from flask import current_app 
 from sqlalchemy import Table, Column, Integer, ForeignKey
@@ -182,15 +183,13 @@ class User(db.Model):
     last_synced_with_plex = db.Column(db.DateTime, nullable=True)
     last_streamed_at = db.Column(db.DateTime, nullable=True)
     access_expires_at = db.Column(db.DateTime, nullable=True, index=True) # When this user's access (from an invite) expires
-
+    allow_downloads = db.Column(db.Boolean, default=False, nullable=False)
+    allow_4k_transcode = db.Column(db.Boolean, default=True, nullable=False) # Default to True (allow)
     used_invite_id = db.Column(db.Integer, db.ForeignKey('invites.id'), nullable=True)
     invite = db.relationship('Invite', back_populates='redeemed_users')
-
     discord_user_id = db.Column(db.String(255), unique=True, nullable=True) 
     discord_username = db.Column(db.String(255), nullable=True)
     discord_avatar_hash = db.Column(db.String(255), nullable=True)
-
-    # New fields for Bot and Purge Whitelisting
     is_discord_bot_whitelisted = db.Column(db.Boolean, default=False, nullable=False) # Req #13
     is_purge_whitelisted = db.Column(db.Boolean, default=False, nullable=False)      # Req #16
 
@@ -246,3 +245,39 @@ class HistoryLog(db.Model): # ... (as before)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True); affected_user = db.relationship('User')
     invite_id = db.Column(db.Integer, db.ForeignKey('invites.id'), nullable=True); related_invite = db.relationship('Invite')
     def __repr__(self): return f'<HistoryLog {self.timestamp} [{self.event_type.name}]: {self.message[:50]}>'
+
+class StreamHistory(db.Model):
+    __tablename__ = 'stream_history'
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Relationships
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user = db.relationship('User', backref=db.backref('stream_history', lazy='dynamic', cascade="all, delete-orphan"))
+
+    # Session Details
+    session_key = db.Column(db.String(255), nullable=True) # Plex's key for the streaming session
+    rating_key = db.Column(db.String(255), nullable=True) # The key for the media item
+    
+    # Stream Timestamps
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    stopped_at = db.Column(db.DateTime, nullable=True)
+    duration_seconds = db.Column(db.Integer, nullable=True)
+    
+    # Client Info
+    platform = db.Column(db.String(255), nullable=True)
+    product = db.Column(db.String(255), nullable=True)
+    player = db.Column(db.String(255), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    is_lan = db.Column(db.Boolean, default=False)
+    
+    # Media Info
+    media_title = db.Column(db.String(255), nullable=True)
+    media_type = db.Column(db.String(50), nullable=True)
+    grandparent_title = db.Column(db.String(255), nullable=True) # For TV Show name
+    parent_title = db.Column(db.String(255), nullable=True) # For Season name or Album name
+
+    media_duration_seconds = db.Column(db.Integer, nullable=True) # Total duration of the media file
+    view_offset_at_end_seconds = db.Column(db.Integer, nullable=True) # Final known progress in seconds
+
+    def __repr__(self):
+        return f'<StreamHistory {self.id} by {self.user.plex_username}>'

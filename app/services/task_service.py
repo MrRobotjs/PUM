@@ -1,45 +1,135 @@
 # File: app/services/task_service.py
 from flask import current_app
 from app.extensions import scheduler 
-from app.models import Setting, EventType, User # User model is now needed
+from app.models import Setting, EventType, User, StreamHistory  # User model is now needed
 from app.utils.helpers import log_event
 from . import plex_service, user_service # user_service is needed for deleting users
 from datetime import datetime, timezone, timedelta 
+from app.extensions import db
+
+_active_stream_sessions = {}
 
 # --- Scheduled Tasks ---
 
 def monitor_plex_sessions_task():
-    """Monitors Plex active sessions and updates user's last_streamed_at."""
-    with scheduler.app.app_context(): 
-        current_app.logger.debug("Task_Service: Running monitor_plex_sessions_task...")
+    """
+    Statefully monitors Plex sessions, now with progress tracking.
+    - Creates a StreamHistory record on start, including total media duration.
+    - Continuously updates the view offset (progress) on each check.
+    - Updates the record with a final timestamp when the session stops.
+    - Enforces "No 4K Transcoding" user setting.
+    """
+    global _active_stream_sessions
+    with scheduler.app.app_context():
+        current_app.logger.debug("Task_Service: Running stateful monitor_plex_sessions_task...")
         if not Setting.get('PLEX_URL') or not Setting.get('PLEX_TOKEN'):
-            current_app.logger.warning("Task_Service: Plex not configured, skipping session monitoring.")
             return
 
         try:
-            active_sessions = plex_service.get_active_sessions()
-            if not active_sessions:
-                current_app.logger.debug("Task_Service: No active Plex sessions found by monitor_plex_sessions_task.")
-                return
-
-            updated_users_count = 0
-            for session_data in active_sessions:
-                plex_user_obj = getattr(session_data, 'user', None)
-                if plex_user_obj and hasattr(plex_user_obj, 'id') and plex_user_obj.id:
-                    plex_user_identifier = plex_user_obj.id 
-                    now_utc = datetime.now(timezone.utc)
-                    if user_service.update_user_last_streamed(plex_user_identifier, now_utc):
-                        updated_users_count +=1
+            active_plex_sessions = plex_service.get_active_sessions()
+            now_utc = datetime.now(timezone.utc)
             
-            if updated_users_count > 0:
-                current_app.logger.info(f"Task_Service: monitor_plex_sessions_task updated last_streamed_at for {updated_users_count} users.")
-        except Exception as e:
-            current_app.logger.error(f"Task_Service: Error during monitor_plex_sessions_task: {e}", exc_info=True)
-            try:
-                log_event(EventType.ERROR_PLEX_API, f"Error in Plex session monitoring task: {e}")
-            except Exception as e_log:
-                current_app.logger.error(f"Task_Service: Failed to log monitor_plex_sessions_task error to DB: {e_log}")
+            current_plex_session_keys = {session.sessionKey for session in active_plex_sessions if hasattr(session, 'sessionKey')}
 
+            # Step 1: Check for stopped streams
+            stopped_session_keys = set(_active_stream_sessions.keys()) - current_plex_session_keys
+            for session_key in stopped_session_keys:
+                stream_history_id = _active_stream_sessions.pop(session_key, None)
+                if stream_history_id:
+                    history_record = db.session.get(StreamHistory, stream_history_id)
+                    if history_record and not history_record.stopped_at:
+                        history_record.stopped_at = now_utc
+                        started_at_aware = history_record.started_at.replace(tzinfo=timezone.utc)
+                        duration_delta = history_record.stopped_at - started_at_aware
+                        history_record.duration_seconds = int(duration_delta.total_seconds())
+                        current_app.logger.info(f"Stream STOPPED: Session {session_key}. Duration: {history_record.duration_seconds}s.")
+            
+            # Step 2: Check for new and ongoing streams
+            for session in active_plex_sessions:
+                session_key = getattr(session, 'sessionKey', None)
+                if not session_key:
+                    continue
+
+                pum_user = None
+                if hasattr(session, 'user') and session.user and hasattr(session.user, 'id'):
+                    pum_user = User.query.filter_by(plex_user_id=session.user.id).first()
+                
+                if not pum_user:
+                    continue 
+
+                # --- 4K Transcode Enforcement Logic (no changes needed here) ---
+                transcode_session = getattr(session, 'transcodeSession', None)
+                if transcode_session and not pum_user.allow_4k_transcode:
+                    video_decision = getattr(transcode_session, 'videoDecision', 'copy').lower()
+                    if video_decision == 'transcode':
+                        media_item = session.media[0] if hasattr(session, 'media') and session.media else None
+                        video_stream = next((s for s in media_item.parts[0].streams if s.streamType == 1), None) if media_item and media_item.parts else None
+                        if video_stream and hasattr(video_stream, 'height') and video_stream.height >= 2000:
+                            current_app.logger.warning(f"RULE ENFORCED: Terminating 4K transcode for user '{pum_user.plex_username}' (Session: {session_key}).")
+                            termination_message = "4K to non-4K transcoding is not permitted on this server."
+                            try:
+                                plex_service.terminate_plex_session(session_key, termination_message)
+                                log_event(EventType.PLEX_SESSION_DETECTED,
+                                          f"Terminated 4K transcode session for user '{pum_user.plex_username}'.",
+                                          user_id=pum_user.id,
+                                          details={'reason': termination_message})
+                                _active_stream_sessions.pop(session_key, None)
+                                continue 
+                            except Exception as e_term:
+                                current_app.logger.error(f"Failed to terminate 4K transcode for session {session_key}: {e_term}")
+
+                # --- START OF MODIFIED LOGIC ---
+                
+                # If the session is new, create the history record
+                if session_key not in _active_stream_sessions:
+                    # Get media duration, converting from milliseconds to seconds
+                    media_duration_ms = getattr(session, 'duration', 0)
+                    media_duration_s = int(media_duration_ms / 1000) if media_duration_ms else 0
+
+                    new_history_record = StreamHistory(
+                        user_id=pum_user.id,
+                        session_key=str(session_key),
+                        rating_key=str(getattr(session, 'ratingKey', None)),
+                        started_at=now_utc,
+                        platform=getattr(session.player, 'platform', None) if hasattr(session, 'player') else None,
+                        product=getattr(session.player, 'product', None) if hasattr(session, 'player') else None,
+                        player=getattr(session.player, 'title', None) if hasattr(session, 'player') else None,
+                        ip_address=getattr(session.player, 'address', None) if hasattr(session, 'player') else None,
+                        is_lan=getattr(session.player, 'local', False) if hasattr(session, 'player') else False,
+                        media_title=getattr(session, 'title', "Unknown Title"),
+                        media_type=getattr(session, 'type', None),
+                        grandparent_title=getattr(session, 'grandparentTitle', None),
+                        parent_title=getattr(session, 'parentTitle', None),
+                        # Populate our new fields
+                        media_duration_seconds=media_duration_s,
+                        view_offset_at_end_seconds=int(getattr(session, 'viewOffset', 0) / 1000)
+                    )
+                    db.session.add(new_history_record)
+                    db.session.flush()
+                    _active_stream_sessions[session_key] = new_history_record.id
+                    current_app.logger.info(f"Stream STARTED: Session {session_key} for user {pum_user.id}. Media Duration: {media_duration_s}s.")
+                
+                # If the session is ongoing, just update its progress
+                else:
+                    history_record_id = _active_stream_sessions.get(session_key)
+                    if history_record_id:
+                        history_record = db.session.get(StreamHistory, history_record_id)
+                        if history_record:
+                            current_offset_s = int(getattr(session, 'viewOffset', 0) / 1000)
+                            history_record.view_offset_at_end_seconds = current_offset_s
+                            current_app.logger.debug(f"Stream ONGOING: Session {session_key}. Updated progress to {current_offset_s}s.")
+
+                # --- END OF MODIFIED LOGIC ---
+
+                # Always update the user's main 'last_streamed_at' field
+                user_service.update_user_last_streamed(pum_user.plex_user_id, now_utc)
+
+            # Commit all changes for this cycle
+            db.session.commit()
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Task_Service: Error during monitor_plex_sessions_task: {e}", exc_info=True)
 
 def check_user_access_expirations_task():
     """

@@ -178,3 +178,23 @@ def get_text_color_for_bg(hex_color):
         return '#000000' if luminance > 0.5 else '#FFFFFF'
     except Exception:
         return '#FFFFFF' # Fallback
+    
+def format_duration(total_seconds):
+    """Formats a duration in seconds into a human-readable string like '1d 4h 5m'."""
+    if not total_seconds or total_seconds < 0:
+        return "0m"
+    
+    delta = timedelta(seconds=int(total_seconds))
+    days = delta.days
+    hours, rem = divmod(delta.seconds, 3600)
+    minutes, _ = divmod(rem, 60)
+    
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0 or not parts: # Always show minutes if no other parts
+        parts.append(f"{minutes}m")
+        
+    return " ".join(parts[:3]) # Show at most 3 parts (e.g., d, h, m)

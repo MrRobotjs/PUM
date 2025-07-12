@@ -1,4 +1,4 @@
-<!-- File: app/templates/roles/edit.html -->
+<!-- File: app/templates/roles/_roles_edit_settings.html -->
 
 
     <div class="flex items-center mb-4">
@@ -7,10 +7,12 @@
 
     <h2 class="text-xl font-semibold my-4">Edit Role: <span class="font-bold text-primary">{{ role.name }}</span></h2>
 
-    <div role="tablist" class="tabs tabs-border">
+    <div class="overflow-x-auto ">
+    <div role="tablist" class="tabs tabs-border whitespace-nowrap flex-nowrap">
         <a role="tab" href="{{ url_for('dashboard.edit_role', role_id=role.id, tab='display') }}" class="tab {{ 'tab-active' if active_role_tab == 'display' else '' }}">Display</a>
         <a role="tab" href="{{ url_for('dashboard.edit_role', role_id=role.id, tab='permissions') }}" class="tab {{ 'tab-active' if active_role_tab == 'permissions' else '' }}">Permissions</a>
         <a role="tab" href="{{ url_for('dashboard.edit_role', role_id=role.id, tab='members') }}" class="tab {{ 'tab-active' if active_role_tab == 'members' else '' }}">Manage Members ({{ role.admins|length }})</a>
+    </div>
     </div>
 
     <div class="bg-base-100 p-6 rounded-b-box rounded-tr-box">
@@ -22,52 +24,3 @@
             {% include 'roles/_members_tab.html' %}
         {% endif %}
     </div>
-
-<script>
-    // Helper function for text color (JS version)
-    function getTextColorForBg(hexColor) {
-        if (!hexColor || hexColor.length !== 7) return '#FFFFFF';
-        try {
-            const r = parseInt(hexColor.substr(1, 2), 16);
-            const g = parseInt(hexColor.substr(3, 2), 16);
-            const b = parseInt(hexColor.substr(5, 2), 16);
-            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-            return luminance > 0.5 ? '#000000' : '#FFFFFF';
-        } catch (e) { return '#FFFFFF'; }
-    }
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        const editPicker = document.getElementById('edit_color_picker');
-        const editText = document.getElementById('edit_color_text');
-        const editName = document.getElementById('edit_role_name');
-        const editBadgePreview = document.getElementById('edit_badge_preview');
-
-        function updateEditPreview() {
-            if (!editBadgePreview || !editName || !editText) return;
-            const name = editName.value.trim() || 'Role Name';
-            const color = editText.value;
-            editBadgePreview.textContent = name;
-            editBadgePreview.style.backgroundColor = color;
-            editBadgePreview.style.borderColor = color;
-            editBadgePreview.style.color = getTextColorForBg(color);
-        }
-
-        if (editPicker && editText) {
-            editPicker.addEventListener('input', () => { 
-                editText.value = editPicker.value; 
-                updateEditPreview(); 
-            });
-            editText.addEventListener('input', () => { 
-                if (/^#[0-9a-fA-F]{6}$/.test(editText.value)) {
-                    editPicker.value = editText.value; 
-                }
-                updateEditPreview();
-            });
-        }
-        if (editName) {
-            editName.addEventListener('input', updateEditPreview);
-        }
-        // Initial call to set the preview correctly on page load
-        updateEditPreview();
-    });
-</script>

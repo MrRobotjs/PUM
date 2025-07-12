@@ -101,9 +101,22 @@
                 </td>
                 <td class="text-center">
                     <div class="flex items-center justify-center space-x-1">
-                        <a href="{{ url_for('users.edit_user', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" class="btn btn-xs btn-ghost text-primary hover:bg-primary/10" title="Edit User">
-                            <i class="fa-solid fa-pen-to-square"></i>
+                        {% if current_user.has_permission('view_user') %}
+                        <a href="{{ url_for('user.view_user', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" title="User Profile" class="btn btn-xs btn-ghost text-info hover:bg-info/10">
+                            <i class="fa-solid fa-eye"></i>
                         </a>
+                        {% endif %}
+                        {% if current_user.has_permission('edit_user') %}
+                        <button class="btn btn-xs btn-ghost text-primary hover:bg-primary/10 card-action-button"
+                                title="Quick Edit Settings"
+                                hx-get="{{ url_for('users.get_quick_edit_form', user_id=user.id) }}"
+                                hx-target="#quick_edit_modal_content_div"
+                                hx-swap="innerHTML"
+                                onclick="quick_edit_user_modal.showModal()">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        {% endif %}
+                        {% if current_user.has_permission('delete_user') %}
                         <button class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Remove User"
                                 hx-confirm="Are you sure you want to remove '{{ user.plex_username }}' from PUM and Plex Server?"
                                 hx-delete="{{ url_for('users.delete_user', user_id=user.id) }}"
@@ -113,6 +126,7 @@
                             <i class="fa-solid fa-trash-can htmx-indicator-hide"></i>
                             <span class="htmx-indicator loading loading-spinner loading-xs"></span>
                         </button>
+                        {% endif %}
                     </div>
                 </td>
             </tr>

@@ -2,8 +2,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, make_response 
 from flask_login import login_required, current_user
 from sqlalchemy import or_
-from app.utils.helpers import log_event 
-from app.models import User, Setting, EventType, AdminAccount # AdminAccount might not be needed directly here
+from app.models import User, Setting, EventType, AdminAccount  # AdminAccount might not be needed directly here
 from app.forms import UserEditForm, MassUserEditForm
 from app.extensions import db
 from app.utils.helpers import log_event, setup_required, permission_required
@@ -191,105 +190,6 @@ def sync_plex_users():
         current_app.logger.info(f"Sync results: No changes and no errors. Sending toast trigger.")
         # Return an empty 200 OK response, as HTMX will act on the HX-Trigger header.
         return make_response("", 200, response_headers)
-
-@bp.route('/edit/<int:user_id>', methods=['GET', 'POST'])
-@login_required
-@setup_required
-@permission_required('edit_user')
-def edit_user(user_id):
-    user = User.query.get_or_404(user_id)
-    form = UserEditForm(obj=user if request.method == 'GET' else None)
-    
-    available_libraries = plex_service.get_plex_libraries_dict()
-    form.libraries.choices = [(lib_id, name) for lib_id, name in available_libraries.items()]
-    
-    # --- FIX: Ensure both datetime objects for comparison are timezone-aware ---
-    now_utc_for_template = datetime.now(timezone.utc)
-    aware_expiry_for_template = None
-    if user.access_expires_at:
-        # Assume the naive time from the database is UTC and make it timezone-aware
-        aware_expiry_for_template = user.access_expires_at.replace(tzinfo=timezone.utc)
-    # --- END FIX ---
-
-    admin_account = None
-    if user.plex_uuid:
-        admin_account = AdminAccount.query.filter_by(plex_uuid=user.plex_uuid).first()
-
-    if request.method == 'GET':
-        form.libraries.data = list(user.allowed_library_ids or [])
-        form.is_discord_bot_whitelisted.data = user.is_discord_bot_whitelisted
-        form.is_purge_whitelisted.data = user.is_purge_whitelisted
-        form.notes.data = user.notes
-        
-        if user.access_expires_at:
-            # For pre-populating the form, use the newly created aware objects
-            if aware_expiry_for_template:
-                remaining_time = aware_expiry_for_template - now_utc_for_template
-
-                if remaining_time.total_seconds() > 0:
-                    duration_left = abs(remaining_time)
-                    days_remaining = duration_left.days
-                    if duration_left.seconds > 0 or duration_left.microseconds > 0:
-                        days_remaining += 1
-                    form.access_expires_in_days.data = days_remaining
-                else:
-                    form.access_expires_in_days.data = 0
-    
-    if form.validate_on_submit():
-        original_library_ids = set(user.allowed_library_ids or [])
-        new_library_ids_from_form = set(form.libraries.data or [])
-        libraries_changed = (new_library_ids_from_form != original_library_ids)
-
-        update_data_for_service = {
-            'notes': form.notes.data,
-            'is_discord_bot_whitelisted': form.is_discord_bot_whitelisted.data,
-            'is_purge_whitelisted': form.is_purge_whitelisted.data,
-            'admin_id': current_user.id,
-            'new_library_ids': list(new_library_ids_from_form) if libraries_changed else None
-        }
-
-        access_expiration_changed = False
-        if form.clear_access_expiration.data:
-            if user.access_expires_at is not None:
-                user.access_expires_at = None
-                access_expiration_changed = True
-        elif form.access_expires_in_days.data is not None and form.access_expires_in_days.data > 0:
-            new_expiry_date = datetime.now(timezone.utc) + timedelta(days=form.access_expires_in_days.data)
-            
-            # The current user.access_expires_at is naive, make it aware for comparison
-            current_expiry_aware = None
-            if user.access_expires_at:
-                current_expiry_aware = user.access_expires_at.replace(tzinfo=timezone.utc)
-            
-            # Compare just the date part to avoid small time differences
-            if current_expiry_aware is None or current_expiry_aware.date() != new_expiry_date.date():
-                user.access_expires_at = new_expiry_date
-                access_expiration_changed = True
-        
-        try:
-            user_service.update_user_details(user_id=user.id, **update_data_for_service)
-            if access_expiration_changed:
-                db.session.commit()
-                log_event(EventType.SETTING_CHANGE,
-                          f"User '{user.plex_username}' access expiration set to: {user.access_expires_at.strftime('%Y-%m-%d') if user.access_expires_at else 'Permanent'}.",
-                          user_id=user.id, admin_id=current_user.id)
-
-            flash(f"User '{user.plex_username}' updated successfully.", "success")
-            preserved_args = {k:v for k,v in request.args.items() if k not in ['user_id']}
-            return redirect(url_for('users.list_users', **preserved_args))
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error updating user {user.plex_username}: {e}", exc_info=True)
-            flash(f"Error updating user: {e}", "danger")
-
-    return render_template('users/edit.html', 
-                           title=f"Edit User {user.plex_username}", 
-                           form=form, 
-                           user=user,
-                           current_access_expires_at_for_display=aware_expiry_for_template, 
-                           now_utc=now_utc_for_template,
-                           admin_account=admin_account)
-
 
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])
 @login_required
@@ -520,3 +420,35 @@ def preview_purge_inactive_users():
     except Exception as e:
         current_app.logger.error(f"User_Routes.py - preview_purge_inactive_users(): Error generating purge preview: {e}", exc_info=True)
         return render_template('partials/_alert_message.html', message=f"An unexpected error occurred generating purge preview: {e}", category='error'), 500
+    
+@bp.route('/quick_edit_form/<int:user_id>')
+@login_required
+@permission_required('edit_user')
+def get_quick_edit_form(user_id):
+    user = User.query.get_or_404(user_id)
+    form = UserEditForm(obj=user) # Pre-populate form with existing data
+
+    # Populate dynamic choices
+    available_libraries = plex_service.get_plex_libraries_dict()
+    form.libraries.choices = [(lib_id, name) for lib_id, name in available_libraries.items()]
+    
+    # Pre-populate the fields with the user's current settings
+    form.libraries.data = list(user.allowed_library_ids or [])
+    form.allow_downloads.data = user.allow_downloads
+    form.allow_4k_transcode.data = user.allow_4k_transcode
+    form.is_discord_bot_whitelisted.data = user.is_discord_bot_whitelisted
+    form.is_purge_whitelisted.data = user.is_purge_whitelisted
+    
+    if user.access_expires_at:
+        now_utc = datetime.now(timezone.utc)
+        user_expiry_aware = user.access_expires_at.replace(tzinfo=timezone.utc)
+        if user_expiry_aware > now_utc:
+            remaining_time = user_expiry_aware - now_utc
+            form.access_expires_in_days.data = remaining_time.days + (1 if remaining_time.seconds > 0 else 0)
+    
+    # We pass the _settings_tab partial, which contains the form we need.
+    return render_template(
+        'users/_settings_tab.html',
+        form=form,
+        user=user
+    )

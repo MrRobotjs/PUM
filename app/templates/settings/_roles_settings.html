@@ -19,7 +19,7 @@
                     <td class="font-semibold">
                         <span class="badge" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};">
                             {% if role.icon %}
-                                <i class="{{ role.icon }} mr-1"></i>
+                                <i class="{{ role.icon }}"></i>
                             {% endif %}
                             {{ role.name }}
                         </span>

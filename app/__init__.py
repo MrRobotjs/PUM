@@ -18,7 +18,7 @@ from .extensions import (
     babel, 
     htmx
 )
-from .models import AdminAccount, Setting
+from .models import AdminAccount, Setting, EventType
 from .utils import helpers 
 
 def get_locale_for_babel():
@@ -162,6 +162,8 @@ def create_app(config_name=None):
     app.jinja_env.filters['format_datetime_human'] = helpers.format_datetime_human
     app.jinja_env.filters['time_ago'] = helpers.time_ago
     app.jinja_env.globals['get_text_color_for_bg'] = helpers.get_text_color_for_bg
+    app.jinja_env.filters['format_duration'] = helpers.format_duration
+    app.jinja_env.globals['EventType'] = EventType
 
     @app.context_processor
     def inject_current_year():
@@ -289,6 +291,8 @@ def create_app(config_name=None):
     app.register_blueprint(invites_bp) # url_prefix='/invites' is handled in invites.py itself for public link
     from .routes.api import bp as api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
+    from .routes.user import bp as user_bp
+    app.register_blueprint(user_bp, url_prefix='/user')
 
     register_error_handlers(app)
 

@@ -1,0 +1,7 @@
+<!-- File: app/templates/users/_history_tab.html -->
+<div id="user-history-container"
+    hx-get="{{ url_for('user.view_user', user_id=user.id, tab='history') }}"
+    hx-trigger="load, refreshUserHistory from:body"
+    hx-swap="innerHTML">
+    <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span></div>
+</div>

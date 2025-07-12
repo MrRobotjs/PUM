@@ -69,36 +69,6 @@ def index():
                            recent_activities=recent_activities,
                            recent_activities_count=recent_activities_count)
 
-@bp.route('/history') # Main route for full page load
-@login_required
-@setup_required
-@permission_required('view_history')
-def history():
-    page = request.args.get('page', 1, type=int)
-    session_per_page_key = 'history_list_per_page'
-    default_per_page = int(current_app.config.get('DEFAULT_HISTORY_PER_PAGE', 20))
-    per_page_from_request = request.args.get('per_page', type=int)
-
-    if per_page_from_request and per_page_from_request in [20, 50, 100, 200]:
-        items_per_page = per_page_from_request
-        session[session_per_page_key] = items_per_page
-    else:
-        items_per_page = session.get(session_per_page_key, default_per_page)
-        if items_per_page not in [20, 50, 100, 200]:
-            items_per_page = default_per_page
-            session[session_per_page_key] = items_per_page
-            
-    # Query logic is now part of _get_history_logs_query
-    query = _get_history_logs_query()
-    logs = query.order_by(HistoryLog.timestamp.desc()).paginate(page=page, per_page=items_per_page, error_out=False)
-    event_types = list(EventType) 
-
-    return render_template('history/index.html', 
-                           title="Event History", 
-                           logs=logs, 
-                           event_types=event_types,
-                           current_per_page=items_per_page)
-
 # Helper function to build the history query based on request args
 def _get_history_logs_query():
     query = HistoryLog.query
@@ -122,33 +92,6 @@ def _get_history_logs_query():
                          HistoryLog.user_id.cast(db.String).ilike(f"%{related_user_filter}%")
                      ))
     return query
-
-@bp.route('/history/partial') # Route for HTMX partial updates
-@login_required
-@setup_required
-def history_partial():
-    page = request.args.get('page', 1, type=int)
-    session_per_page_key = 'history_list_per_page'
-    default_per_page = int(current_app.config.get('DEFAULT_HISTORY_PER_PAGE', 20))
-    
-    items_per_page_from_arg = request.args.get('per_page', type=int)
-    if items_per_page_from_arg and items_per_page_from_arg in [20, 50, 100, 200]:
-        items_per_page = items_per_page_from_arg
-        # session[session_per_page_key] = items_per_page # Already set by main route if changed via dropdown
-    else:
-        items_per_page = session.get(session_per_page_key, default_per_page)
-
-    query = _get_history_logs_query() # Use helper to build query based on current request.args
-    logs = query.order_by(HistoryLog.timestamp.desc()).paginate(page=page, per_page=items_per_page, error_out=False)
-    
-    # event_types are not strictly needed by the partial if filters are outside the swapped area,
-    # but good to pass if the partial template might use it.
-    # event_types = list(EventType) 
-
-    return render_template('history/_history_list_content.html', 
-                           logs=logs,
-                           # event_types=event_types, # Only if _history_list_content.html needs it
-                           current_per_page=items_per_page)
 
 @bp.route('/settings')
 @login_required
@@ -511,14 +454,15 @@ def regenerate_secret_key():
         if request.headers.get('HX-Request'): return f'<div class="alert alert-error p-2">Error: {e}</div>', 500
         return redirect(url_for('dashboard.settings_advanced'))
     
-@bp.route('/history/clear', methods=['POST'])
+@bp.route('/settings/logs/clear', methods=['POST'])
 @login_required
 @setup_required
-def clear_history_logs_route():
+@permission_required('clear_logs')
+def clear_logs_route():
     event_types_selected = request.form.getlist('event_types_to_clear[]')
     clear_all = request.form.get('clear_all_types') == 'true'
     
-    current_app.logger.info(f"Dashboard.py - clear_history_logs_route(): Received request to clear logs. Selected types: {event_types_selected}, Clear All: {clear_all}")
+    current_app.logger.info(f"Dashboard.py - clear_logs_route(): Received request to clear logs. Selected types: {event_types_selected}, Clear All: {clear_all}")
 
     types_to_delete_in_service = None
     if not clear_all and event_types_selected:
@@ -559,10 +503,10 @@ def clear_history_logs_route():
         toast_category = "success"
         # flash(toast_message, toast_category) # <<< REMOVE/COMMENT OUT if you don't want session flash
         # The log_event in history_service already records this action.
-        current_app.logger.info(f"Dashboard.py - clear_history_logs_route(): {toast_message}")
+        current_app.logger.info(f"Dashboard.py - clear_logs_route(): {toast_message}")
 
     except Exception as e:
-        current_app.logger.error(f"Dashboard.py - clear_history_logs_route(): Failed to clear history: {e}", exc_info=True)
+        current_app.logger.error(f"Dashboard.py - clear_logs_route(): Failed to clear history: {e}", exc_info=True)
         toast_message = f"Error clearing history logs: {str(e)}"
         toast_category = "danger"
         # flash(toast_message, toast_category) # <<< REMOVE/COMMENT OUT if you don't want session flash
@@ -578,7 +522,7 @@ def clear_history_logs_route():
     triggers["refreshHistoryList"] = True # Always refresh the list after attempting a clear
     
     response.headers['HX-Trigger-After-Swap'] = json.dumps(triggers)
-    current_app.logger.debug(f"Dashboard.py - clear_history_logs_route(): Sending HX-Trigger-After-Swap: {response.headers['HX-Trigger-After-Swap']}")
+    current_app.logger.debug(f"Dashboard.py - clear_logs_route(): Sending HX-Trigger-After-Swap: {response.headers['HX-Trigger-After-Swap']}")
 
     return response
 
@@ -652,6 +596,52 @@ def streaming_sessions_partial():
                 session_title_for_log = getattr(raw_plex_session, 'title', 'N/A_SessionTitle')
                 current_app.logger.debug(f"--- Processing Raw Session {i+1} ({session_title_for_log}) ---")
                 current_app.logger.debug(f"STREAMING_DEBUG: Raw Session Object Type: {type(raw_plex_session)}")
+
+                # --- START DEBUG BLOCK ---
+                try:
+                    # Log all top-level attributes of the session object
+                    session_attribs = {key: getattr(raw_plex_session, key, 'N/A') for key in [
+                        'title', 'type', 'duration', 'viewOffset', 'sessionKey', 'ratingKey',
+                        'state', 'grandparentTitle', 'parentTitle', 'librarySectionTitle', 'videoResolution'
+                    ]}
+                    current_app.logger.debug(f"[Session Details]: {session_attribs}")
+
+                    if hasattr(raw_plex_session, 'player'):
+                        player_attribs = {key: getattr(raw_plex_session.player, key, 'N/A') for key in [
+                            'title', 'platform', 'product', 'version', 'address', 'local', 'state'
+                        ]}
+                        current_app.logger.debug(f"[Player Details]: {player_attribs}")
+
+                    if hasattr(raw_plex_session, 'media') and raw_plex_session.media:
+                        media = raw_plex_session.media[0]
+                        media_attribs = {key: getattr(media, key, 'N/A') for key in [
+                            'id', 'duration', 'bitrate', 'videoCodec', 'videoResolution', 'audioCodec', 'audioChannels', 'container'
+                        ]}
+                        current_app.logger.debug(f"[Media Details (media[0])]: {media_attribs}")
+                        if hasattr(media, 'parts') and media.parts:
+                            part = media.parts[0]
+                            for s_idx, stream in enumerate(getattr(part, 'streams', [])):
+                                stream_attribs = {key: getattr(stream, key, 'N/A') for key in [
+                                    'id', 'streamType', 'codec', 'height', 'width', 'displayTitle', 'language', 'format', 'channels'
+                                ]}
+                                current_app.logger.debug(f"  [Stream #{s_idx}]: {stream_attribs}")
+                    
+                    if hasattr(raw_plex_session, 'transcodeSession'):
+                        transcode_session = raw_plex_session.transcodeSession
+                        transcode_attribs = {key: getattr(transcode_session, key, 'N/A') for key in [
+                            'key', 'throttled', 'speed', 'videoDecision', 'audioDecision', 'subtitleDecision', 
+                            'container', 'videoCodec', 'audioCodec', 'sourceVideoCodec', 'sourceAudioCodec', 'videoHeight', 'videoWidth'
+                        ]}
+                        current_app.logger.debug(f"[Transcode Details]: {transcode_attribs}")
+                    
+                    # Also log the full XML attributes for deep diving if needed
+                    if hasattr(raw_plex_session, '_data') and raw_plex_session._data is not None:
+                        current_app.logger.debug(f"[Full XML Attribs]: {json.dumps(raw_plex_session._data.attrib if hasattr(raw_plex_session._data, 'attrib') else raw_plex_session._data, indent=2, default=str)}")
+
+                except Exception as e_log:
+                    current_app.logger.error(f"Error during debug logging for session: {e_log}")
+                # --- END DEBUG BLOCK ---
+                
                 if hasattr(raw_plex_session, '_data') and raw_plex_session._data is not None: # Log raw XML attributes
                    current_app.logger.debug(f"STREAMING_DEBUG:   raw_plex_session._data.attrib: {json.dumps(raw_plex_session._data.attrib if hasattr(raw_plex_session._data, 'attrib') else raw_plex_session._data, indent=2, default=str)}")
                 
@@ -758,19 +748,33 @@ def streaming_sessions_partial():
                     elif target_container_from_transcode != "N/A_transcode": container_text_val = f"To {target_container_from_transcode.upper()}"
                     # else: container_text_val remains what was set from source_container_from_media_item
                     
-                    v_decision = getattr(transcode_session_obj, 'videoDecision', 'unknown').capitalize()
-                    src_v_codec = getattr(transcode_session_obj, 'sourceVideoCodec', 'N/A').upper()
-                    tgt_v_codec = getattr(transcode_session_obj, 'videoCodec', 'N/A').upper()
-                    src_v_res_display = (f"{video_stream_info.height}p" if video_stream_info and hasattr(video_stream_info, 'height') and video_stream_info.height else "N/A")
-                    tgt_v_res_display = (f"{transcode_session_obj.videoHeight}p" if hasattr(transcode_session_obj, 'videoHeight') and transcode_session_obj.videoHeight else video_resolution_final)
+                     # Safely get all potentially None attributes from the transcode object first.
+
+                    video_decision_str = getattr(transcode_session_obj, 'videoDecision', 'Unknown')
+                    src_v_codec_str = getattr(transcode_session_obj, 'sourceVideoCodec', 'N/A')
+                    tgt_v_codec_str = getattr(transcode_session_obj, 'videoCodec', 'N/A')
+                    
+                    audio_decision_str = getattr(transcode_session_obj, 'audioDecision', 'Unknown')
+                    src_a_codec_str = getattr(transcode_session_obj, 'sourceAudioCodec', 'N/A')
+                    tgt_a_codec_str = getattr(transcode_session_obj, 'audioCodec', 'N/A')
+
+                    # Now, call methods only if the strings are not None.
+                    v_decision = video_decision_str.capitalize() if video_decision_str else 'Unknown'
+                    src_v_codec = src_v_codec_str.upper() if src_v_codec_str else 'N/A'
+                    tgt_v_codec = tgt_v_codec_str.upper() if tgt_v_codec_str else 'N/A'
+
+                    a_decision = audio_decision_str.capitalize() if audio_decision_str else 'Unknown'
+                    src_a_codec = src_a_codec_str.upper() if src_a_codec_str else 'N/A'
+                    tgt_a_codec = tgt_a_codec_str.upper() if tgt_a_codec_str else 'N/A'
+
+                    # Use these safe variables to build the text strings.
+                    src_v_res_display = (f"{video_stream_info.height}p" if video_stream_info and hasattr(video_stream_info, 'height') else 'N/A')
+                    tgt_v_res_display = (f"{transcode_session_obj.videoHeight}p" if hasattr(transcode_session_obj, 'videoHeight') else video_resolution_final)
                     video_text = f"{v_decision} ({src_v_codec} {src_v_res_display} -> {tgt_v_codec} {tgt_v_res_display})"
                     
-                    a_decision = getattr(transcode_session_obj, 'audioDecision', 'unknown').capitalize()
-                    src_a_codec = getattr(transcode_session_obj, 'sourceAudioCodec', 'N/A').upper()
-                    tgt_a_codec = getattr(transcode_session_obj, 'audioCodec', 'N/A').upper()
                     src_a_ch = audio_stream_info.channels if audio_stream_info and hasattr(audio_stream_info, 'channels') else 'N/A'
                     tgt_a_ch = transcode_session_obj.audioChannels if hasattr(transcode_session_obj, 'audioChannels') else 'N/A'
-                    audio_lang = (audio_stream_info.displayTitle or audio_stream_info.language) if audio_stream_info and (audio_stream_info.displayTitle or audio_stream_info.language) else ''
+                    audio_lang = (audio_stream_info.displayTitle or audio_stream_info.language) if audio_stream_info else ''
                     audio_text = f"{a_decision} ({audio_lang} - {src_a_codec} {src_a_ch}ch -> {tgt_a_codec} {tgt_a_ch}ch)".replace("  - ", " - ").replace("( - ", "(").strip()
                 else: 
                     if video_stream_info: video_text = f"Direct Play ({getattr(video_stream_info, 'codec', 'N/A').upper()} {video_resolution_final})"
@@ -915,6 +919,7 @@ def edit_role(role_id):
         'Users': {
             'label': 'Users',
             'children': {
+                'view_user': {'label': 'View User', 'description': 'Can view user profile.'},
                 'edit_user': {'label': 'Edit User', 'description': 'Can edit user details, notes, whitelists, and library access.'},
                 'delete_user': {'label': 'Delete User', 'description': 'Can permanently remove users from PUM and the Plex server.'},
                 'purge_users': {'label': 'Purge Users', 'description': 'Can use the inactivity purge feature.'},
@@ -948,10 +953,11 @@ def edit_role(role_id):
                 'kill_stream': {'label': 'Terminate Stream', 'description': 'Can stop a user\'s active stream.'},
             }
         },
-        'EventHistory': {
-            'label': 'Event History',
+        'EventLogs': {
+            'label': 'Application Logs',
             'children': {
-                 'view_history': {'label': 'View Event History', 'description': 'Can access the full "Event History" page.'},
+                 'view_logs': {'label': 'View Application Logs', 'description': 'Can access the full "Application Logs" page in settings.'},
+                 'clear_logs': {'label': 'Clear Application Logs', 'description': 'Can erase the full "Application Logs".'},
             }
         },
         'AppSettings': {
@@ -1077,14 +1083,19 @@ def create_role():
         )
         db.session.add(new_role)
         db.session.commit()
-        flash(f"Role '{new_role.name}' created successfully.", "success")
-        return redirect(url_for('dashboard.settings_roles'))
+        
+        # --- START MODIFICATION ---
+        flash(f"Role '{new_role.name}' created successfully. You can now set its permissions.", "success")
+        # Redirect to the 'edit' page for the newly created role
+        return redirect(url_for('dashboard.edit_role', role_id=new_role.id))
+        # --- END MODIFICATION ---
 
+    # The GET request rendering remains the same, but the template it renders will be changed.
     return render_template(
         'roles/create.html',
         title="Create New Role",
         form=form,
-        active_tab='roles' # Keep 'roles' highlighted in the sidebar
+        active_tab='roles' # Keep 'roles' highlighted in the main settings sidebar
     )
 
 @bp.route('/settings/roles/edit/<int:role_id>/remove_member/<int:admin_id>', methods=['POST'])
@@ -1194,3 +1205,43 @@ def libraries():
         title="Libraries",
         libraries=library_data
     )
+
+@bp.route('/settings/logs')
+@login_required
+@setup_required
+@permission_required('view_logs') # Renamed permission
+def settings_logs():
+    # This route now just renders the main settings layout.
+    # The content will be loaded via the partial included in settings/index.html
+    return render_template('settings/index.html', 
+                           title="Application Logs", 
+                           active_tab='logs')
+
+@bp.route('/settings/logs/partial')
+@login_required
+@setup_required
+@permission_required('view_logs') # Renamed permission
+def settings_logs_partial():
+    page = request.args.get('page', 1, type=int)
+    session_per_page_key = 'logs_list_per_page' # New session key
+    default_per_page = int(current_app.config.get('DEFAULT_HISTORY_PER_PAGE', 20)) # Can keep old config name
+    
+    per_page_from_request = request.args.get('per_page', type=int)
+    if per_page_from_request and per_page_from_request in [20, 50, 100, 200]:
+        items_per_page = per_page_from_request
+        session[session_per_page_key] = items_per_page
+    else:
+        items_per_page = session.get(session_per_page_key, default_per_page)
+        if items_per_page not in [20, 50, 100, 200]:
+            items_per_page = default_per_page
+            session[session_per_page_key] = items_per_page
+
+    query = _get_history_logs_query() # This helper function can be reused as is
+    logs = query.order_by(HistoryLog.timestamp.desc()).paginate(page=page, per_page=items_per_page, error_out=False)
+    event_types = list(EventType) 
+    
+    # This now renders the new partial for the log list content
+    return render_template('settings/_logs_list_content.html', 
+                           logs=logs, 
+                           event_types=event_types,
+                           current_per_page=items_per_page)

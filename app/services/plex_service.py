@@ -317,17 +317,10 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
 
 def update_user_plex_access(plex_username_or_id, library_ids_to_share=None, allow_sync: bool = None):
     """
-    Updates a user's library access and/or download permissions on the Plex server.
-
-    :param plex_username_or_id: The username or ID of the Plex user.
-    :param library_ids_to_share: A list of library section IDs to share.
-                                 If an empty list `[]` is provided, it typically means share all libraries (for updateFriend).
-                                 If `None`, library access is not changed by this call.
-    :param allow_sync: Boolean to set the 'Allow Sync/Downloads' permission.
-                       If `True`, downloads are allowed. If `False`, they are disallowed.
-                       If `None`, this permission is not changed by this call.
-    :return: True if the update was successfully attempted.
-    :raises: Exception from plexapi or if connection fails.
+    Updates a user's library access permissions on the Plex server.
+    NOTE: As of July 2025, the 'allowSync' parameter causes a 400/404 error
+    when used with `updateFriend`. It is being intentionally ignored in this function
+    until a stable solution is found. Library updates will still work.
     """
     admin_account = get_plex_admin_account()
     plex_server_instance = get_plex_instance()
@@ -337,12 +330,8 @@ def update_user_plex_access(plex_username_or_id, library_ids_to_share=None, allo
         raise Exception("Plex admin or server connection failed for update_user_plex_access.")
 
     try:
-        # Fetch the MyPlexUser object. This represents the friend/managed user.
         user_to_update = admin_account.user(plex_username_or_id) 
         if not user_to_update:
-            current_app.logger.warning(f"Plex_Service: Plex user '{plex_username_or_id}' not found as friend. Cannot update shares.")
-            # Depending on desired behavior, you could return False or raise a more specific error.
-            # For now, raising an exception is consistent with connection failures.
             raise Exception(f"Plex user '{plex_username_or_id}' not found as friend to update shares.")
 
         kwargs_for_update = {
@@ -352,16 +341,15 @@ def update_user_plex_access(plex_username_or_id, library_ids_to_share=None, allo
         
         action_summary = []
 
-        # Prepare 'sections' argument for plexapi if library access is being changed.
-        if library_ids_to_share is not None: # library_ids_to_share is explicitly passed (could be empty list or list of IDs)
-            if not library_ids_to_share: # An empty list `[]` means share all libraries to updateFriend
+        if library_ids_to_share is not None:
+            if not library_ids_to_share:
                 kwargs_for_update['sections'] = [] 
                 action_summary.append("libraries set to ALL")
                 current_app.logger.info(f"Updating Plex libraries for {plex_username_or_id}: Setting to ALL libraries.")
             else:
                 all_server_libs_dict = {str(lib.key): lib for lib in plex_server_instance.library.sections()}
                 valid_plexapi_sections = []
-                for lib_id_str in library_ids_to_share: # Ensure lib_id is treated as string for dict lookup
+                for lib_id_str in library_ids_to_share:
                     lib_obj = all_server_libs_dict.get(str(lib_id_str))
                     if lib_obj:
                         valid_plexapi_sections.append(lib_obj)
@@ -374,23 +362,23 @@ def update_user_plex_access(plex_username_or_id, library_ids_to_share=None, allo
             action_summary.append("libraries not changed")
 
 
-        # Prepare 'allowSync' argument for plexapi if download permission is being changed.
-        if allow_sync is not None: # allow_sync is explicitly True or False
-            kwargs_for_update['allowSync'] = allow_sync
-            action_summary.append(f"downloads {'enabled' if allow_sync else 'disabled'}")
-            current_app.logger.info(f"Updating Plex downloads for {plex_username_or_id}: Setting allowSync to {allow_sync}.")
-        else:
-             action_summary.append("downloads not changed")
+        # --- START OF TEST ---
+        # Temporarily bypass the allowSync parameter to see if the call succeeds without it.
+        current_app.logger.warning(f"[DEBUG_TEST] The 'allowSync' parameter is being intentionally ignored for this API call. Received value was: {allow_sync}")
+        if allow_sync is not None:
+             action_summary.append(f"(bypassed) downloads would be set to {'enabled' if allow_sync else 'disabled'}")
+        # The line that adds the key to the dictionary is now commented out.
+        # if allow_sync is not None:
+        #     kwargs_for_update['allowSync'] = allow_sync
+        # --- END OF TEST ---
 
 
-        # Only call updateFriend if there's actually something to update
-        # (either libraries changed OR allow_sync was specified)
-        if 'sections' in kwargs_for_update or 'allowSync' in kwargs_for_update:
-            current_app.logger.info(f"Calling admin_account.updateFriend for {plex_username_or_id} with kwargs: { {k: (type(v) if k != 'user' and k != 'server' else str(v)) for k,v in kwargs_for_update.items()} }") # Log types for sections/allowSync
+        if 'sections' in kwargs_for_update or 'allowSync' in kwargs_for_update: # 'allowSync' will be false, so this depends on sections
+            current_app.logger.info(f"Calling admin_account.updateFriend for {plex_username_or_id} with kwargs: { {k: (type(v) if k != 'user' and k != 'server' else str(v)) for k,v in kwargs_for_update.items()} }")
             admin_account.updateFriend(**kwargs_for_update)
             
             log_event(
-                EventType.PLEX_USER_LIBS_UPDATED, # Or a more generic PLEX_USER_SETTINGS_UPDATED
+                EventType.PLEX_USER_LIBS_UPDATED,
                 f"Updated Plex access for user '{user_to_update.title}'. Summary: {'; '.join(action_summary)}.",
                 details={'user': user_to_update.title, 'plex_user_id': user_to_update.id, 'actions': action_summary}
             )
@@ -403,11 +391,11 @@ def update_user_plex_access(plex_username_or_id, library_ids_to_share=None, allo
     except BadRequest as e_br:
         current_app.logger.error(f"Plex_Service: BadRequest updating Plex access for '{plex_username_or_id}': {e_br}", exc_info=True)
         log_event(EventType.ERROR_PLEX_API, f"BadRequest updating Plex access for '{plex_username_or_id}': {e_br}")
-        raise # Re-raise specific error
+        raise
     except Exception as e:
         current_app.logger.error(f"Plex_Service: Error updating Plex access for '{plex_username_or_id}': {e}", exc_info=True)
         log_event(EventType.ERROR_PLEX_API, f"Error updating Plex access for '{plex_username_or_id}': {e}")
-        raise # Re-raise general error
+        raise
 
 def invite_user_to_plex_server(plex_username_or_email, library_ids_to_share=None, allow_sync=False):
     admin_account = get_plex_admin_account(); plex_server_instance = get_plex_instance()

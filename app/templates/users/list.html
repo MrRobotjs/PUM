@@ -248,6 +248,16 @@
   {# No modal-backdrop form here, close is handled by button inside loaded content #}
 </dialog>
 
+<dialog id="quick_edit_user_modal" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box max-w-2xl">
+        <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
+        <div id="quick_edit_modal_content_div">
+             <!-- HTMX will load the form partial here -->
+             <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span></div>
+        </div>
+    </div>
+</dialog>
+
 {% endblock %}
 {% block scripts %}
 {{ super() }}

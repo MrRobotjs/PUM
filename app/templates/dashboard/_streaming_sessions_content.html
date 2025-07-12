@@ -60,7 +60,7 @@
                             <p class="text-base-content/80 flex items-center" title="{{ session.user }}">
                                 <i class="fa-solid fa-user fa-fw mr-1.5 text-info w-4 text-center"></i> 
                                 {% if session.pum_user_id %}
-                                    <a href="{{ url_for('users.edit_user', user_id=session.pum_user_id) }}" class="link link-hover text-info">
+                                    <a href="{{ url_for('user.view_user', user_id=session.pum_user_id) }}" class="link link-hover text-info">
                                         {{ session.user }}
                                     </a>
                                 {% else %}

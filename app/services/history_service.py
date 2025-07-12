@@ -1,3 +1,4 @@
+# File: app/services/history_service.py
 from flask import current_app
 from app.models import HistoryLog, EventType
 from app.extensions import db

@@ -1,0 +1,136 @@
+<!-- File: app/templates/users/_settings_tab.html -->
+{# Expects 'form' and 'user' in context #}
+<form method="POST"
+      id="editUserForm"
+      hx-post="{{ url_for('user.view_user', user_id=user.id, tab='settings') }}"
+      hx-target="#editUserForm"
+      hx-swap="outerHTML">
+      
+    <div class="space-y-6">
+        <div>
+            <h3 class="text-lg font-semibold border-b border-base-100 pb-2">Stream Permissions</h3>
+            <div class="pt-4 space-y-4">
+                <div class="tooltip tooltip-top w-full cursor-not-allowed" 
+                     data-tip="This setting can't be changed here due to a Plex API limitation. Please update 'Allow Sync' directly in Plex for now.">
+                    
+                    {# THE FIX: Added 'pointer-events-none' to this inner div. #}
+                    <div class="form-control w-full opacity-50 pointer-events-none">
+                        <label class="label cursor-not-allowed justify-start">
+                            {# The 'disabled' attribute is still correctly applied here #}
+                            {{ form.allow_downloads(class="toggle toggle-primary mr-3", disabled=True) }}
+                            <span class="label-text font-medium">{{ form.allow_downloads.label.text }}</span>
+                        </label>
+                        <p class="text-xs text-base-content/60 pl-16">{{ form.allow_downloads.description }}</p>
+                    </div>
+                </div>
+                <div class="form-control w-full mb-4">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.allow_4k_transcode(class="toggle toggle-primary mr-3") }}
+                        <span class="label-text font-medium">{{ form.allow_4k_transcode.label.text }}</span>
+                    </label>
+                    <p class="text-xs text-base-content/60 pl-16">{{ form.allow_4k_transcode.description }}</p>
+                </div>
+            </div>
+            <h3 class="text-lg font-semibold border-b border-base-100 pb-2">Notes & Whitelists</h3>
+            <div class="pt-4 space-y-4">
+                <div class="form-control w-full">
+                    {{ form.notes.label(class="label font-medium") }}
+                    {{ form.notes(class="textarea textarea-bordered h-24 w-full" + ("textarea-error" if form.notes.errors else ""), placeholder="Add any notes about this user...") }}
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.is_discord_bot_whitelisted(class="toggle toggle-primary mr-3") }}
+                        <span class="label-text font-medium">{{ form.is_discord_bot_whitelisted.label.text }}</span>
+                    </label>
+                    <p class="text-xs text-base-content/60 pl-16">{{ form.is_discord_bot_whitelisted.description }}</p>
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label cursor-pointer justify-start">
+                        {{ form.is_purge_whitelisted(class="toggle toggle-accent mr-3") }}
+                        <span class="label-text font-medium">{{ form.is_purge_whitelisted.label.text }}</span>
+                    </label>
+                    <p class="text-xs text-base-content/60 pl-16">{{ form.is_purge_whitelisted.description }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div>
+            <h3 class="text-lg font-semibold border-b border-base-100 pb-2">Access Duration</h3>
+             <div class="pt-4 space-y-4">
+                <div class="form-control w-full max-w-sm">
+                    {{ form.access_expires_in_days.label(class="label font-medium whitespace-normal") }}
+                    {{ form.access_expires_in_days(id="user_edit_access_expires_in_days_input", class="input input-bordered " + ("input-error" if form.access_expires_in_days.errors else ""), type="number", min="1") }}
+                    <label class="label whitespace-normal"><span class="label-text-alt">{{ form.access_expires_in_days.description }}</span></label>
+                </div>
+                <div class="form-control w-full">
+                    <label class="label cursor-pointer justify-start whitespace-normal">
+                        {{ form.clear_access_expiration(class="checkbox checkbox-warning checkbox-sm mr-2", id="user_edit_clear_access_expiration_checkbox") }}
+                        <span class="label-text font-medium">{{ form.clear_access_expiration.label.text }}</span>
+                    </label>
+                </div>
+             </div>
+        </div>
+
+        <div>
+             <h3 class="text-lg font-semibold border-b border-base-100 pb-2">Library Access</h3>
+             <div class="pt-4">
+                <div class="form-control w-full">
+                    <div class="flex justify-end mb-2">
+                        <span class="label-text-alt">
+                            <button type="button" id="select_all_libraries" class="btn btn-xs btn-ghost">Select All</button> |
+                            <button type="button" id="deselect_all_libraries" class="btn btn-xs btn-ghost">Deselect All</button>
+                        </span>
+                    </div>
+                    <div class="max-h-80 overflow-y-auto p-4 border border-base-300 rounded-md bg-base-100/50 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                        {% for subfield in form.libraries %}
+                            <label class="label cursor-pointer justify-start py-1">
+                                {{ subfield(class="checkbox checkbox-primary checkbox-sm mr-2 library-checkbox") }}
+                                <span class="label-text">{{ subfield.label.text }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+             </div>
+        </div>
+        
+        <div class="card-actions justify-end mt-4 pt-4 border-t border-base-100">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const selectAllButton = document.getElementById('select_all_libraries');
+    const deselectAllButton = document.getElementById('deselect_all_libraries');
+    // Important: scope the checkbox query to the form to avoid conflicts if other forms exist
+    const editUserForm = document.getElementById('editUserForm');
+    if (!editUserForm) return;
+
+    const libraryCheckboxes = editUserForm.querySelectorAll('.library-checkbox');
+    if (selectAllButton) { selectAllButton.addEventListener('click', function() { libraryCheckboxes.forEach(checkbox => checkbox.checked = true); }); }
+    if (deselectAllButton) { deselectAllButton.addEventListener('click', function() { libraryCheckboxes.forEach(checkbox => checkbox.checked = false); }); }
+
+    const daysInput = document.getElementById('user_edit_access_expires_in_days_input');
+    const clearCheckbox = document.getElementById('user_edit_clear_access_expiration_checkbox');
+
+    function syncExpiryFields() {
+        if (!daysInput || !clearCheckbox) return;
+        if (clearCheckbox.checked) {
+            daysInput.disabled = true;
+            daysInput.value = '';
+        } else {
+            daysInput.disabled = false;
+        }
+    }
+
+    if (clearCheckbox) {
+        clearCheckbox.addEventListener('change', syncExpiryFields);
+    }
+
+    // Run once on load to set initial state
+    syncExpiryFields();
+});
+</script>

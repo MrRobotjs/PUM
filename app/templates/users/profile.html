@@ -1,0 +1,45 @@
+<!-- File: app/templates/user/profile.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - {{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-2 max-w-5xl">
+    <div class="flex items-center mb-2">
+        <a href="{{ url_for('users.list_users') }}" class="btn btn-ghost btn-sm mr-4">
+            <i class="fa-solid fa-arrow-left"></i> Back to Users
+        </a>
+    </div>
+
+    {# --- User Header section --- #}
+    <div class="flex items-center space-x-4 p-4">
+        <div class="avatar">
+            <div class="w-24 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" />
+            </div>
+        </div>
+        <div>
+            <h1 class="text-4xl font-bold">{{ user.plex_username }}</h1>            
+        </div>
+    </div>
+
+    <div class="overflow-x-auto">
+        <div role="tablist" class="tabs tabs-border mt-2 whitespace-nowrap flex-nowrap">
+            <a role="tab" href="{{ url_for('user.view_user', user_id=user.id, tab='profile') }}" class="tab {{ 'tab-active' if active_tab == 'profile' else '' }}">Profile</a>
+            <a role="tab" href="{{ url_for('user.view_user', user_id=user.id, tab='history') }}" class="tab {{ 'tab-active' if active_tab == 'history' else '' }}">History</a>
+            <a role="tab" href="{{ url_for('user.view_user', user_id=user.id, tab='settings') }}" class="tab {{ 'tab-active' if active_tab == 'settings' else '' }}">Settings</a>
+        </div>
+    </div>
+
+    {# --- Tab Content --- #}
+    <div class="py-6">
+        {% if active_tab == 'profile' %}
+            {% include 'users/_profile_tab.html' %}
+        {% elif active_tab == 'history' %}
+            {% include 'users/_history_tab.html' %}
+        {% elif active_tab == 'settings' %}
+            {% include 'users/_settings_tab.html' %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

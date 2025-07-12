@@ -35,9 +35,8 @@
         <label class="label"><span class="label-text">Badge Preview:</span></label>
         <div class="p-2 border rounded-md border-base-300">
             <span class="badge" id="edit_badge_preview">
-                {% if role.icon %}
-                <i id="edit_badge_icon_preview" class="{{ role.icon }}"></i>
-                {% endif %}
+                {# The <i> tag is now always present, and the Jinja logic is inside the class attribute #}
+                <i id="edit_badge_icon_preview" class="{{ role.icon if role.icon else '' }}"></i>
                 <span id="edit_badge_text_preview">{{ role.name }}</span>
             </span>
         </div>

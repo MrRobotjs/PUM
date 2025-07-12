@@ -2,10 +2,10 @@
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
-
-from app.models import User, Setting, EventType
+from sqlalchemy import func, case
+from app.models import User, EventType, StreamHistory
 from app.extensions import db
-from app.utils.helpers import log_event
+from app.utils.helpers import log_event, format_duration
 from . import plex_service
 
 def sync_users_from_plex():
@@ -167,50 +167,76 @@ def sync_users_from_plex():
 def update_user_details(user_id: int, notes=None, new_library_ids=None,
                         is_discord_bot_whitelisted: bool = None,
                         is_purge_whitelisted: bool = None,
+                        allow_downloads: bool = None,
+                        allow_4k_transcode: bool = None,
                         admin_id: int = None):
+    """
+    Updates a user's details in the PUM database and syncs relevant changes to the Plex server.
+    This function now correctly handles partial updates by sending the full final state to Plex.
+    """
     user = User.query.get_or_404(user_id)
     changes_made_to_pum = False
-    libraries_actually_changed_on_plex = False
 
+    # --- PUM-only fields ---
     if notes is not None and user.notes != notes:
-        user.notes = notes; changes_made_to_pum = True
+        user.notes = notes
+        changes_made_to_pum = True
 
     if is_discord_bot_whitelisted is not None and user.is_discord_bot_whitelisted != is_discord_bot_whitelisted:
-        user.is_discord_bot_whitelisted = is_discord_bot_whitelisted; changes_made_to_pum = True
-        log_event(EventType.SETTING_CHANGE, f"User {user.plex_username} Discord Bot Whitelist set to {is_discord_bot_whitelisted}", user_id=user.id, admin_id=admin_id)
+        user.is_discord_bot_whitelisted = is_discord_bot_whitelisted
+        changes_made_to_pum = True
+        log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' Discord Bot Whitelist set to {is_discord_bot_whitelisted}", user_id=user.id, admin_id=admin_id)
 
     if is_purge_whitelisted is not None and user.is_purge_whitelisted != is_purge_whitelisted:
-        user.is_purge_whitelisted = is_purge_whitelisted; changes_made_to_pum = True
-        log_event(EventType.SETTING_CHANGE, f"User {user.plex_username} Purge Whitelist set to {is_purge_whitelisted}", user_id=user.id, admin_id=admin_id)
-
-    if new_library_ids is not None: 
-        current_pum_libs = user.allowed_library_ids if user.allowed_library_ids is not None else []
-        new_library_ids_list = list(new_library_ids) if new_library_ids is not None else []
+        user.is_purge_whitelisted = is_purge_whitelisted
+        changes_made_to_pum = True
+        log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' Purge Whitelist set to {is_purge_whitelisted}", user_id=user.id, admin_id=admin_id)
         
-        changed_on_plex_side = (set(current_pum_libs) != set(new_library_ids_list))
+    if allow_4k_transcode is not None and user.allow_4k_transcode != allow_4k_transcode:
+        user.allow_4k_transcode = allow_4k_transcode
+        changes_made_to_pum = True
+        log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' Allow 4K Transcode set to {allow_4k_transcode}", user_id=user.id, admin_id=admin_id)
 
-        if changed_on_plex_side:
-            try:
-                plex_service.update_user_plex_access(user.plex_username, new_library_ids_list) 
-                user.allowed_library_ids = new_library_ids_list
-                
-                changes_made_to_pum = True; libraries_actually_changed_on_plex = True
-                log_event(EventType.PUM_USER_LIBRARIES_EDITED, f"Manually updated libraries for user '{user.plex_username}'.", user_id=user.id, admin_id=admin_id, details={'new_library_count': len(new_library_ids_list)})
-            except Exception as e:
-                raise Exception(f"Failed to update Plex libraries for {user.plex_username}: {e}")
 
-    if changes_made_to_pum:
-        user.updated_at = datetime.utcnow();
+    # --- Plex-related settings ---
+    libraries_changed = False
+    if new_library_ids is not None:
+        current_pum_libs_set = set(user.allowed_library_ids or [])
+        new_library_ids_set = set(new_library_ids)
+        if current_pum_libs_set != new_library_ids_set:
+            libraries_changed = True
+            user.allowed_library_ids = new_library_ids # Update PUM record
+            changes_made_to_pum = True
+            log_event(EventType.PUM_USER_LIBRARIES_EDITED, f"Manually updated libraries for '{user.plex_username}'.", user_id=user.id, admin_id=admin_id)
+
+    downloads_changed = False
+    if allow_downloads is not None and user.allow_downloads != allow_downloads:
+        downloads_changed = True
+        user.allow_downloads = allow_downloads # Update PUM record
+        changes_made_to_pum = True
+        log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' Allow Downloads set to {allow_downloads}", user_id=user.id, admin_id=admin_id)
+        
+    # --- Make the API call to Plex ONLY IF a Plex-related setting changed ---
+    if libraries_changed or downloads_changed:
         try:
-            db.session.commit()
-            current_app.logger.info(f"User '{user.plex_username}' details updated. Plex libs changed on Plex: {libraries_actually_changed_on_plex}")
-        except Exception as e_commit:
-            db.session.rollback()
-            current_app.logger.error(f"DB Commit error updating user {user.plex_username}: {e_commit}")
-            raise
+            current_app.logger.info(f"[DEBUG-USER_SVC] Preparing to call plex_service.update_user_plex_access for user '{user.plex_username}'. State to send -> library_ids_to_share: {user.allowed_library_ids}, allow_sync: {user.allow_downloads}")
+            # **THE FIX**: We now pass the user's complete, final desired library and download state to the service.
+            plex_service.update_user_plex_access(
+                plex_username_or_id=user.plex_username,
+                library_ids_to_share=user.allowed_library_ids,  # Always send the user's full library list
+                allow_sync=user.allow_downloads                 # Always send the user's full download permission
+            )
+        except Exception as e:
+            # Re-raise the exception to be handled by the route, which can flash an error
+            raise Exception(f"Failed to update Plex permissions for {user.plex_username}: {e}")
+
+    # If any PUM-only field changed, mark the record as updated
+    if changes_made_to_pum:
+        user.updated_at = datetime.utcnow()
+    
+    # The calling route is responsible for db.session.commit()
     return user
-# ... (delete_user_from_pum_and_plex, mass_*, update_user_last_streamed, purge_inactive_users, get_users_eligible_for_purge as before)
-# ...
+
 def delete_user_from_pum_and_plex(user_id: int, admin_id: int = None):
     user = User.query.get_or_404(user_id); username = user.plex_username
     try:
@@ -466,3 +492,44 @@ def get_users_eligible_for_purge(inactive_days_threshold: int, exclude_sharers: 
             
     current_app.logger.info(f"User_Service.py - get_users_eligible_for_purge(): FINAL count of eligible users matching criteria: {len(eligible_users_list)}")
     return eligible_users_list
+
+def get_user_stream_stats(user_id):
+    """Aggregates stream history for a user to produce Tautulli-like stats."""
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(days=1)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    # --- Global Stats ---
+    # Perform all aggregations in a single query for efficiency
+    stats_query = db.session.query(
+        func.count(StreamHistory.id).label('all_time_plays'),
+        func.sum(StreamHistory.duration_seconds).label('all_time_duration'),
+        func.sum(case((StreamHistory.started_at >= day_ago, StreamHistory.duration_seconds), else_=0)).label('duration_24h'),
+        func.count(case((StreamHistory.started_at >= day_ago, 1), else_=None)).label('plays_24h'),
+        func.sum(case((StreamHistory.started_at >= week_ago, StreamHistory.duration_seconds), else_=0)).label('duration_7d'),
+        func.count(case((StreamHistory.started_at >= week_ago, 1), else_=None)).label('plays_7d'),
+        func.count(case((StreamHistory.started_at >= month_ago, 1), else_=None)).label('plays_30d'),
+        func.sum(case((StreamHistory.started_at >= month_ago, StreamHistory.duration_seconds), else_=0)).label('duration_30d')
+    ).filter(StreamHistory.user_id == user_id).first()
+
+    global_stats = {
+        'plays_24h': stats_query.plays_24h or 0,
+        'duration_24h': format_duration(stats_query.duration_24h or 0),
+        'plays_7d': stats_query.plays_7d or 0,
+        'duration_7d': format_duration(stats_query.duration_7d or 0),
+        'plays_30d': stats_query.plays_30d or 0,
+        'duration_30d': format_duration(stats_query.duration_30d or 0),
+        'all_time_plays': stats_query.all_time_plays or 0,
+        'all_time_duration': format_duration(stats_query.all_time_duration or 0)
+    }
+
+    # --- Player Stats ---
+    player_stats_query = db.session.query(
+        StreamHistory.player,
+        func.count(StreamHistory.id).label('play_count')
+    ).filter(StreamHistory.user_id == user_id).group_by(StreamHistory.player).order_by(func.count(StreamHistory.id).desc()).all()
+
+    player_stats = [{'name': p.player or 'Unknown', 'plays': p.play_count} for p in player_stats_query]
+
+    return {'global': global_stats, 'players': player_stats}

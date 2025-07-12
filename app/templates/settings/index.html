@@ -35,6 +35,9 @@
                         {% if current_user.id == 1 or current_user.has_permission('manage_discord_settings') %}
                         <li><a href="{{ url_for('dashboard.settings_discord') }}" class="{{ 'active menu-active' if active_tab == 'discord' else '' }}"><i class="fa-brands fa-discord mr-2"></i> Discord</a></li>
                         {% endif %}
+                        {% if current_user.id == 1 or current_user.has_permission('view_logs') %}
+                        <li><a href="{{ url_for('dashboard.settings_logs') }}" class="{{ 'active menu-active' if active_tab == 'logs' else '' }}"><i class="fa-solid fa-timeline mr-2"></i> Logs</a></li>
+                        {% endif %}
                         {% if current_user.id == 1 or current_user.has_permission('manage_advanced_settings') %}
                         <li><a href="{{ url_for('dashboard.settings_advanced') }}" class="{{ 'active menu-active' if active_tab == 'advanced' else '' }}"><i class="fa-solid fa-cogs mr-2"></i> Advanced</a></li>
                         {% endif %}
@@ -64,6 +67,9 @@
                     {% endif %}
                     {% if current_user.id == 1 or current_user.has_permission('manage_discord_settings') %}
                     <option value="{{ url_for('dashboard.settings_discord') }}" {% if active_tab == 'discord' %}selected{% endif %}>Discord</option>
+                    {% endif %}
+                    {% if current_user.id == 1 or current_user.has_permission('view_logs') %}
+                    <option value="{{ url_for('dashboard.settings_logs') }}" {% if active_tab == 'logs' %}selected{% endif %}>Logs</option>
                     {% endif %}
                     {% if current_user.id == 1 or current_user.has_permission('manage_advanced_settings') %}
                     <option value="{{ url_for('dashboard.settings_advanced') }}" {% if active_tab == 'advanced' %}selected{% endif %}>Advanced</option>
@@ -105,6 +111,9 @@
                 {% elif active_tab == 'roles_edit' %}
                     {% include 'roles/_roles_edit_settings.html' %}
 
+                {% elif active_tab == 'logs' %}
+                    {% include 'settings/_logs_settings.html' %}
+
                 {% else %}
                     <div class="text-center p-8">
                         <i class="fa-solid fa-arrow-left fa-2x text-base-content/30 mb-4"></i>
@@ -131,6 +140,44 @@
 
 {% block modals %}
     {{ super() }}
+    {% if active_tab == 'logs' %}
+        <dialog id="clear_logs_modal" class="modal modal-bottom sm:modal-middle">
+          <div class="modal-box max-w-lg">
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" type="button" onclick="clear_logs_modal.close()">✕</button>
+            </form>
+            <h3 class="font-bold text-lg text-error"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Confirm Clear Logs</h3>
+            <p class="py-4 text-sm">This action is irreversible. Select which event types to clear, or clear all.</p>
+            <form id="confirmClearLogsForm" 
+                  hx-post="{{ url_for('dashboard.clear_logs_route') }}"
+                  hx-indicator="#clear-logs-loader"
+                  hx-on::after-request="if(event.detail.successful) { clear_logs_modal.close(); }"> 
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div class="form-control mb-4">
+                      <label class="label cursor-pointer justify-start">
+                          <input type="checkbox" name="clear_all_types" value="true" class="checkbox checkbox-error mr-2" id="clear_all_history_types_checkbox" checked onchange="toggleEventTypeCheckboxesDisabled(this.checked)">
+                          <span class="label-text font-semibold">Clear ALL Event Types</span>
+                      </label>
+                  </div>
+                  <div id="specific_event_types_for_clear" class="max-h-60 overflow-y-auto border border-base-300 rounded p-2 space-y-1 mb-4 opacity-50">
+                      {% for type in event_types %}
+                      <label class="label cursor-pointer justify-start py-1">
+                          <input type="checkbox" name="event_types_to_clear[]" value="{{ type.name }}" class="checkbox checkbox-sm checkbox-secondary mr-2 event-type-clear-checkbox" checked disabled>
+                          <span class="label-text text-xs">{{ type.name | title | replace('_', ' ') }}</span>
+                      </label>
+                      {% endfor %}
+                  </div>
+                  <div class="modal-action mt-4">
+                      <button type="button" class="btn btn-ghost" onclick="clear_logs_modal.close()">Cancel</button>
+                      <button type="submit" class="btn btn-error">
+                          <span id="clear-logs-loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                          Confirm Clear
+                      </button>
+                  </div>
+            </form>
+          </div>
+        </dialog>
+    {% endif %}
 {% endblock modals %}
 
 {% block scripts %}

@@ -1,0 +1,105 @@
+<!-- File: app/templates/user/_profile_tab.html -->
+{# Expects 'stream_stats' and 'user' in context #}
+
+{% if stream_stats %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    
+    {# Column 1: Global Stats & User Summary #}
+    <div class="space-y-8">
+        <div>
+            <h3 class="text-xl font-bold mb-4">Global Stats</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                <div class="card bg-base-200 shadow-md">
+                    <div class="card-body p-4">
+                        <h4 class="card-title text-sm font-normal text-base-content/70">Last 24 hours</h4>
+                        <div class="flex items-end space-x-2 mt-1">
+                            <span class="text-3xl font-bold text-primary">{{ stream_stats.global.plays_24h }}</span>
+                            <span class="pb-1 text-base-content/80">plays</span>
+                            <p class="text-sm font-medium">{{ stream_stats.global.duration_24h }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card bg-base-200 shadow-md">
+                    <div class="card-body p-4">
+                        <h4 class="card-title text-sm font-normal text-base-content/70">Last 7 days</h4>
+                        <div class="flex items-end space-x-2 mt-1">
+                            <span class="text-3xl font-bold text-primary">{{ stream_stats.global.plays_7d }}</span>
+                            <span class="pb-1 text-base-content/80">plays</span>
+                            <p class="text-sm font-medium">{{ stream_stats.global.duration_7d }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {# --- NEW: 30-day stats card --- #}
+                <div class="card bg-base-200 shadow-md">
+                    <div class="card-body p-4">
+                        <h4 class="card-title text-sm font-normal text-base-content/70">Last 30 days</h4>
+                        <div class="flex items-end space-x-2 mt-1">
+                            <span class="text-3xl font-bold text-primary">{{ stream_stats.global.plays_30d }}</span>
+                            <span class="pb-1 text-base-content/80">plays</span>
+                            <p class="text-sm font-medium">{{ stream_stats.global.duration_30d }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {# --- All Time stats card --- #}
+                <div class="card bg-base-200 shadow-md">
+                    <div class="card-body p-4">
+                        <h4 class="card-title text-sm font-normal text-base-content/70">All Time</h4>
+                        <div class="flex items-end space-x-2 mt-1">
+                            <span class="text-3xl font-bold text-primary">{{ stream_stats.global.all_time_plays }}</span>
+                            <span class="pb-1 text-base-content/80">plays</span>
+                            <p class="text-sm font-medium">{{ stream_stats.global.all_time_duration }}</p>
+                        </div>
+                    </div>
+                </div>
+    
+            </div>
+        </div>
+        <div>
+             <h3 class="text-xl font-bold mb-4">User Summary</h3>
+             <div class="space-y-2 text-sm p-4 bg-base-200 rounded-lg shadow-md">
+                <p><strong>Plex Email:</strong> {{ user.plex_email or 'N/A' }}</p>
+                <p><strong>Plex User ID:</strong> {{ user.plex_user_id or 'N/A' }}</p>
+                <p><strong>Account Added:</strong> {{ user.created_at | format_datetime_human }}</p>
+                <p><strong>Last Synced:</strong> {{ user.last_synced_with_plex | time_ago if user.last_synced_with_plex else 'Never' }}</p>
+                
+                <div class="divider my-2"></div>
+                
+                <h4 class="font-semibold pt-1">Status Flags</h4>
+                <div class="flex flex-wrap gap-2">
+                    {% if is_admin %}<div class="badge badge-error badge-outline"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>{% endif %}
+                    {% if user.is_home_user %}<div class="badge badge-primary">Home User</div>{% endif %}
+                    {% if user.shares_back %}<div class="badge badge-secondary">Shares Back</div>{% endif %}
+                    {% if user.is_purge_whitelisted %}<div class="badge badge-accent">Purge Whitelisted</div>{% endif %}
+                    {% if user.is_discord_bot_whitelisted %}<div class="badge badge-info">Bot Whitelisted</div>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Column 2: Player Stats #}
+    <div>
+        <h3 class="text-xl font-bold mb-4">Player Stats</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {% for player in stream_stats.players %}
+            <div class="card bg-base-200 shadow-md text-center items-center">
+                <div class="card-body p-4">
+                    <h4 class="card-title text-base">{{ player.name or 'Unknown Player' }}</h4>
+                    <p><strong class="text-2xl text-primary">{{ player.plays }}</strong> plays</p>
+                </div>
+            </div>
+            {% else %}
+            <p class="italic text-base-content/70 p-4">No specific player stats available.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+    <div class="text-center p-8 bg-base-200 rounded-lg">
+        <i class="fa-solid fa-chart-simple fa-3x text-base-content/30 mb-4"></i>
+        <p class="text-lg">No stream statistics available for this user.</p>
+    </div>
+{% endif %}

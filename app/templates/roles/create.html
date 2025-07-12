@@ -9,55 +9,74 @@
     </div>
 
     <h2 class="text-xl font-semibold my-4">Create a New Role</h2>
-    
-    <div class="card bg-base-100 shadow">
-        <div class="card-body">
-            <form method="POST" class="max-w-md space-y-4" id="createRoleForm">
-                {{ form.hidden_tag() }}
-                <div class="form-control">
-                    {{ form.name.label(class="label") }}
-                    {{ form.name(class="input input-bordered " + ("input-error" if form.name.errors else ""), id="create_role_name") }}
-                    {% if form.name.errors %}<p class="text-error text-xs mt-1">{{ form.name.errors[0] }}</p>{% endif %}
-                </div>
 
-                <div class="form-control">
-                    {{ form.description.label(class="label") }}
-                    {{ form.description(class="input input-bordered " + ("input-error" if form.description.errors else "")) }}
-                </div>
-                
-                <div class="form-control">
-                    {{ form.color.label(class="label") }}
-                    <div class="input-group">
-                        <input type="color" value="{{ form.color.data or '#808080' }}" class="input input-bordered !p-1" id="create_color_picker">
-                        {{ form.color(class="input input-bordered", id="create_color_text") }}
+    {# --- Tab structure --- #}
+    <div class="overflow-x-auto">
+        <div role="tablist" class="tabs tabs-border whitespace-nowrap flex-nowrap">
+            <a role="tab" class="tab tab-active">Display</a>
+            
+            {# Disabled tabs with explanatory tooltips #}
+            <div class="tooltip tooltip-top" data-tip="Save the role first to set permissions">
+                <a role="tab" class="tab tab-disabled">Permissions</a>
+            </div>
+            <div class="tooltip tooltip-top" data-tip="Save the role first to manage members">
+                <a role="tab" class="tab tab-disabled">Manage Members</a>
+            </div>
+        </div>
+    </div>
+
+    {# --- Form Content --- #}
+    <div class="bg-base-100 p-6 rounded-b-box rounded-tr-box">
+        <div class="card bg-base-100">
+            <div class="card-body p-0">
+                <form method="POST" class="max-w-md space-y-4" id="createRoleForm">
+                    {{ form.hidden_tag() }}
+                    <div class="form-control">
+                        {{ form.name.label(class="label") }}
+                        {{ form.name(class="input input-bordered " + ("input-error" if form.name.errors else ""), id="create_role_name") }}
+                        {% if form.name.errors %}<p class="text-error text-xs mt-1">{{ form.name.errors[0] }}</p>{% endif %}
                     </div>
-                </div>
 
-                <div class="form-control">
-                    {{ form.icon.label(class="label") }}
-                    {{ form.icon(class="input input-bordered", id="create_role_icon", placeholder="e.g., fa-solid fa-star") }}
-                    <label class="label"><span class="label-text-alt">Find icons on <a href="https://fontawesome.com/search" target="_blank" class="link">Font Awesome</a>.</span></label>
-                    {% if form.icon.errors %}<p class="text-error text-xs mt-1">{{ form.icon.errors[0] }}</p>{% endif %}
-                </div>
-
-                <div class="form-control mt-4">
-                    <label class="label"><span class="label-text">Badge Preview:</span></label>
-                    <div class="p-2 border rounded-md border-base-300">
-                        <span class="badge" id="create_badge_preview">
-                            <i id="create_badge_icon_preview"></i>
-                            <span id="create_badge_text_preview">New Role</span>
-                        </span>
+                    <div class="form-control">
+                        {{ form.description.label(class="label") }}
+                        {{ form.description(class="input input-bordered " + ("input-error" if form.description.errors else "")) }}
                     </div>
-                </div>
+                    
+                    <div class="form-control">
+                        {{ form.color.label(class="label") }}
+                        <div class="input-group">
+                            <input type="color" value="{{ form.color.data or '#808080' }}" class="input input-bordered !p-1" id="create_color_picker">
+                            {{ form.color(class="input input-bordered", id="create_color_text") }}
+                        </div>
+                    </div>
 
-                <div class="card-actions justify-end mt-6">
-                    {{ form.submit(class="btn btn-primary") }}
-                </div>
-            </form>
+                    <div class="form-control">
+                        {{ form.icon.label(class="label") }}
+                        {{ form.icon(class="input input-bordered", id="create_role_icon", placeholder="e.g., fa-solid fa-star") }}
+                        <label class="label"><span class="label-text-alt">Find icons on <a href="https://fontawesome.com/search" target="_blank" class="link">Font Awesome</a>.</span></label>
+                        {% if form.icon.errors %}<p class="text-error text-xs mt-1">{{ form.icon.errors[0] }}</p>{% endif %}
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Badge Preview:</span></label>
+                        <div class="p-2 border rounded-md border-base-300">
+                            <span class="badge" id="create_badge_preview">
+                                <i id="create_badge_icon_preview"></i>
+                                <span id="create_badge_text_preview">New Role</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="card-actions justify-end mt-6">
+                        {{ form.submit(class="btn btn-primary", value="Create Role and Continue") }}
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 {% endblock %}
 
+{# The JavaScript for the badge preview can be reused #}
 {% block scripts %}
 {{ super() }}
 <script>

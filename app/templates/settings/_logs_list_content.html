@@ -1,10 +1,10 @@
-{# File: app/templates/history/_history_list_content.html #}
+<!-- File: app/templates/settings/_logs_list_content.html -->
 {# Expects 'logs' (pagination object) and 'current_per_page' in context #}
-{# Optionally 'event_types' if the filter dropdown for event types is part of this partial #}
 
 {% if logs and logs.items %}
-    <div class="overflow-x-auto bg-base-200 shadow-lg rounded-lg">
+    <div class="overflow-x-auto bg-base-100 shadow-lg rounded-lg">
         <table class="table table-zebra w-full table-sm md:table-md">
+            <!-- Table headers remain the same -->
             <thead>
                 <tr>
                     <th>Timestamp</th>
@@ -31,10 +31,10 @@
                         {% if log.details and log.details|length > 0 %}
                             <div class="dropdown dropdown-hover dropdown-left">
                                 <label tabindex="0" class="btn btn-xs btn-ghost"><i class="fa-solid fa-circle-info"></i> View</label>
-                                <div tabindex="0" class="dropdown-content z-[1] card card-compact w-64 p-2 shadow bg-base-100 text-base-content max-h-48 overflow-y-auto"> {# Changed text-primary-content to text-base-content #}
+                                <div tabindex="0" class="dropdown-content z-[1] card card-compact w-64 p-2 shadow bg-base-100 text-base-content max-h-48 overflow-y-auto">
                                     <div class="card-body p-2 text-xs">
                                     {% for key, value in log.details.items() %}
-                                        <p><strong>{{ key|replace('_', ' ')|title }}:</strong> {{ value | string | truncate(50, True) }}</p> {# Added string filter and truncate #}
+                                        <p><strong>{{ key|replace('_', ' ')|title }}:</strong> {{ value | string | truncate(50, True) }}</p>
                                     {% endfor %}
                                     </div>
                                 </div>
@@ -72,8 +72,8 @@
         {# Previous Page Link #}
         {% set prev_link_args = request.args.to_dict() %}{% set _ = prev_link_args.update({'page': logs.prev_num}) %}
         <a {% if logs.has_prev %}
-               hx-get="{{ url_for('dashboard.history_partial', **prev_link_args) }}" 
-               hx-target="#history_table_container" 
+               hx-get="{{ url_for('dashboard.settings_logs_partial', **prev_link_args) }}" 
+               hx-target="#logs_table_container" 
                hx-swap="innerHTML" 
                hx-push-url="true" 
            {% else %}
@@ -88,8 +88,8 @@
                 {% if logs.page == page_num %}
                     <button class="join-item btn btn-primary btn-active">{{ page_num }}</button>
                 {% else %}
-                    <a hx-get="{{ url_for('dashboard.history_partial', **page_link_args) }}"
-                       hx-target="#history_table_container"
+                    <a hx-get="{{ url_for('dashboard.settings_logs_partial', **page_link_args) }}"
+                       hx-target="#logs_table_container"
                        hx-swap="innerHTML"
                        hx-push-url="true"
                        class="join-item btn">{{ page_num }}</a>
@@ -102,8 +102,8 @@
         {# Next Page Link #}
         {% set next_link_args = request.args.to_dict() %}{% set _ = next_link_args.update({'page': logs.next_num}) %}
         <a {% if logs.has_next %}
-               hx-get="{{ url_for('dashboard.history_partial', **next_link_args) }}"
-               hx-target="#history_table_container"
+               hx-get="{{ url_for('dashboard.settings_logs_partial', **next_link_args) }}"
+               hx-target="#logs_table_container"
                hx-swap="innerHTML"
                hx-push-url="true"
            {% else %}
@@ -112,13 +112,12 @@
            class="join-item btn {{ 'btn-disabled' if not logs.has_next else '' }}"><i class="fa-solid fa-arrow-right"></i></a>
     </div>
     {% endif %}
-
 {% else %}
-    <div class="text-center py-10 bg-base-200 rounded-lg shadow">
+    <div class="text-center py-10 bg-base-100 rounded-lg shadow">
         <i class="fa-solid fa-file-lines fa-3x text-base-content/30 mb-4"></i>
-        <p class="text-xl text-base-content/70">No history logs found.</p>
-        {% if request.args.get('search_message') or request.args.get('event_type') or request.args.get('related_user') or request.args.get('per_page') %}
-             <a href="{{ url_for('dashboard.history') }}" class="btn btn-sm btn-outline mt-4">Clear Filters</a>
+        <p class="text-xl text-base-content/70">No logs found.</p>
+        {% if request.args %}
+             <a href="{{ url_for('dashboard.settings_logs') }}" class="btn btn-sm btn-outline mt-4">Clear Filters</a>
         {% endif %}
     </div>
 {% endif %}

@@ -77,10 +77,20 @@
             </div>
 
             <div class="card-actions justify-end mt-auto pt-3 border-t border-base-300/90"> {# Increased pt-3 #}
-                {% if current_user.has_permission('edit_user') %}
-                <a href="{{ url_for('users.edit_user', user_id=user.id) }}" class="btn btn-xs btn-ghost text-primary hover:bg-primary/10 card-action-button" title="Edit User">
-                    <i class="fa-solid fa-pen-to-square"></i>
+                {% if current_user.has_permission('view_user') %}
+                <a href="{{ url_for('user.view_user', user_id=user.id) }}" title="User Profile" class="btn btn-xs btn-ghost text-info hover:bg-info/10">
+                    <i class="fa-solid fa-eye"></i>
                 </a>
+                {% endif %}
+                {% if current_user.has_permission('edit_user') %}
+                <button class="btn btn-xs btn-ghost text-primary hover:bg-primary/10 card-action-button"
+                        title="Quick Edit Settings"
+                        hx-get="{{ url_for('users.get_quick_edit_form', user_id=user.id) }}"
+                        hx-target="#quick_edit_modal_content_div"
+                        hx-swap="innerHTML"
+                        onclick="quick_edit_user_modal.showModal()">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
                 {% endif %}
                 {% if current_user.has_permission('delete_user') %}
                 <button class="btn btn-xs btn-ghost text-error hover:bg-error/10 card-action-button" title="Remove User"

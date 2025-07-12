@@ -1,0 +1,199 @@
+<!-- File: app/templates/user/_history_tab_content.html -->
+{# Expects 'user' and 'history_logs' (pagination object) in context #}
+
+<form id="history-delete-form"
+      hx-post="{{ url_for('user.delete_stream_history', user_id=user.id) }}"
+      hx-on::after-request="if(event.detail.successful) htmx.trigger('#user-history-container', 'load');">
+      
+    <div id="history-actions-header" class="mb-4 hidden">
+        <button type="submit" class="btn btn-sm btn-error"
+                hx-confirm="Are you sure you want to permanently delete the selected history entries? This cannot be undone.">
+            <i class="fa-solid fa-trash-can mr-2"></i>
+            Delete <span id="history-selected-count">0</span> Selected Item(s)
+        </button>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="table table-sm w-full">
+            <thead>
+                <tr>
+                    <th class="w-10 text-center">
+                        <input type="checkbox" id="history-select-all" class="checkbox checkbox-sm" title="Select All">
+                    </th>
+                    <th>Media Title</th>
+                    <th>Player / Platform</th>
+                    <th class="hidden sm:table-cell">IP Address</th>
+                    <th>Started</th>
+                    <th>Paused</th> {# New Column #}
+                    <th>Stopped</th>
+                    <th>Duration</th>
+                    <th>Progress</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in history_logs.items %}
+                    <tr class="hover">
+                        <td class="text-center">
+                            <input type="checkbox" name="history_ids[]" value="{{ entry.id }}" class="checkbox checkbox-sm history-checkbox">
+                        </td>
+                        <td>
+                            <div class="font-bold">{{ entry.media_title or 'Unknown Title' }}</div>
+                            {% if entry.grandparent_title %}
+                                <div class="text-xs opacity-70">{{ entry.grandparent_title }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="font-medium">{{ entry.player or 'Unknown Player' }}</div>
+                            <div class="text-xs opacity-70">{{ entry.product or entry.platform or 'Unknown Platform' }}</div>
+                        </td>
+                        <td class="hidden sm:table-cell">
+                            {% if entry.ip_address %}
+                                <span class="font-mono text-xs">{{ entry.ip_address }}</span>
+                                <span class="badge badge-ghost badge-xs ml-1">{{ 'LAN' if entry.is_lan else 'WAN' }}</span>
+                            {% else %}
+                                <span class="text-xs italic opacity-60">N/A</span>
+                            {% endif %}
+                        </td>
+                        
+                        {# --- MODIFIED: Started Column --- #}
+                        <td title="{{ entry.started_at | format_datetime_human if entry.started_at }}">
+                            <div>{{ entry.started_at.strftime('%I:%M %p') if entry.started_at else 'N/A' }}</div>
+                            <div class="text-xs opacity-60">{{ entry.started_at | format_datetime_human(include_time=False) }}</div>
+                        </td>
+                        
+                        {# --- NEW: Paused Column --- #}
+                        <td>
+                            {% if entry.stopped_at and entry.duration_seconds is not none %}
+                                {# Calculate paused time on the fly #}
+                                {% set total_elapsed = (entry.stopped_at - entry.started_at).total_seconds() %}
+                                {% set paused_seconds = total_elapsed - entry.duration_seconds %}
+                                {{ paused_seconds | format_duration if paused_seconds > 0 else '0m' }}
+                            {% else %}
+                                ...
+                            {% endif %}
+                        </td>
+                        
+                        <td>
+                            {{ entry.stopped_at.strftime('%I:%M %p') if entry.stopped_at else '...' }}
+                        </td>
+                        <td>
+                            {{ entry.duration_seconds | format_duration if entry.duration_seconds is not none else 'In Progress' }}
+                        </td>
+                        <td class="text-center">
+                            {% set percent = ((entry.view_offset_at_end_seconds | float / entry.media_duration_seconds | float) * 100) | round if entry.media_duration_seconds and entry.view_offset_at_end_seconds and entry.media_duration_seconds > 0 else 0 %}
+                            <div class="tooltip" data-tip="{{ percent | int }}% Watched">
+                                <div class="radial-progress text-primary" style="--value:{{ percent }}; --size:2.5rem; --thickness: 4px;" role="progressbar">
+                                    <span class="text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity">{{ percent | int }}</span>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                {% else %}
+                    {# --- MODIFIED: Colspan increased from 8 to 9 --- #}
+                    <tr>
+                        <td colspan="9" class="text-center py-6 text-base-content/70 italic">
+                            No stream history found for this user.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<!-- Pagination remains the same -->
+{% if history_logs and history_logs.pages > 1 %}
+    <div class="join my-8 flex justify-center">
+        {% if history_logs.has_prev %}
+            <a hx-get="{{ url_for('user.view_user', user_id=user.id, tab='history', page=history_logs.prev_num) }}"
+               hx-target="#user-history-container"
+               class="join-item btn">
+               <i class="fa-solid fa-arrow-left"></i>
+            </a>
+        {% else %}
+           <button class="join-item btn btn-disabled"><i class="fa-solid fa-arrow-left"></i></button>
+        {% endif %}
+        {% for page_num in history_logs.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+            {% if page_num %}
+                {% if history_logs.page == page_num %}
+                    <button class="join-item btn btn-primary btn-active">{{ page_num }}</button>
+                {% else %}
+                    <a hx-get="{{ url_for('user.view_user', user_id=user.id, tab='history', page=page_num) }}"
+                       hx-target="#user-history-container"
+                       class="join-item btn">
+                       {{ page_num }}
+                    </a>
+                {% endif %}
+            {% else %}
+                <button class="join-item btn btn-disabled">...</button>
+            {% endif %}
+        {% endfor %}
+        {% if history_logs.has_next %}
+            <a hx-get="{{ url_for('user.view_user', user_id=user.id, tab='history', page=history_logs.next_num) }}"
+               hx-target="#user-history-container"
+               class="join-item btn">
+               <i class="fa-solid fa-arrow-right"></i>
+            </a>
+        {% else %}
+             <button class="join-item btn btn-disabled"><i class="fa-solid fa-arrow-right"></i></button>
+        {% endif %}
+    </div>
+{% endif %}
+
+<script>
+(function() {
+    function initializeHistoryCheckboxes() {
+        const form = document.getElementById('history-delete-form');
+        if (!form) return;
+
+        const deleteButton = form.querySelector('button[type="submit"]');
+        if (deleteButton) {
+            deleteButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                htmx.trigger(form, 'submit');
+            });
+        }
+
+        const selectAll = form.querySelector('#history-select-all');
+        const checkboxes = form.querySelectorAll('.history-checkbox');
+        const actionsHeader = document.getElementById('history-actions-header');
+        const selectedCountSpan = document.getElementById('history-selected-count');
+
+        if (!selectAll || !actionsHeader || !selectedCountSpan) return;
+
+        function updateUI() {
+            const checkedCheckboxes = form.querySelectorAll('.history-checkbox:checked');
+            const count = checkedCheckboxes.length;
+            
+            actionsHeader.classList.toggle('hidden', count === 0);
+            selectedCountSpan.textContent = count;
+
+            if (count === 0) {
+                selectAll.checked = false;
+                selectAll.indeterminate = false;
+            } else if (count === checkboxes.length) {
+                selectAll.checked = true;
+                selectAll.indeterminate = false;
+            } else {
+                selectAll.checked = false;
+                selectAll.indeterminate = true;
+            }
+        }
+
+        selectAll.addEventListener('change', () => {
+            checkboxes.forEach(cb => {
+                cb.checked = selectAll.checked;
+            });
+            updateUI();
+        });
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', updateUI);
+        });
+
+        updateUI();
+    }
+    initializeHistoryCheckboxes();
+    htmx.on('#user-history-container', 'htmx:afterSwap', initializeHistoryCheckboxes);
+})();
+</script>

@@ -167,6 +167,14 @@ class UserEditForm(FlaskForm): # As updated for whitelist fields
         default=False,
         description="Check this to remove any current access expiration date for this user."
     )
+    allow_downloads = BooleanField(
+        'Allow Downloads (Sync)',
+        description="Grants this user permission to download/sync media from their accessible libraries."
+    )
+    allow_4k_transcode = BooleanField(
+        'Allow 4K Transcoding',
+        description="Allow this user to transcode 4K content. Disabling may require a companion script (e.g., via Tautulli) to enforce."
+    )
     
     submit = SubmitField('Save Changes')
 

@@ -8,8 +8,6 @@ import secrets
 import urllib.parse 
 import requests 
 import xml.etree.ElementTree as ET 
-# import plexapi # Not strictly needed for version here unless debugging again
-
 from app.models import AdminAccount, Setting, EventType, SettingValueType
 from app.forms import AccountSetupForm, PlexConfigForm, AppBaseUrlForm, DiscordConfigForm
 from app.extensions import db
