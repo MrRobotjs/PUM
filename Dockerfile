@@ -1,49 +1,62 @@
 # File: Dockerfile
 
-# Stage 1: Python application stage
-FROM python:3.11-slim
+FROM python:3.11-alpine
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV FLASK_APP=run.py
-# FLASK_ENV can be set here or via docker-compose.yml environment section
-# For production images, you might set ENV FLASK_ENV=production here.
-# For development, it's often handled by .flaskenv or docker-compose.
+# Set default environment variables for user/group IDs
+ENV PUID=1000
+ENV PGID=1000
 
-# Set the working directory in the container
+# Install necessary system packages FIRST to maximize pip cache hits
+# ONLY install what's strictly necessary before pip.
+# This step is critical for Alpine images if Python packages need compilation.
+RUN apk add --no-cache curl tzdata su-exec \
+    # Add build tools for Python packages (if needed).
+    # You'll need these if your Python packages are compiled from source.
+    # Check your pip install logs for "Building wheel for X" or "Failed building wheel for X".
+    # Common build deps:
+    build-base \
+    python3-dev \
+    # Other potential deps for common libraries:
+    # libffi-dev \ # for cryptography
+    # openssl-dev # for cryptography
+    # jpeg-dev zlib-dev # for Pillow/image processing libs
+    # postgresql-dev # for psycopg2
+    # mariadb-dev # for mysqlclient
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up the working directory for our code.
 WORKDIR /app
 
-# Copy requirements.txt first to leverage Docker cache
+# --- CACHE LAYER OPTIMIZATION STARTS HERE ---
+# 1. Copy *only* requirements.txt
 COPY requirements.txt .
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entrypoint script first and make it executable
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# 2. Install Python dependencies
+# This layer will be cached unless requirements.txt changes or a layer above it changes.
+# Remove --no-cache-dir for faster local builds, keep for production to save image size.
+RUN pip install --no-cache-dir -r requirements.txt
+# --- CACHE LAYER OPTIMIZATION ENDS HERE ---
+
+# Copy entrypoint script and make it executable (can be before or after app code)
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy the rest of the application code
-# This includes your pre-built static/css/output.css
+# This step invalidates cache AFTER pip install, which is good.
 COPY . .
 
-# Create a non-root user to run the application
-# Using --no-create-home for a simpler system user
-RUN addgroup --system appuser && adduser --system --ingroup appuser --no-create-home appuser
+# Create necessary directories and user
+RUN mkdir -p /app/instance /.cache
+RUN addgroup -S -g "$PGID" pumgroup && \
+    adduser -S -G pumgroup -u "$PUID" pumuser
 
-# Ensure the instance folder exists and is writable by the appuser
-# The volume mount from docker-compose.yml will handle the actual /app/instance persistence.
-# This step ensures the directory structure is present if the volume is new or empty.
-RUN mkdir -p /app/instance && chown -R appuser:appuser /app/instance
-
-# Switch to the non-root user
-USER appuser
-
-# Expose the port the app runs on (Gunicorn will bind to this inside the container)
+# Healthcheck and expose (already good)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -fs http://localhost:5000/health || exit 1
 EXPOSE 5000
 
-# Define the entrypoint to run the script that handles migrations and starts Gunicorn
-ENTRYPOINT ["/entrypoint.sh"]
-
-# CMD is no longer needed here as 'exec gunicorn ...' in entrypoint.sh handles the final command.
-# If entrypoint.sh was just for migrations and didn't 'exec', you'd keep CMD.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--forwarded-allow-ips", "*", \
+     "run:app"]
