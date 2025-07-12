@@ -4,22 +4,22 @@
       hx-post="{{ url_for('users.purge_inactive_users') }}"
       hx-target="#purge-status-message" {# Target for the final status message on the main page #}
       hx-swap="innerHTML"
-      hx-indicator="#confirm-purge-selected-loader"
       hx-on::after-request="
         if(event.detail.successful) {
-            confirm_purge_modal.close(); /* Close this preview modal */
-            htmx.trigger(document.body, 'refreshUserList'); /* Refresh main user list */
+            confirm_purge_modal.close();
+            htmx.trigger('#user-list-container', 'load');
         } else {
-            /* Optionally show error within this modal if confirm purge fails */
-            const errorDiv = document.getElementById('confirm_purge_error_message_div');
-            if(errorDiv) errorDiv.innerHTML = '<div class=\'alert alert-error text-xs p-2\'>Error during final purge. Check main page status.</div>';
+            htmx.find('#confirm_purge_error_message_div').innerHTML = `<div class='alert alert-error text-xs p-2'>Error during final purge. Check main page status.</div>`;
         }
       ">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {# Pass original criteria for logging/confirmation if needed, though not strictly used by purge logic now #}
-    <input type="hidden" name="original_inactive_days" value="{{ purge_criteria.inactive_days }}">
-    <input type="hidden" name="original_exclude_sharers" value="{{ 'true' if purge_criteria.exclude_sharers else 'false' }}">
-    <input type="hidden" name="original_exclude_whitelisted" value="{{ 'true' if purge_criteria.exclude_whitelisted else 'false' }}">
+    
+    <!-- START: Add Hidden Fields -->
+    <input type="hidden" name="inactive_days" value="{{ purge_criteria.inactive_days }}">
+    <input type="hidden" name="exclude_sharers" value="{{ 'true' if purge_criteria.exclude_sharers else 'false' }}">
+    <input type="hidden" name="exclude_whitelisted" value="{{ 'true' if purge_criteria.exclude_whitelisted else 'false' }}">
+    <input type="hidden" name="ignore_creation_date" value="{{ 'true' if purge_criteria.ignore_creation_date else 'false' }}">
+    <!-- END: Add Hidden Fields -->
 
     <h3 class="font-bold text-lg text-warning"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Confirm Users for Purge</h3>
     <p class="py-2 text-sm">The following <strong id="purge-preview-count">{{ eligible_users|length }}</strong> user(s) match your criteria and are scheduled for removal. Uncheck any users you wish to spare.</p>
@@ -35,7 +35,7 @@
             {% for user in eligible_users %}
             <div class="p-1 rounded hover:bg-base-300/50 text-xs">
                 <label class="label cursor-pointer justify-start p-0">
-                    <input type="checkbox" name="user_ids_to_purge" value="{{ user.id }}" class="checkbox checkbox-sm checkbox-secondary mr-2 purge-user-checkbox" checked>
+                    <input type="checkbox" name="user_ids_to_purge" value="{{ user.id }}" class="checkbox checkbox-sm checkbox-secondary purge-user-checkbox" checked>
                     <span class="font-semibold">{{ user.plex_username }}</span>
                     <span class="ml-2 text-base-content/70 truncate" title="{{user.plex_email}}">({{ user.plex_email or 'No Email' }})</span>
                     <span class="ml-auto text-base-content/60 text-right">
@@ -64,37 +64,29 @@
 </form>
 
 <script>
-    // Script for this modal's specific interactions
-    (function() {
-        const checkboxes = document.querySelectorAll('.purge-user-checkbox');
-        const toggleAllCheckbox = document.getElementById('toggle_all_purge_users');
-        const finalCountSpan = document.getElementById('final-purge-count');
-        const previewCountSpan = document.getElementById('purge-preview-count'); // The one at the top
-        const confirmButton = document.getElementById('confirm_purge_selected_button');
+(function() {
+    const form = document.getElementById('confirmPurgeSelectedForm');
+    if (!form) return;
+    const checkboxes = form.querySelectorAll('.purge-user-checkbox');
+    const toggleAllCheckbox = form.querySelector('#toggle_all_purge_users');
+    const finalCountSpan = form.querySelector('#final-purge-count');
+    const confirmButton = form.querySelector('#confirm_purge_selected_button');
 
-        function updateTotalCount() {
-            const count = document.querySelectorAll('.purge-user-checkbox:checked').length;
-            if (finalCountSpan) finalCountSpan.textContent = count;
-            if (previewCountSpan) previewCountSpan.textContent = count; // Also update the top count if needed
-            if (confirmButton) confirmButton.disabled = (count === 0);
-        }
+    function updateTotalCount() {
+        const count = form.querySelectorAll('.purge-user-checkbox:checked').length;
+        if (finalCountSpan) finalCountSpan.textContent = count;
+        if (confirmButton) confirmButton.disabled = (count === 0);
+    }
 
-        checkboxes.forEach(cb => {
-            cb.removeEventListener('change', updateTotalCount); // Prevent duplicate listeners if modal reloads
-            cb.addEventListener('change', updateTotalCount);
-        });
+    checkboxes.forEach(cb => cb.addEventListener('change', updateTotalCount));
 
-        if (toggleAllCheckbox) {
-            toggleAllCheckbox.removeEventListener('change', handleToggleAll);
-            toggleAllCheckbox.addEventListener('change', handleToggleAll);
-        }
-        
-        function handleToggleAll() {
+    if (toggleAllCheckbox) {
+        toggleAllCheckbox.addEventListener('change', () => {
             checkboxes.forEach(cb => cb.checked = toggleAllCheckbox.checked);
             updateTotalCount();
-        }
-        
-        // Initial count
-        updateTotalCount(); 
-    })();
+        });
+    }
+    
+    updateTotalCount(); 
+})();
 </script>

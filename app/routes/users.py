@@ -432,24 +432,22 @@ def mass_edit_users():
 @permission_required('purge_users')
 def purge_inactive_users():
     try:
-        inactive_days = request.form.get('inactive_days', type=int)
-        exclude_sharers = request.form.get('exclude_sharers') == 'true'
-        exclude_whitelisted = request.form.get('exclude_purge_whitelisted') == 'true' # Get new field
+        user_ids_to_purge = request.form.getlist('user_ids_to_purge')
+        if not user_ids_to_purge:
+            return render_template('partials/_alert_message.html', message="No users were selected to be purged.", category='info'), 400
 
-        if inactive_days is None or inactive_days < 7:
-            return render_template('partials/_alert_message.html', message="Inactivity period must be at least 7 days.", category='error'), 400
-        
+        # Pass all criteria to the service layer for a final, safe check
         results = user_service.purge_inactive_users(
-            inactive_days_threshold=inactive_days,
-            exclude_sharers=exclude_sharers,
-            exclude_whitelisted=exclude_whitelisted, # Pass to service
-            admin_id=current_user.id
+            user_ids_to_purge=[int(uid) for uid in user_ids_to_purge],
+            admin_id=current_user.id,
+            inactive_days_threshold=request.form.get('inactive_days', type=int),
+            exclude_sharers=request.form.get('exclude_sharers') == 'true',
+            exclude_whitelisted=request.form.get('exclude_whitelisted') == 'true',
+            ignore_creation_date_for_never_streamed=request.form.get('ignore_creation_date') == 'true'
         )
         return render_template('partials/_alert_message.html', 
                                message=results['message'], 
                                category='success' if results['errors'] == 0 else 'warning')
-    except ValueError as ve: # For bad inactive_days from form
-        return render_template('partials/_alert_message.html', message=str(ve), category='error'), 400
     except Exception as e:
         current_app.logger.error(f"Error during purge inactive users route: {e}", exc_info=True)
         return render_template('partials/_alert_message.html', message=f"An unexpected error occurred: {e}", category='error'), 500

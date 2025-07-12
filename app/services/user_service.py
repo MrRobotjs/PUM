@@ -371,123 +371,85 @@ def update_user_last_streamed(plex_user_id_or_uuid, last_streamed_at_datetime: d
         # current_app.logger.warning(f"User_Service.py - update_user_last_streamed(): User not found in PUM with Plex ID/UUID: {plex_user_id_or_uuid}.")
     return False
 
-def purge_inactive_users(admin_id: int, user_ids_to_purge: list[int] = None, 
-                         inactive_days_threshold: int = None, 
-                         exclude_sharers: bool = None, 
-                         exclude_whitelisted: bool = None):
-    
-    current_app.logger.info(f"User_Service.py - purge_inactive_users(): Called with user_ids_to_purge: {user_ids_to_purge}, admin_id: {admin_id}")
-
+def purge_inactive_users(user_ids_to_purge: list[int], admin_id: int, inactive_days_threshold: int, exclude_sharers: bool, exclude_whitelisted: bool, ignore_creation_date_for_never_streamed: bool):
+    """
+    Deletes a specific list of users, but only after re-validating them
+    against the provided criteria as a final safety check.
+    """
     if not user_ids_to_purge:
-        current_app.logger.warning("User_Service.py - purge_inactive_users(): No user IDs provided for purge. Aborting.")
-        return {"message": "No users selected for purge.", "purged_count": 0, "errors": 0, "skipped_final_check": 0}
+        return {"message": "No users were selected for purge.", "purged_count": 0, "errors": 0}
 
+    # Re-run the eligibility check on the provided list of users as a safeguard.
+    eligible_users_final = get_users_eligible_for_purge(
+        inactive_days_threshold, exclude_sharers, exclude_whitelisted, ignore_creation_date_for_never_streamed
+    )
+    final_ids_to_delete = {user['id'] for user in eligible_users_final}.intersection(set(user_ids_to_purge))
+    
     purged_count = 0
     error_count = 0
-    skipped_due_to_final_check = 0
-    deleted_usernames_log_detail = []
-
-    users_to_process = User.query.filter(User.id.in_(user_ids_to_purge)).all()
+    
+    users_to_process = User.query.filter(User.id.in_(final_ids_to_delete)).all()
 
     for user in users_to_process:
-        final_check_skip = False
-        if user.is_home_user:
-            current_app.logger.info(f"User_Service.py - purge_inactive_users(): Final check: Skipping home user {user.plex_username}.")
-            final_check_skip = True
-        # The user_ids_to_purge should have ALREADY been filtered by original criteria.
-        # These checks are just last-minute safeguards if state changed rapidly.
-        elif exclude_whitelisted and user.is_purge_whitelisted: 
-             current_app.logger.info(f"User_Service.py - purge_inactive_users(): Final check: Skipping purge-whitelisted user {user.plex_username}.")
-             final_check_skip = True
-        elif exclude_sharers and user.shares_back:
-            current_app.logger.info(f"User_Service.py - purge_inactive_users(): Final check: Skipping sharer {user.plex_username}.")
-            final_check_skip = True
-        
-        if final_check_skip:
-            skipped_due_to_final_check +=1
-            continue
-
         try:
             delete_user_from_pum_and_plex(user.id, admin_id=admin_id)
             purged_count += 1
-            deleted_usernames_log_detail.append(user.plex_username)
         except Exception as e:
-            current_app.logger.error(f"User_Service.py - purge_inactive_users(): Error purging user {user.plex_username} (ID: {user.id}): {e}")
-            # The delete_user_from_pum_and_plex already logs the error for this specific user
             error_count += 1
+            current_app.logger.error(f"User_Service.py - purge_inactive_users(): Error purging user {user.plex_username} (ID: {user.id}): {e}")
+
+    result_message = f"Purge complete: {purged_count} users removed."
+    if len(final_ids_to_delete) != len(user_ids_to_purge):
+        result_message += f" ({len(user_ids_to_purge) - len(final_ids_to_delete)} skipped by final safety check)."
+    if error_count > 0:
+        result_message += f" {error_count} errors."
+
+    log_event(EventType.PUM_USER_DELETED_FROM_PUM, result_message, admin_id=admin_id, details={
+        "action": "purge_selected_inactive_users", "purged_count": purged_count, "errors": error_count
+    })
     
-    result_message = (f"Purge complete: {purged_count} users removed. "
-                      f"{error_count} errors. {skipped_due_to_final_check} skipped in final check.")
-    
-    log_event_details = {
-        "action": "purge_selected_inactive_users", 
-        "purged_count": purged_count, 
-        "errors": error_count,
-        "skipped_final_check": skipped_due_to_final_check,
-        "attempted_ids_count": len(user_ids_to_purge),
-        "original_criteria_for_log": {
-            "days": inactive_days_threshold, 
-            "sharers": exclude_sharers, 
-            "whitelisted": exclude_whitelisted
-        },
-        "purged_users_sample": deleted_usernames_log_detail[:10]
-    }
-    # Log a summary event for the overall purge operation
-    log_event(EventType.PUM_USER_DELETED_FROM_PUM, result_message, admin_id=admin_id, details=log_event_details)
-    
-    return {"message": result_message, "purged_count": purged_count, "errors": error_count, "skipped_final_check": skipped_due_to_final_check}
+    return {"message": result_message, "purged_count": purged_count, "errors": error_count}
 
 def get_users_eligible_for_purge(inactive_days_threshold: int, exclude_sharers: bool, exclude_whitelisted: bool, ignore_creation_date_for_never_streamed: bool = False):
-    """
-    Queries the database to find users who are eligible for purging based on a set of criteria.
-    """
     if inactive_days_threshold < 1:
         raise ValueError("Inactivity threshold must be at least 1 day.")
 
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=inactive_days_threshold)
+    
+    # Base query always excludes home users.
+    query = User.query.filter(User.is_home_user == False) 
 
-    # Start with a base query that always excludes Plex Home users
-    query = User.query.filter(User.is_home_user == False)
-
-    # Conditionally add filters based on the form checkboxes.
-    # This correctly handles cases where the database value might be NULL for older users.
+    # --- START OF FIX ---
+    # Conditionally add filters based on the checkboxes.
+    # This structure correctly handles the boolean logic.
     if exclude_sharers:
-        query = query.filter(or_(User.shares_back == False, User.shares_back.is_(None)))
-
-    if exclude_whitelisted:
-        query = query.filter(or_(User.is_purge_whitelisted == False, User.is_purge_whitelisted.is_(None)))
-
+        query = query.filter(User.shares_back == False)
+    
+    if exclude_whitelisted: 
+        query = query.filter(User.is_purge_whitelisted == False)
+    # --- END OF FIX ---
+        
     eligible_users_list = []
     potential_users = query.all()
 
     for user in potential_users:
         is_eligible_for_purge = False
-
+        
         if user.last_streamed_at is None:
-            # This user has NEVER streamed.
             if ignore_creation_date_for_never_streamed:
-                # The admin has chosen to purge them regardless of how recently they joined.
                 is_eligible_for_purge = True
             else:
-                # Default behavior: Only purge if they were created before the cutoff date.
                 created_at_aware = user.created_at.replace(tzinfo=timezone.utc) if user.created_at.tzinfo is None else user.created_at
                 if created_at_aware < cutoff_date:
                     is_eligible_for_purge = True
-        else:
-            # This user HAS streamed before. Check if their last stream was before the cutoff date.
+        else: 
             last_streamed_aware = user.last_streamed_at.replace(tzinfo=timezone.utc) if user.last_streamed_at.tzinfo is None else user.last_streamed_at
             if last_streamed_aware < cutoff_date:
                 is_eligible_for_purge = True
-
+        
         if is_eligible_for_purge:
-            eligible_users_list.append({
-                'id': user.id,
-                'plex_username': user.plex_username,
-                'plex_email': user.plex_email,
-                'last_streamed_at': user.last_streamed_at,
-                'created_at': user.created_at
-            })
-
+            eligible_users_list.append({ 'id': user.id, 'plex_username': user.plex_username, 'plex_email': user.plex_email, 'last_streamed_at': user.last_streamed_at, 'created_at': user.created_at })
+            
     return eligible_users_list
 
 def get_user_stream_stats(user_id):
