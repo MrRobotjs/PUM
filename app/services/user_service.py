@@ -438,51 +438,56 @@ def purge_inactive_users(admin_id: int, user_ids_to_purge: list[int] = None,
     return {"message": result_message, "purged_count": purged_count, "errors": error_count, "skipped_final_check": skipped_due_to_final_check}
 
 def get_users_eligible_for_purge(inactive_days_threshold: int, exclude_sharers: bool, exclude_whitelisted: bool, ignore_creation_date_for_never_streamed: bool = False):
-    
+    """
+    Queries the database to find users who are eligible for purging based on a set of criteria.
+    """
     if inactive_days_threshold < 1:
         raise ValueError("Inactivity threshold must be at least 1 day.")
-    
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=inactive_days_threshold)
-    
-    # --- START OF FIX ---
-    # Start with a base query
-    query = User.query.filter(User.is_home_user == False) 
 
-    # Conditionally add filters, now including the check for NULL
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=inactive_days_threshold)
+
+    # Start with a base query that always excludes Plex Home users
+    query = User.query.filter(User.is_home_user == False)
+
+    # Conditionally add filters based on the form checkboxes.
+    # This correctly handles cases where the database value might be NULL for older users.
     if exclude_sharers:
-        query = query.filter(or_(User.shares_back == False, User.shares_back == None))
-    
-    if exclude_whitelisted: 
-        query = query.filter(or_(User.is_purge_whitelisted == False, User.is_purge_whitelisted == None))
-    # --- END OF FIX ---
-        
+        query = query.filter(or_(User.shares_back == False, User.shares_back.is_(None)))
+
+    if exclude_whitelisted:
+        query = query.filter(or_(User.is_purge_whitelisted == False, User.is_purge_whitelisted.is_(None)))
+
     eligible_users_list = []
     potential_users = query.all()
 
     for user in potential_users:
-        
         is_eligible_for_purge = False
-        
+
         if user.last_streamed_at is None:
+            # This user has NEVER streamed.
             if ignore_creation_date_for_never_streamed:
+                # The admin has chosen to purge them regardless of how recently they joined.
                 is_eligible_for_purge = True
             else:
+                # Default behavior: Only purge if they were created before the cutoff date.
                 created_at_aware = user.created_at.replace(tzinfo=timezone.utc) if user.created_at.tzinfo is None else user.created_at
                 if created_at_aware < cutoff_date:
                     is_eligible_for_purge = True
-                else:
-                    current_app.logger.info("[PURGE_DEBUG]   -> RESULT: User is NOT eligible (created after cutoff).")
-        else: 
+        else:
+            # This user HAS streamed before. Check if their last stream was before the cutoff date.
             last_streamed_aware = user.last_streamed_at.replace(tzinfo=timezone.utc) if user.last_streamed_at.tzinfo is None else user.last_streamed_at
             if last_streamed_aware < cutoff_date:
                 is_eligible_for_purge = True
-                current_app.logger.info("[PURGE_DEBUG]   -> RESULT: User is ELIGIBLE (streamed before cutoff).")
-            else:
-                current_app.logger.info("[PURGE_DEBUG]   -> RESULT: User is NOT eligible (streamed after cutoff).")
-        
+
         if is_eligible_for_purge:
-            eligible_users_list.append({ 'id': user.id, 'plex_username': user.plex_username, 'plex_email': user.plex_email, 'last_streamed_at': user.last_streamed_at, 'created_at': user.created_at })
-            
+            eligible_users_list.append({
+                'id': user.id,
+                'plex_username': user.plex_username,
+                'plex_email': user.plex_email,
+                'last_streamed_at': user.last_streamed_at,
+                'created_at': user.created_at
+            })
+
     return eligible_users_list
 
 def get_user_stream_stats(user_id):

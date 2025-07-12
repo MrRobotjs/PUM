@@ -129,9 +129,10 @@ def settings_general():
     form = GeneralSettingsForm()
     if form.validate_on_submit():
         # This route now ONLY handles general app settings.
-        Setting.set('APP_NAME', form.app_name.data, ...)
-        Setting.set('APP_BASE_URL', form.app_base_url.data.rstrip('/'), ...)
-        log_event(...)
+        Setting.set('APP_NAME', form.app_name.data, SettingValueType.STRING, "Application Name")
+        Setting.set('APP_BASE_URL', form.app_base_url.data.rstrip('/'), SettingValueType.STRING, "Application Base URL")
+        
+        log_event(EventType.SETTING_CHANGE, "General application settings updated.", admin_id=current_user.id)
         flash('General settings saved successfully.', 'success')
         return redirect(url_for('dashboard.settings_general'))
     elif request.method == 'GET':
