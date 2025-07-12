@@ -279,13 +279,12 @@ def get_plex_server_users_raw(users_sharing_back_ids=None):
                 'allowed_library_ids_on_server': [],
                 'acceptedAt': accepted_at_val,
             }
-            current_app.logger.info(f"Plex_Service.py - Processing User: {user_data_basic['username']} (ID: {user_data_basic['id']}, UUID: {user_data_basic['uuid']})")
 
             user_share_details = detailed_shares_by_userid.get(plex_user_id_int)
             add_user_to_pum_list = False
             effective_library_ids = []
 
-            if user_data_basic['username'] == 'lucifea6':
+            if user_data_basic['username'] == 'AllGas':
                 current_app.logger.info(f"Plex_Service.py - DEBUG lucifea6: Data from detailed_shares_by_userid: {user_share_details}")
 
             if user_share_details:

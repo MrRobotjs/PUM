@@ -113,44 +113,166 @@ def list_users():
 @login_required
 @setup_required
 def sync_plex_users():
-    current_app.logger.info(f"User_Routes.py - sync_plex_users(): Sync process started by admin ID {current_user.id}")
-    log_event(EventType.PLEX_SYNC_USERS_START, "Plex user synchronization started by admin.", admin_id=current_user.id)
-    
-    sync_results = user_service.sync_users_from_plex()
+    """
+    Performs Plex user synchronization and returns an HTML response
+    with htmx headers to trigger modals and toasts.
+    """
+    current_app.logger.info("Starting Plex user synchronization.")
 
-    added_list = sync_results.get('added', [])
-    updated_list = sync_results.get('updated', [])
-    removed_list = sync_results.get('removed', [])
-    error_count = sync_results.get('errors', 0)
-    error_messages = sync_results.get('error_messages', [])
+    # --- Part 1: Core Synchronization Logic ---
+    try:
+        users_sharing_back_with_admin_ids = plex_service.get_user_ids_sharing_servers_with_admin()
+        raw_plex_users_with_access, _ = plex_service.get_plex_server_users_raw(
+            users_sharing_back_ids=users_sharing_back_with_admin_ids
+        )
+    except Exception as e:
+        current_app.logger.error(f"Critical error fetching users from Plex: {e}", exc_info=True)
+        raw_plex_users_with_access = None
 
-    has_changes_or_errors = bool(added_list or updated_list or removed_list or error_count > 0)
-    
-    if has_changes_or_errors:
-        # Render the HTML for the modal's content using the results.
-        modal_html = render_template('users/_sync_results_modal_content.html', 
-                                     added_users=added_list,
-                                     updated_users=updated_list,
-                                     removed_users=removed_list,
-                                     error_count=error_count,
-                                     error_messages=error_messages)
-        
-        # Prepare headers to tell HTMX to show the modal AND refresh the user list.
-        trigger_payload = {"openSyncResultsModal": True, "refreshUserList": True}
-        response_headers = {
+    if raw_plex_users_with_access is None:
+        error_messages = ["Failed to retrieve users from Plex service."]
+        modal_html = render_template('users/_sync_results_modal_content.html',
+                                     error_count=1, error_messages=error_messages)
+        trigger_payload = {
+            "showToastEvent": {"message": "Sync failed: Could not contact Plex.", "category": "error"},
+            "openSyncResultsModal": True
+        }
+        headers = {
             'HX-Retarget': '#syncResultModalContainer',
             'HX-Reswap': 'innerHTML',
             'HX-Trigger-After-Swap': json.dumps(trigger_payload)
         }
+        return make_response(modal_html, 200, headers)
+
+    pum_users_all = User.query.all()
+    pum_users_map_by_plex_id = {user.plex_user_id: user for user in pum_users_all if user.plex_user_id is not None}
+    pum_users_map_by_plex_uuid = {user.plex_uuid: user for user in pum_users_all if user.plex_uuid}
+    pum_users_map_by_username = {user.plex_username.lower(): user for user in pum_users_all if user.plex_username}
+
+    added_users_details = []
+    updated_users_details = []
+    removed_users_details = []
+    error_count = 0
+    error_messages = []
+
+    current_plex_user_ids_on_server = {item['id'] for item in raw_plex_users_with_access if item.get('id') is not None}
+
+    # Process each user from the Plex sync
+    for plex_user_data in raw_plex_users_with_access:
+        # This includes checking for existing users, updating fields,
+        # creating new users, and handling IntegrityError.
+        plex_id = plex_user_data.get('id')
+        plex_uuid_from_sync = plex_user_data.get('uuid')
+        plex_username_from_sync = plex_user_data.get('username')
+
+        if not plex_username_from_sync:
+            msg = "Plex user data missing 'username'. Skipping."
+            current_app.logger.warning(msg)
+            error_count += 1
+            error_messages.append(msg)
+            continue
+
+        pum_user = pum_users_map_by_plex_id.get(plex_id) or pum_users_map_by_plex_uuid.get(plex_uuid_from_sync)
+        if not pum_user:
+            pum_user = pum_users_map_by_username.get(plex_username_from_sync.lower())
+            if pum_user:
+                current_app.logger.warning(f"Found user '{plex_username_from_sync}' by username, but ID/UUID did not match. Updating existing record (ID: {pum_user.id}).")
+
+        new_library_ids = list(plex_user_data.get('allowed_library_ids_on_server', []))
+        accepted_at_str = plex_user_data.get('acceptedAt')
+        plex_join_date_dt = None
+        if accepted_at_str and accepted_at_str.isdigit():
+            try:
+                plex_join_date_dt = datetime.fromtimestamp(int(accepted_at_str), tz=timezone.utc)
+            except (ValueError, TypeError):
+                plex_join_date_dt = None
         
-        # Return the rendered HTML with the special headers.
+        if pum_user:
+            changes = []
+            if pum_user.plex_user_id != plex_id: changes.append("Plex User ID updated"); pum_user.plex_user_id = plex_id
+            if pum_user.plex_uuid != plex_uuid_from_sync: changes.append("Plex UUID updated"); pum_user.plex_uuid = plex_uuid_from_sync
+            if pum_user.plex_username != plex_username_from_sync: changes.append(f"Username changed"); pum_user.plex_username = plex_username_from_sync
+            if set(pum_user.allowed_library_ids or []) != set(new_library_ids): changes.append("Libraries updated"); pum_user.allowed_library_ids = new_library_ids
+            if plex_join_date_dt and (pum_user.plex_join_date is None or pum_user.plex_join_date != plex_join_date_dt.replace(tzinfo=None)):
+                changes.append("Plex join date updated"); pum_user.plex_join_date = plex_join_date_dt.replace(tzinfo=None)
+
+            if changes:
+                pum_user.last_synced_with_plex = datetime.utcnow(); pum_user.updated_at = datetime.utcnow()
+                updated_users_details.append({'username': plex_username_from_sync, 'changes': changes})
+        else:
+            try:
+                new_user = User(
+                    plex_user_id=plex_id, plex_uuid=plex_uuid_from_sync, plex_username=plex_username_from_sync,
+                    plex_email=plex_user_data.get('email'), plex_thumb_url=plex_user_data.get('thumb'),
+                    allowed_library_ids=new_library_ids, is_home_user=plex_user_data.get('is_home_user', False),
+                    shares_back=plex_user_data.get('shares_back', False), is_plex_friend=plex_user_data.get('is_friend', False),
+                    plex_join_date=plex_join_date_dt.replace(tzinfo=None) if plex_join_date_dt else None,
+                    last_synced_with_plex=datetime.utcnow()
+                )
+                db.session.add(new_user)
+                added_users_details.append({'username': plex_username_from_sync, 'plex_id': plex_id})
+            except IntegrityError as ie:
+                db.session.rollback(); msg = f"Integrity error adding '{plex_username_from_sync}': {ie}."; current_app.logger.error(msg); error_count += 1; error_messages.append(msg)
+            except Exception as e:
+                db.session.rollback(); msg = f"Error creating user '{plex_username_from_sync}': {e}"; current_app.logger.error(msg, exc_info=True); error_count += 1; error_messages.append(msg)
+
+    # Process removals
+    for user in pum_users_all:
+        if user.plex_user_id not in current_plex_user_ids_on_server:
+            removed_users_details.append({'username': user.plex_username, 'pum_id': user.id, 'plex_id': user.plex_user_id})
+            db.session.delete(user)
+
+    # Commit all session changes to the database
+    if added_users_details or updated_users_details or removed_users_details or error_count > 0:
+        try:
+            db.session.commit()
+            log_event(EventType.PLEX_SYNC_USERS_COMPLETE, f"Plex user sync complete. Added: {len(added_users_details)}, Updated: {len(updated_users_details)}, Removed: {len(removed_users_details)}, Errors: {error_count}.", details={"added": len(added_users_details), "updated": len(updated_users_details), "removed": len(removed_users_details)})
+        except Exception as e_commit:
+            db.session.rollback(); msg = f"DB commit error during sync: {e_commit}"; error_messages.append(msg); error_count += 1
+            # Clear lists as the transaction failed
+            added_users_details, updated_users_details, removed_users_details = [], [], []
+
+    # --- Part 2: Response Generation Logic ---
+    response_headers = {}
+    
+    if added_users_details or updated_users_details or removed_users_details or error_count > 0:
+        modal_html = render_template('users/_sync_results_modal_content.html',
+                                     added_users=added_users_details,
+                                     updated_users=updated_users_details,
+                                     removed_users=removed_users_details,
+                                     error_count=error_count,
+                                     error_messages=error_messages)
+
+        response_headers['HX-Retarget'] = '#syncResultModalContainer'
+        response_headers['HX-Reswap'] = 'innerHTML'
+
+        toast_message = "Sync complete. Changes detected, see details."
+        toast_category = "success"
+        if error_count > 0 and not (added_users_details or updated_users_details or removed_users_details):
+            toast_message = f"Sync encountered {error_count} error(s). See details."
+            toast_category = "error"
+        elif error_count > 0:
+            toast_message = f"Sync complete with {error_count} error(s) and other changes."
+            toast_category = "warning"
+
+        trigger_payload = {
+            "showToastEvent": {"message": toast_message, "category": toast_category},
+            "openSyncResultsModal": True,
+            "refreshUserList": True
+        }
+        response_headers['HX-Trigger-After-Swap'] = json.dumps(trigger_payload)
+
         return make_response(modal_html, 200, response_headers)
+    
     else:
-        # This logic for "no changes" is correct and will show a toast.
-        toast_payload = {"showToastEvent": {"message": "Sync complete. No changes were made.", "category": "success"}}
-        response = make_response("<!-- no-op -->", 200)
-        response.headers['HX-Trigger'] = json.dumps(toast_payload)
-        return response
+        # No changes and no errors
+        trigger_payload = {
+            "showToastEvent": {"message": "Sync complete. No changes were made.", "category": "success"},
+            "refreshUserList": True
+        }
+        response_headers['HX-Trigger'] = json.dumps(trigger_payload)
+        
+        return make_response("", 200, response_headers)
 
 @bp.route('/delete/<int:user_id>', methods=['DELETE'])
 @login_required
