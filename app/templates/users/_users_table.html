@@ -1,5 +1,5 @@
-{# File: app/templates/users/_users_table.html #}
-{# Expects 'users' (pagination object), 'available_libraries', and 'mass_edit_form' in context #}
+<!-- File: app/templates/users/_users_table.html -->
+{# Expects 'users', 'available_libraries', 'sort_column', 'sort_direction' #}
 <div class="overflow-x-auto bg-base-200 shadow-lg rounded-lg">
     <table class="table table-zebra w-full table-sm md:table-md">
         <thead>
@@ -9,12 +9,51 @@
                         <input type="checkbox" class="checkbox checkbox-primary checkbox-xs sm:checkbox-sm" id="select_all_users_table" />
                     </label>
                 </th>
-                <th>User</th>
-                <th class="hidden lg:table-cell">Email</th>
-                <th class="hidden md:table-cell">Status</th>
-                <th class="hidden xl:table-cell">Libraries</th>
-                <th class="hidden sm:table-cell">Last Streamed</th>
-                <th class="text-center">Actions</th>
+
+                <!-- START: Header Modifications -->
+                {# Create a mutable dictionary from the request args #}
+                {% set query_params = request.args.to_dict() %}
+                
+                {# User Header #}
+                {% set next_sort_username = 'username_desc' if sort_column == 'username' and sort_direction == 'asc' else 'username_asc' %}
+                {% do query_params.update({'sort_by': next_sort_username}) %}
+                <th data-col="user">
+                    <a href="{{ url_for('users.list_users', **query_params) }}" 
+                       hx-get="{{ url_for('users.list_users', **query_params) }}"
+                       hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">
+                        User
+                        {% if sort_column == 'username' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}
+                    </a>
+                </th>
+
+                {# Email Header #}
+                {% set next_sort_email = 'email_desc' if sort_column == 'email' and sort_direction == 'asc' else 'email_asc' %}
+                {% do query_params.update({'sort_by': next_sort_email}) %}
+                <th data-col="email">
+                    <a href="{{ url_for('users.list_users', **query_params) }}"
+                       hx-get="{{ url_for('users.list_users', **query_params) }}"
+                       hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">
+                        Email
+                        {% if sort_column == 'email' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}
+                    </a>
+                </th>
+
+                <th data-col="status">Status</th>
+                <th data-col="libraries">Libraries</th>
+
+                {# Last Streamed Header #}
+                {% set next_sort_streamed = 'last_streamed_desc' if sort_column == 'last_streamed' and sort_direction == 'asc' else 'last_streamed_asc' %}
+                {% do query_params.update({'sort_by': next_sort_streamed}) %}
+                <th data-col="last_streamed">
+                     <a href="{{ url_for('users.list_users', **query_params) }}"
+                       hx-get="{{ url_for('users.list_users', **query_params) }}"
+                       hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">
+                        Last Streamed
+                        {% if sort_column == 'last_streamed' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}
+                    </a>
+                </th>
+                <th class="text-center" data-col="actions">Actions</th>
+                <!-- END: Header Modifications -->
             </tr>
         </thead>
         <tbody>
@@ -23,61 +62,38 @@
                 <td class="text-center">
                     <input type="checkbox" class="checkbox checkbox-primary checkbox-xs sm:checkbox-sm user-select-checkbox" data-user-id="{{ user.id }}">
                 </td>
-                <td>
+                <td data-col="user">
                     <div class="flex items-center space-x-3">
-                        <div class="avatar">
-                            <div class="mask mask-squircle w-10 h-10 sm:w-12 sm:h-12">
-                                <img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';" />
-                            </div>
-                        </div>
+                        <div class="avatar"><div class="mask mask-squircle w-10 h-10"><img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';"/></div></div>
                         <div>
                             <div class="font-bold truncate max-w-[150px] sm:max-w-xs" title="{{ user.plex_username }}">{{ user.plex_username }}</div>
-                            <div class="text-xs opacity-50 sm:hidden" title="{{ user.plex_email or 'No email' }}">{{ user.plex_email or 'No email' | truncate(20, True) }}</div>
                             <div class="text-xs opacity-50">ID: {{ user.plex_user_id or user.id }}</div>
                         </div>
                     </div>
                 </td>
-                <td class="hidden lg:table-cell text-sm truncate max-w-xs" title="{{ user.plex_email or 'No email' }}">{{ user.plex_email or 'N/A' }}</td>
-                <td class="hidden md:table-cell">
+                <td data-col="email" class="text-sm truncate max-w-xs" title="{{ user.plex_email or 'No email' }}">{{ user.plex_email or 'N/A' }}</td>
+                <td data-col="status">
                     {% if user.is_home_user %}<span class="badge badge-primary badge-sm" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</span>{% endif %}
                     {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</span>{% endif %}
                     {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Discord</span>{% endif %}
-                    {% set has_any_special_badge = user.is_home_user or user.shares_back or (user.is_plex_friend is defined and user.is_plex_friend) or user.discord_user_id %}
-                    {% if not has_any_special_badge %}
-                        <span class="text-xs opacity-60">Standard</span>
-                    {% endif %}
-                    {% if user.plex_uuid and user.plex_uuid in admins_by_uuid %}
-                        {# First, display a generic Admin badge #}
-                        <div class="badge badge-error badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>
-                        
-                        {# Then, loop through the roles for that admin and display colored badges #}
-                        {% set admin = admins_by_uuid[user.plex_uuid] %}
-                        {% for role in admin.roles %}
-                        <span class="badge" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
-                            {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}
-                            {{ role.name }}
+                    {% if user.is_purge_whitelisted %}
+                        <span class="badge badge-accent badge-sm mb-1" title="This user is immune to inactivity purges.">
+                            <i class="fa-solid fa-shield-halved mr-1"></i> Purge WL
                         </span>
-                        {% endfor %}
                     {% endif %}
                 </td>
-                <td class="hidden xl:table-cell text-xs" data-user-id-for-libs="{{ user.id }}"> {# Unique identifier for this user's library cell #}
-                    {% if user.allowed_library_ids %} {# This should now always be a list from user_service #}
+                <td data-col="libraries" class="text-xs" data-user-id-for-libs="{{ user.id }}">
+                    {% if user.allowed_library_ids %}
                         <div class="flex flex-col space-y-0.5">
-                        {% set initially_visible_count = 3 %} {# Define how many to show initially #}
+                        {% set initially_visible_count = 3 %}
                         {% for lib_id in user.allowed_library_ids %}
                             {% set lib_name = available_libraries.get(lib_id | string, 'Lib ID ' ~ (lib_id | string)) %}
-                            <span 
-                                class="badge badge-xs badge-outline library-badge-for-user-{{ user.id }} {{ 'extra-library-badge hidden' if loop.index0 >= initially_visible_count else '' }}" 
-                                title="{{ lib_name }}">
-                                {{ lib_name | truncate(25, True) }} {# Increased truncate length slightly #}
+                            <span class="badge badge-xs badge-outline library-badge-for-user-{{ user.id }} {{ 'extra-library-badge hidden' if loop.index0 >= initially_visible_count else '' }}" title="{{ lib_name }}">
+                                {{ lib_name | truncate(25, True) }}
                             </span>
                         {% endfor %}
-
                         {% if user.allowed_library_ids|length > initially_visible_count %}
-                            <button type="button" 
-                                    class="btn btn-xs btn-ghost text-accent p-0 mt-1 show-more-libs-button" 
-                                    data-target-user-id="{{ user.id }}"
-                                    data-visible-count="{{ initially_visible_count }}">
+                            <button type="button" class="btn btn-xs btn-ghost text-accent p-0 mt-1 show-more-libs-button" data-target-user-id="{{ user.id }}" data-visible-count="{{ initially_visible_count }}">
                                 + {{ user.allowed_library_ids|length - initially_visible_count }} more
                             </button>
                         {% endif %}
@@ -86,7 +102,7 @@
                         <span class="opacity-60">No libraries specifically shared.</span>
                     {% endif %}
                 </td>
-                <td class="hidden sm:table-cell text-sm" title="{{ user.last_streamed_at | format_datetime_human if user.last_streamed_at else 'Never' }}">
+                <td data-col="last_streamed" class="text-sm" title="{{ user.last_streamed_at | format_datetime_human if user.last_streamed_at else 'Never' }}">
                     <div title="{{ user.last_streamed_at | format_datetime_human if user.last_streamed_at else 'Never streamed' }}">
                         {{ user.last_streamed_at | time_ago if user.last_streamed_at else 'Never' }}
                     </div>
@@ -99,34 +115,17 @@
                         </div>
                     {% endif %}
                 </td>
-                <td class="text-center">
+                <td class="text-center" data-col="actions">
                     <div class="flex items-center justify-center space-x-1">
-                        {% if current_user.has_permission('view_user') %}
-                        <a href="{{ url_for('user.view_user', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" title="User Profile" class="btn btn-xs btn-ghost text-info hover:bg-info/10">
-                            <i class="fa-solid fa-eye"></i>
-                        </a>
-                        {% endif %}
-                        {% if current_user.has_permission('edit_user') %}
-                        <button class="btn btn-xs btn-ghost text-primary hover:bg-primary/10 card-action-button"
-                                title="Quick Edit Settings"
-                                hx-get="{{ url_for('users.get_quick_edit_form', user_id=user.id) }}"
-                                hx-target="#quick_edit_modal_content_div"
-                                hx-swap="innerHTML"
-                                onclick="quick_edit_user_modal.showModal()">
-                            <i class="fa-solid fa-pen-to-square"></i>
-                        </button>
-                        {% endif %}
-                        {% if current_user.has_permission('delete_user') %}
+                        <a href="{{ url_for('user.view_user', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" title="User Profile" class="btn btn-xs btn-ghost text-info hover:bg-info/10"><i class="fa-solid fa-eye"></i></a>
+                        <a href="{{ url_for('users.get_quick_edit_form', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" class="btn btn-xs btn-ghost text-primary hover:bg-primary/10" title="Edit User"><i class="fa-solid fa-pen-to-square"></i></a>
                         <button class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Remove User"
                                 hx-confirm="Are you sure you want to remove '{{ user.plex_username }}' from PUM and Plex Server?"
                                 hx-delete="{{ url_for('users.delete_user', user_id=user.id) }}"
-                                hx-target="#user-row-{{ user.id }}" 
-                                hx-swap="outerHTML swap:0.5s"
-                                hx-indicator="this">
+                                hx-target="#user-row-{{ user.id }}" hx-swap="outerHTML swap:0.5s" hx-indicator="this">
                             <i class="fa-solid fa-trash-can htmx-indicator-hide"></i>
                             <span class="htmx-indicator loading loading-spinner loading-xs"></span>
                         </button>
-                        {% endif %}
                     </div>
                 </td>
             </tr>
@@ -134,5 +133,3 @@
         </tbody>
     </table>
 </div>
-
-{# The SCRIPT block has been removed from this file. #}

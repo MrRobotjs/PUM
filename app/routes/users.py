@@ -21,21 +21,21 @@ def list_users():
     
     session_per_page_key = 'users_list_per_page' 
     default_per_page_config = current_app.config.get('DEFAULT_USERS_PER_PAGE', 12)
-    # Attempt to get per_page from request, then session, then config default
     try:
         items_per_page = int(request.args.get('per_page'))
-        if items_per_page not in [12, 24, 48, 96]: # Validate against allowed values
+        if items_per_page not in [12, 24, 48, 96]:
             raise ValueError("Invalid per_page value from request.args")
         session[session_per_page_key] = items_per_page
-    except (TypeError, ValueError): # Handles if per_page is not in args, or not an int, or not in allowed list
+    except (TypeError, ValueError):
         items_per_page = session.get(session_per_page_key, default_per_page_config)
-        if items_per_page not in [12, 24, 48, 96]: # Final validation for session/default value
+        if items_per_page not in [12, 24, 48, 96]:
             items_per_page = default_per_page_config
-            session[session_per_page_key] = items_per_page # Correct session if invalid
+            session[session_per_page_key] = items_per_page
 
     query = User.query
     search_term = request.args.get('search', '').strip()
-    if search_term: query = query.filter(or_(User.plex_username.ilike(f"%{search_term}%"), User.plex_email.ilike(f"%{search_term}%")))
+    if search_term:
+        query = query.filter(or_(User.plex_username.ilike(f"%{search_term}%"), User.plex_email.ilike(f"%{search_term}%")))
     
     filter_type = request.args.get('filter_type', '')
     if filter_type == 'home_user': query = query.filter(User.is_home_user == True)
@@ -43,13 +43,29 @@ def list_users():
     elif filter_type == 'has_discord': query = query.filter(User.discord_user_id != None)
     elif filter_type == 'no_discord': query = query.filter(User.discord_user_id == None)
     
-    sort_by = request.args.get('sort_by', 'username_asc')
-    if sort_by == 'username_desc': query = query.order_by(User.plex_username.desc())
-    elif sort_by == 'last_streamed_desc': query = query.order_by(User.last_streamed_at.desc().nullslast())
-    elif sort_by == 'last_streamed_asc': query = query.order_by(User.last_streamed_at.asc().nullsfirst())
-    elif sort_by == 'created_at_desc': query = query.order_by(User.created_at.desc())
-    elif sort_by == 'created_at_asc': query = query.order_by(User.created_at.asc())
-    else: query = query.order_by(User.plex_username.asc()) # Default 'username_asc'
+    # --- START OF NEW SORTING LOGIC ---
+    sort_by_param = request.args.get('sort_by', 'username_asc')
+    sort_parts = sort_by_param.rsplit('_', 1)
+    sort_column = sort_parts[0]
+    sort_direction = 'desc' if len(sort_parts) > 1 and sort_parts[1] == 'desc' else 'asc'
+
+    sort_map = {
+        'username': User.plex_username,
+        'email': User.plex_email,
+        'last_streamed': User.last_streamed_at,
+        'created_at': User.created_at # Added for completeness if you want to sort by date added
+    }
+    
+    # Default to sorting by username if the column is invalid
+    sort_field = sort_map.get(sort_column, User.plex_username)
+
+    if sort_direction == 'desc':
+        # Use .nullslast() to ensure users with no data (e.g., never streamed) appear at the end
+        query = query.order_by(sort_field.desc().nullslast())
+    else:
+        # Use .nullsfirst() to ensure users with no data appear at the beginning
+        query = query.order_by(sort_field.asc().nullsfirst())
+    # --- END OF NEW SORTING LOGIC ---
 
     admin_accounts = AdminAccount.query.filter(AdminAccount.plex_uuid.isnot(None)).all()
     admins_by_uuid = {admin.plex_uuid: admin for admin in admin_accounts}
@@ -62,52 +78,35 @@ def list_users():
     if mass_edit_form.libraries.data is None: 
         mass_edit_form.libraries.data = []   
 
-    # Define default/current purge settings
-    # These could be fetched from Setting model if you want them configurable globally
-    # For example:
-    # default_inactive_days = int(Setting.get('PURGE_DEFAULT_INACTIVE_DAYS', 90))
-    # default_exclude_sharers = Setting.get('PURGE_DEFAULT_EXCLUDE_SHARERS', True) # Expects bool
     default_inactive_days = 90
-    default_exclude_sharers = True # Python boolean
-
-    admin_plex_uuids = {admin.plex_uuid for admin in AdminAccount.query.filter(AdminAccount.plex_uuid.isnot(None)).all()}
+    default_exclude_sharers = True
 
     purge_settings_context = {
         'inactive_days': request.form.get('inactive_days', default_inactive_days, type=int),
         'exclude_sharers': request.form.get('exclude_sharers', 'true' if default_exclude_sharers else 'false').lower() == 'true'
     }
-    # Note: For a GET request, request.form will be empty. So these will use defaults.
-    # If you want these to persist across GET requests (e.g., from session or DB settings),
-    # you'd fetch them here like you do for 'per_page'.
-    # For now, they will reset to defaults on each GET load of the users list page.
-    # If purge form submission fails and re-renders via this route, request.form might have old values.
+    
+    # We will build a single context dictionary to pass to the templates
+    template_context = {
+        'title': "Managed Users",
+        'users': users_pagination,
+        'users_count': users_count,
+        'current_view': view_mode,
+        'available_libraries': available_libraries,
+        'mass_edit_form': mass_edit_form,
+        'selected_users_count': 0,
+        'current_per_page': items_per_page,
+        'purge_settings': purge_settings_context,
+        'admin_plex_uuids': {admin.plex_uuid for admin in admin_accounts},
+        'admins_by_uuid': admins_by_uuid,
+        'sort_column': sort_column,      # Pass sorting info to the template
+        'sort_direction': sort_direction # Pass sorting info to the template
+    }
 
     if request.headers.get('HX-Request'):
-        # This partial is for list updates like after sync or mass edit.
-        # It usually re-renders the core list content, not necessarily the filter forms.
-        # Ensure _users_list_content.html can handle the context it's given.
-        return render_template('users/_users_list_content.html', 
-                               users=users_pagination,
-                               available_libraries=available_libraries,
-                               # mass_edit_form might not be needed by this partial if modal is separate
-                               current_view=view_mode,
-                               current_per_page=items_per_page, 
-                               users_count=users_count,
-                               admin_plex_uuids=admin_plex_uuids,
-                               admins_by_uuid=admins_by_uuid) # Pass users_count for the partial
+        return render_template('users/_users_list_content.html', **template_context)
 
-    return render_template('users/list.html',
-                           title="Managed Users",
-                           users=users_pagination, 
-                           users_count=users_count, 
-                           current_view=view_mode,
-                           available_libraries=available_libraries,
-                           mass_edit_form=mass_edit_form,
-                           selected_users_count=0, 
-                           current_per_page=items_per_page,
-                           purge_settings=purge_settings_context,
-                           admin_plex_uuids=admin_plex_uuids,
-                           admins_by_uuid=admins_by_uuid) # Pass purge settings
+    return render_template('users/list.html', **template_context)
 
 @bp.route('/sync', methods=['POST'])
 @login_required
@@ -381,6 +380,7 @@ def preview_purge_inactive_users():
     # The value is 'true' only if they are checked and sent.
     exclude_sharers_val = request.form.get('exclude_sharers') # Will be 'true' or None
     exclude_whitelisted_val = request.form.get('exclude_purge_whitelisted') # Will be 'true' or None
+    ignore_creation_date_val = request.form.get('ignore_creation_date')
 
     current_app.logger.info(f"User_Routes.py - preview_purge_inactive_users(): Received form data: inactive_days='{inactive_days_str}', exclude_sharers='{exclude_sharers_val}', exclude_whitelisted='{exclude_whitelisted_val}'")
     
@@ -391,6 +391,7 @@ def preview_purge_inactive_users():
         # If unchecked, request.form.get() will be None.
         exclude_sharers = (exclude_sharers_val == 'true')
         exclude_whitelisted = (exclude_whitelisted_val == 'true')
+        ignore_creation_date = (ignore_creation_date_val == 'true')
 
         current_app.logger.info(f"User_Routes.py - preview_purge_inactive_users(): Parsed criteria: inactive_days={inactive_days}, exclude_sharers={exclude_sharers}, exclude_whitelisted={exclude_whitelisted}")
 
@@ -400,7 +401,8 @@ def preview_purge_inactive_users():
         eligible_users = user_service.get_users_eligible_for_purge(
             inactive_days_threshold=inactive_days,
             exclude_sharers=exclude_sharers,
-            exclude_whitelisted=exclude_whitelisted
+            exclude_whitelisted=exclude_whitelisted,
+            ignore_creation_date_for_never_streamed=ignore_creation_date
         )
         
         current_app.logger.info(f"User_Routes.py - preview_purge_inactive_users(): Found {len(eligible_users)} users eligible for purge based on criteria.")
@@ -408,7 +410,8 @@ def preview_purge_inactive_users():
         purge_criteria = {
             'inactive_days': inactive_days,
             'exclude_sharers': exclude_sharers,
-            'exclude_whitelisted': exclude_whitelisted
+            'exclude_whitelisted': exclude_whitelisted,
+            'ignore_creation_date': ignore_creation_date
         }
 
         return render_template('users/_purge_preview_modal_content.html', 

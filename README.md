@@ -70,7 +70,6 @@ The easiest way to deploy Plex User Manager is using Docker.
           - "5699:5000" # <host_port>:<container_port> (Gunicorn runs on 5000 inside)
         volumes:
           # This directory on your host will store PUM's persistent data (database, etc.)
-          # Create this directory on your host before running, e.g., mkdir ./pum_data
           - ./plexusermanager:/app/instance 
         environment:
           - TZ=America/New_York # REQUIRED: Set your local timezone (see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)

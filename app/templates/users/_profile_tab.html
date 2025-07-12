@@ -2,12 +2,12 @@
 {# Expects 'stream_stats' and 'user' in context #}
 
 {% if stream_stats %}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
     
     {# --- START MODIFICATION --- #}
 
     {# Column 1: User Summary (Moved to the left) #}
-    <div>
+    <div class="col-span-1">
         <h3 class="text-xl font-bold mb-4">User Summary</h3>
         <div class="space-y-2 text-sm p-4 bg-base-200 rounded-lg shadow-md">
            <p><strong>Plex Email:</strong> {{ user.plex_email or 'N/A' }}</p>
@@ -29,7 +29,7 @@
     </div>
 
     {# Column 2: Global Stats & Player Stats (Moved to the right) #}
-    <div class="space-y-8">
+    <div class="space-y-8 col-span-2">
         
         {# Global Stats #}
         <div>

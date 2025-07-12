@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ super() }} - Managed Users{% endblock %}
+
 {% block content %}
 <div class="container mx-auto px-4 py-2">
     <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
@@ -7,95 +8,81 @@
         <div class="flex items-center space-x-2 mt-4 sm:mt-0">
             <button class="btn btn-secondary" 
                     hx-post="{{ url_for('users.sync_plex_users') }}"
+                    hx-target="#sync-noop-target"
+                    hx-swap="innerHTML"
                     title="Refresh user list from Plex"> 
-                
-                <span class="sync-loader htmx-indicator loading loading-spinner loading-xs mr-2">
-                    {# Spinner will be shown by CSS when .htmx-request is active #}
-                </span>
-
-                <span class="sync-icon default-icon-state"> 
-                    <i class="fa-solid fa-sync mr-2"></i>
-                </span>
-                
+                <span class="sync-loader htmx-indicator loading loading-spinner loading-xs mr-2"></span>
+                <span class="sync-icon default-icon-state"><i class="fa-solid fa-sync mr-2"></i></span>
                 <span class="sync-text">Sync Users</span>
             </button>
+            <span id="sync-noop-target"></span>
+
+            <div id="column-selector-container" class="dropdown dropdown-end hidden">
+                <label tabindex="0" class="btn btn-ghost" title="Select columns">
+                    <i class="fa-solid fa-table-columns mr-1"></i> Columns
+                </label>
+                <ul tabindex="0" id="column-selector-menu" class="dropdown-content z-[1] menu p-2 shadow bg-base-300 rounded-box w-52">
+                    <li><a>Loading...</a></li>
+                </ul>
+            </div>
+
             <div class="dropdown dropdown-end">
                 <label tabindex="0" class="btn btn-ghost" title="Change view">
                     <i class="fa-solid fa-display mr-1"></i> View <i class="fa-solid fa-chevron-down fa-xs ml-1"></i>
                 </label>
                 <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-300 rounded-box w-40">
-                    {% set cards_args = request.args.to_dict() %}{% set _ = cards_args.update({'view': 'cards'}) %}
-                    <li><a href="{{ url_for('users.list_users', **cards_args) }}"
-                            class="{{ 'font-bold bg-base-100/50' if current_view == 'cards' else '' }}"><i
-                                class="fa-solid fa-grip-vertical fa-fw mr-2"></i> Card View</a></li>
-                    {% set table_args = request.args.to_dict() %}{% set _ = table_args.update({'view': 'table'}) %}
-                    <li><a href="{{ url_for('users.list_users', **table_args) }}"
-                            class="{{ 'font-bold bg-base-100/50' if current_view == 'table' else '' }}"><i
-                                class="fa-solid fa-table-list fa-fw mr-2"></i> Table View</a></li>
+                    {% set cards_args = request.args.to_dict() %}{% do cards_args.update({'view': 'cards'}) %}
+                    <li><a href="{{ url_for('users.list_users', **cards_args) }}" class="{{ 'font-bold bg-base-100/50' if current_view == 'cards' else '' }}"><i class="fa-solid fa-grip-vertical fa-fw mr-2"></i> Card View</a></li>
+                    {% set table_args = request.args.to_dict() %}{% do table_args.update({'view': 'table'}) %}
+                    <li><a href="{{ url_for('users.list_users', **table_args) }}" class="{{ 'font-bold bg-base-100/50' if current_view == 'table' else '' }}"><i class="fa-solid fa-table-list fa-fw mr-2"></i> Table View</a></li>
                 </ul>
             </div>
         </div>
     </div>
-    <!-- Filters and Sort Form -->
-    <form method="GET" action="{{ url_for('users.list_users') }}" class="mb-6 p-4 bg-base-200 rounded-lg shadow"
-        id="userFilterForm">
-        <input type="hidden" name="view" value="{{ current_view }}"> {# Preserve current view on filter submit #}
+    
+    <form method="GET" action="{{ url_for('users.list_users') }}" class="mb-6 p-4 bg-base-200 rounded-lg shadow" id="userFilterForm">
+        <input type="hidden" name="view" value="{{ current_view }}">
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
             <div class="form-control">
                 <label class="label"><span class="label-text">Search User</span></label>
-                <input type="text" name="search" placeholder="Username or Email" class="input input-sm input-bordered"
-                    value="{{ request.args.get('search', '') }}">
+                <input type="text" name="search" placeholder="Username or Email" class="input input-sm input-bordered" value="{{ request.args.get('search', '') }}">
             </div>
             <div class="form-control">
                 <label class="label"><span class="label-text">Filter by</span></label>
                 <select name="filter_type" class="select select-sm select-bordered">
                     <option value="" {% if not request.args.get('filter_type') %}selected{% endif %}>All Users</option>
-                    <option value="home_user" {% if request.args.get('filter_type')=='home_user' %}selected{% endif %}>
-                        Home Users</option>
-                    <option value="shares_back" {% if request.args.get('filter_type')=='shares_back' %}selected{% endif
-                        %}>Shares Back</option>
-                    <option value="has_discord" {% if request.args.get('filter_type')=='has_discord' %}selected{% endif
-                        %}>Discord Linked</option>
-                    <option value="no_discord" {% if request.args.get('filter_type')=='no_discord' %}selected{% endif
-                        %}>No Discord Linked</option>
+                    <option value="home_user" {% if request.args.get('filter_type')=='home_user' %}selected{% endif %}>Home Users</option>
+                    <option value="shares_back" {% if request.args.get('filter_type')=='shares_back' %}selected{% endif %}>Shares Back</option>
+                    <option value="has_discord" {% if request.args.get('filter_type')=='has_discord' %}selected{% endif %}>Discord Linked</option>
+                    <option value="no_discord" {% if request.args.get('filter_type')=='no_discord' %}selected{% endif %}>No Discord Linked</option>
                 </select>
             </div>
             <div class="form-control">
                 <label class="label"><span class="label-text">Sort by</span></label>
                 <select name="sort_by" class="select select-sm select-bordered">
-                    <option value="username_asc" {% if request.args.get('sort_by', 'username_asc' )=='username_asc'
-                        %}selected{% endif %}>Username (A-Z)</option>
-                    <option value="username_desc" {% if request.args.get('sort_by')=='username_desc' %}selected{% endif
-                        %}>Username (Z-A)</option>
-                    <option value="last_streamed_desc" {% if request.args.get('sort_by')=='last_streamed_desc'
-                        %}selected{% endif %}>Last Streamed (Newest)</option>
-                    <option value="last_streamed_asc" {% if request.args.get('sort_by')=='last_streamed_asc'
-                        %}selected{% endif %}>Last Streamed (Oldest)</option>
-                    <option value="created_at_desc" {% if request.args.get('sort_by')=='created_at_desc' %}selected{%
-                        endif %}>Date Added (Newest)</option>
-                    <option value="created_at_asc" {% if request.args.get('sort_by')=='created_at_asc' %}selected{%
-                        endif %}>Date Added (Oldest)</option>
+                    <option value="username_asc" {% if request.args.get('sort_by', 'username_asc' )=='username_asc' %}selected{% endif %}>Username (A-Z)</option>
+                    <option value="username_desc" {% if request.args.get('sort_by')=='username_desc' %}selected{% endif %}>Username (Z-A)</option>
+                    <option value="last_streamed_desc" {% if request.args.get('sort_by')=='last_streamed_desc' %}selected{% endif %}>Last Streamed (Newest)</option>
+                    <option value="last_streamed_asc" {% if request.args.get('sort_by')=='last_streamed_asc' %}selected{% endif %}>Last Streamed (Oldest)</option>
+                    <option value="created_at_desc" {% if request.args.get('sort_by')=='created_at_desc' %}selected{% endif %}>Date Added (Newest)</option>
+                    <option value="created_at_asc" {% if request.args.get('sort_by')=='created_at_asc' %}selected{% endif %}>Date Added (Oldest)</option>
                 </select>
             </div>
-
             <div class="form-control">
                 <label class="label"><span class="label-text">Per Page</span></label>
                 <select name="per_page" class="select select-sm select-bordered" onchange="this.form.submit()">
-                    {% for count in [12, 24, 48, 96] %} {# Using common page sizes #}
+                    {% for count in [12, 24, 48, 96] %}
                     <option value="{{ count }}" {% if current_per_page==count %}selected{% endif %}>{{ count }}</option>
                     {% endfor %}
                 </select>
             </div>
-
             <div class="form-control">
-                <button type="submit" class="btn btn-sm btn-primary w-full"><i class="fa-solid fa-filter mr-2"></i>
-                    Apply</button>
+                <button type="submit" class="btn btn-sm btn-primary w-full"><i class="fa-solid fa-filter mr-2"></i> Apply</button>
             </div>
         </div>
     </form>
 
     {% if current_user.has_permission('purge_users') %}
-    <!-- Purge Users Section -->
     <div class="card bg-base-200 shadow-lg my-6">
         <div class="card-body">
             <h2 class="card-title text-lg"><i class="fa-solid fa-user-clock mr-2 text-warning"></i> Purge Inactive Users</h2>
@@ -103,16 +90,14 @@
                 Automatically remove users from PUM and your Plex server if they haven't streamed content
                 for a specified period. Plex Home users are always excluded from purging.
             </p>
-            {# This form now ONLY collects criteria for the preview #}
             <form id="previewPurgeForm"
                   hx-post="{{ url_for('users.preview_purge_inactive_users') }}"
-                  hx-target="#confirm_purge_modal_content_div" {# Target the modal's content area #}
+                  hx-target="#confirm_purge_modal_content_div"
                   hx-swap="innerHTML"
                   hx-indicator="#preview-purge-loader"
                   hx-on::after-request="if(event.detail.successful && event.detail.xhr.status !== 400) confirm_purge_modal.showModal();">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"> {# Adjusted grid #}
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                     <div class="form-control md:col-span-1">
                         <label class="label" for="inactive_days_main_form">
                             <span class="label-text font-medium">Inactive for at least (days):</span>
@@ -128,37 +113,45 @@
                             <input type="checkbox" id="exclude_sharers_main_form" name="exclude_sharers" value="true"
                                    class="checkbox checkbox-primary mr-2" 
                                    {% if purge_settings.exclude_sharers %}checked{% endif %}>
-                            <span class="label-text font-medium">Exclude users who share back?</span>
+                            <span class="label-text font-medium">Exclude sharers?</span>
                         </label>
                          <label class="label"><span class="label-text-alt whitespace-normal">If checked, users marked "Shares Back" are safe.</span></label>
                     </div>
-                     <div class="form-control md:col-span-1">
+                    
+                    <div class="form-control md:col-span-1">
                         <label class="label cursor-pointer justify-start">
                             <input type="checkbox" id="exclude_purge_whitelisted_main_form" name="exclude_purge_whitelisted" value="true"
-                                   class="checkbox checkbox-primary mr-2" checked> {# Default to checked for safety #}
-                            <span class="label-text font-medium">Exclude Purge Whitelisted Users?</span>
+                                   class="checkbox checkbox-primary mr-2" checked>
+                            <span class="label-text font-medium">Exclude Whitelisted?</span>
                         </label>
                          <label class="label"><span class="label-text-alt whitespace-normal">If checked, users on Purge Whitelist are safe.</span></label>
                     </div>
                     
+                    {# --- NEW CHECKBOX --- #}
                     <div class="form-control md:col-span-1">
-                        <button type="submit" class="btn btn-info w-full"> {# Changed from btn-warning #}
+                        <label class="label cursor-pointer justify-start">
+                            <input type="checkbox" id="ignore_creation_date_main_form" name="ignore_creation_date" value="true"
+                                   class="checkbox checkbox-warning mr-2">
+                            <span class="label-text font-medium">Ignore Creation Date?</span>
+                        </label>
+                         <label class="label"><span class="label-text-alt whitespace-normal">If checked, users who never streamed are purged regardless of join date.</span></label>
+                    </div>
+
+                    <div class="form-control md:col-span-1">
+                        <button type="submit" class="btn btn-info w-full">
                             <span id="preview-purge-loader" class="htmx-indicator loading loading-spinner loading-xs"></span>
-                            <i class="fa-solid fa-list-check mr-2"></i> Preview Users for Purge
+                            <i class="fa-solid fa-list-check mr-2"></i> Preview Purge
                         </button>
                     </div>
                 </div>
             </form>
-            <div id="purge-status-message" class="mt-4 min-h-[2rem]">
-                <!-- Final purge status from hx-post on confirmPurgeSelectedForm will go here -->
-            </div>
+            <div id="purge-status-message" class="mt-4 min-h-[2rem]"></div>
         </div>
     </div>
-    <!-- End Purge Users Section -->
     {% endif %}
 
     <div id="mass-edit-container" class="mb-4 hidden">
-        <div class="flex items-center space-x-2"> {# Wrapper div #}
+        <div class="flex items-center space-x-2">
             <button type="button" class="btn btn-accent" onclick="mass_edit_modal.showModal()">
                 <i class="fa-solid fa-pen-to-square mr-2"></i> Mass Edit (<span id="selected-users-count" class="contents">0</span> selected)
             </button>
@@ -167,32 +160,36 @@
         </div>
     </div>
 
-    {# The user list will be loaded into this container by HTMX. This container is STABLE. #}
     <div id="user-list-container">
-        <!-- The content from _users_list_content.html will be swapped in here -->
-        <!-- We use HTMX to fetch and render the initial state too -->
-        <div hx-get="{{ url_for('users.list_users', **request.args.to_dict()) }}" hx-trigger="load" hx-swap="innerHTML">
-            <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading users...</p></div>
+        <div hx-get="{{ url_for('users.list_users', **request.args.to_dict()) }}"
+             hx-trigger="load"
+             hx-target="#user-list-container"
+             hx-swap="innerHTML">
+            
+            <div class="text-center p-8">
+                <span class="loading loading-lg loading-spinner"></span>
+                <p>Loading users...</p>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Mass Edit Modal -->
 <dialog id="mass_edit_modal" class="modal modal-bottom sm:modal-middle">
     <div class="modal-box max-w-2xl">
         <form method="dialog"> <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button> </form>
         <h3 class="font-bold text-lg mb-4"><i class="fa-solid fa-users-cog mr-2"></i>Mass Edit Users</h3>
-        
-        <form id="massEditForm" method="POST">
+        <form id="massEditForm" method="POST"
+              hx-post="{{ url_for('users.mass_edit_users', **request.args.to_dict(flat=False)) }}"
+              hx-target="#user-list-container"
+              hx-swap="innerHTML"
+              hx-indicator="#mass_edit_loader"
+              hx-on::after-request="if (event.detail.successful) { mass_edit_modal.close(); }">
             {{ mass_edit_form.hidden_tag() }}
-            
-            <input type="hidden" id="mass_edit_user_ids_input">
-            
+            <input type="hidden" name="user_ids" id="mass_edit_user_ids_input">
             <div class="form-control mb-4">
                 {{ mass_edit_form.action.label(class="label") }}
                 {{ mass_edit_form.action(class="select select-bordered", id="mass_edit_action_select") }}
             </div>
-            
             <div id="mass_edit_libraries_section" class="form-control mb-4 hidden">
                 <label class="label"><span class="label-text">Set Access to Libraries...</span></label>
                 <div class="max-h-60 overflow-y-auto p-2 border border-base-300 rounded-md">
@@ -216,64 +213,95 @@
                     <span class="label-text font-semibold">I understand...</span>
                 </label>
             </div>
-            
             <div class="modal-action mt-6">
                 <button type="button" class="btn btn-ghost" onclick="mass_edit_modal.close()">Cancel</button>
-                <button type="button" class="btn btn-primary" id="mass_edit_submit_button">Apply Changes</button>
+                <button type="submit" class="btn btn-primary" id="mass_edit_submit_button">Apply Changes</button>
                 <span id="mass_edit_loader" class="htmx-indicator loading loading-spinner loading-md"></span>
             </div>
         </form>
     </div>
 </dialog>
 
-<!-- Confirm Purge Modal - Now its content is dynamic -->
 <dialog id="confirm_purge_modal" class="modal modal-bottom sm:modal-middle">
-  <div class="modal-box max-w-2xl"> {# Increased max-width for user list #}
+  <div class="modal-box max-w-2xl">
     <form method="dialog">
         <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="confirm_purge_modal.close()">✕</button>
     </form>
     <div id="confirm_purge_modal_content_div">
-        <!-- Content from _purge_preview_modal_content.html will be loaded here by HTMX -->
         <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading preview...</p></div>
     </div>
   </div>
-  {# Removed modal-backdrop from here as it's better controlled by JS/DaisyUI if needed for programmatic close #}
 </dialog>
 
 <dialog id="sync_results_modal" class="modal modal-bottom sm:modal-middle">
   <div id="syncResultModalContainer">
-      {# Content from _sync_results_modal_content.html will be loaded here by HTMX #}
       <div class="modal-box"><div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading sync results...</p></div></div>
   </div>
-  {# No modal-backdrop form here, close is handled by button inside loaded content #}
 </dialog>
 
 <dialog id="quick_edit_user_modal" class="modal modal-bottom sm:modal-middle">
     <div class="modal-box max-w-2xl">
         <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
         <div id="quick_edit_modal_content_div">
-             <!-- HTMX will load the form partial here -->
              <div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span></div>
         </div>
     </div>
 </dialog>
-
 {% endblock %}
+
 {% block scripts %}
 {{ super() }}
 <script>
-    const selectedUserIds = new Set();
-    
-    function populateMassEditUserIds() {
-        const hiddenInput = document.getElementById('mass_edit_user_ids_input');
-        if(hiddenInput) {
-            hiddenInput.value = Array.from(selectedUserIds).join(',');
-            console.log(`[DEBUG] CLICK: Populating #mass_edit_user_ids_input with value: "${hiddenInput.value}"`);
-        } else {
-            console.error("[DEBUG] Click handler could not find #mass_edit_user_ids_input");
+    const TABLE_COLUMNS = {
+        email: 'Email', status: 'Status', libraries: 'Libraries',
+        last_streamed: 'Last Streamed', actions: 'Actions'
+    };
+    function saveColumnPreferences(prefs) { localStorage.setItem('userTableColumnPrefs', JSON.stringify(prefs)); }
+    function loadColumnPreferences() {
+        const saved = localStorage.getItem('userTableColumnPrefs');
+        return saved ? JSON.parse(saved) : Object.keys(TABLE_COLUMNS).reduce((acc, key) => ({ ...acc, [key]: true }), {});
+    }
+    function toggleColumn(columnName, isVisible) {
+        const table = document.querySelector('.table');
+        if (!table) return;
+        const cells = table.querySelectorAll(`[data-col="${columnName}"]`);
+        cells.forEach(cell => { cell.style.display = isVisible ? '' : 'none'; });
+    }
+    function populateColumnSelector() {
+        const menu = document.getElementById('column-selector-menu');
+        const prefs = loadColumnPreferences();
+        if (!menu) return;
+        menu.innerHTML = '';
+        for (const [key, label] of Object.entries(TABLE_COLUMNS)) {
+            const li = document.createElement('li');
+            const isChecked = prefs[key] !== false;
+            li.innerHTML = `<label class="label cursor-pointer"><span class="label-text">${label}</span><input type="checkbox" class="checkbox checkbox-primary column-toggle-checkbox" data-column="${key}" ${isChecked ? 'checked' : ''}></label>`;
+            menu.appendChild(li);
+        }
+        attachColumnToggleListeners();
+    }
+    function applyColumnPreferences() {
+        const prefs = loadColumnPreferences();
+        for (const [key, isVisible] of Object.entries(prefs)) {
+            toggleColumn(key, isVisible !== false);
         }
     }
-    
+    function attachColumnToggleListeners() {
+        document.querySelectorAll('.column-toggle-checkbox').forEach(checkbox => {
+            if (checkbox.dataset.listenerAttached) return;
+            checkbox.dataset.listenerAttached = 'true';
+            checkbox.addEventListener('change', (event) => {
+                const columnName = event.target.dataset.column;
+                const isVisible = event.target.checked;
+                const prefs = loadColumnPreferences();
+                prefs[columnName] = isVisible;
+                toggleColumn(columnName, isVisible);
+                saveColumnPreferences(prefs);
+            });
+        });
+    }
+
+    const selectedUserIds = new Set();
     function updateMassEditUI() {
         const massEditContainer = document.getElementById('mass-edit-container');
         const selectedUsersCountSpan = document.getElementById('selected-users-count');
@@ -281,36 +309,37 @@
         const count = selectedUserIds.size;
         selectedUsersCountSpan.textContent = count;
         massEditContainer.classList.toggle('hidden', count === 0);
-        console.log(`[DEBUG] UI Updated. Selected count: ${count}.`);
+    }
+
+    function reinitializeUserListFeatures() {
+        console.log("[DEBUG] reinitializeUserListFeatures() called.");
+        const currentView = '{{ current_view }}';
+        const columnSelectorContainer = document.getElementById('column-selector-container');
+        if (currentView === 'table' && columnSelectorContainer) {
+            columnSelectorContainer.classList.remove('hidden');
+            populateColumnSelector();
+            applyColumnPreferences();
+        } else if (columnSelectorContainer) {
+            columnSelectorContainer.classList.add('hidden');
+        }
+        updateMassEditUI();
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        const userListContainer = document.getElementById('user-list-container');
-        const massEditContainer = document.getElementById('mass-edit-container');
-        const selectedUsersCountSpan = document.getElementById('selected-users-count');
-        const selectAllVisibleBtn = document.getElementById('select_all_visible_button');
-        const deselectAllVisibleBtn = document.getElementById('deselect_all_visible_button');
-        
-        // --- Modal-specific selectors ---
-        const massEditModal = document.getElementById('mass_edit_modal');
-        const massEditSubmitButton = document.getElementById('mass_edit_submit_button');
-        const massEditActionSelect = document.getElementById('mass_edit_action_select');
-        const massEditLoader = document.getElementById('mass_edit_loader');
-        const librariesSection = document.getElementById('mass_edit_libraries_section');
-        const deleteConfirmSection = document.getElementById('mass_edit_delete_confirmation_section');
-        const confirmDeleteCheckbox = document.getElementById('mass_edit_confirm_delete');
+        htmx.on('#user-list-container', 'htmx:afterSwap', function() {
+            selectedUserIds.clear();
+            reinitializeUserListFeatures();
+        });
 
-        if(userListContainer) {
+        // Event delegation for user selection
+        const userListContainer = document.getElementById('user-list-container');
+        if (userListContainer) {
             userListContainer.addEventListener('change', function(event) {
                 const target = event.target;
                 if (target.matches('.user-select-checkbox') && target.dataset.userId) {
                     const userId = target.dataset.userId;
-                    console.log(`[DEBUG] Checkbox change for user ID: ${userId}. Checked: ${target.checked}`);
-                    if (target.checked) {
-                        selectedUserIds.add(userId);
-                    } else {
-                        selectedUserIds.delete(userId);
-                    }
+                    if (target.checked) selectedUserIds.add(userId);
+                    else selectedUserIds.delete(userId);
                     updateMassEditUI();
                 }
             });
@@ -326,101 +355,53 @@
             });
         }
         
-        document.body.addEventListener('htmx:afterSwap', function(event) {
-            if (event.detail.target.id === 'user-list-container') {
-                selectedUserIds.clear();
-                updateMassEditUI();
-                console.log("[DEBUG] htmx:afterSwap: User list reloaded. Selection cleared.");
-            }
-        });
-
+        // Listeners for buttons outside the swap area
+        const selectAllVisibleBtn = document.getElementById('select_all_visible_button');
         if (selectAllVisibleBtn) {
-            selectAllVisibleBtn.addEventListener('click', function() {
-                console.log("[DEBUG] 'Select All' clicked.");
-                if (!userListContainer) return;
-                userListContainer.querySelectorAll('.user-select-checkbox[data-user-id]').forEach(cb => {
+            selectAllVisibleBtn.onclick = function() {
+                document.querySelectorAll('#user-list-container .user-select-checkbox').forEach(cb => {
                     if (!cb.checked) {
                         cb.checked = true;
-                        selectedUserIds.add(cb.dataset.userId);
+                        cb.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 });
-                updateMassEditUI();
-            });
+            };
         }
-
+        const deselectAllVisibleBtn = document.getElementById('deselect_all_visible_button');
         if (deselectAllVisibleBtn) {
-            deselectAllVisibleBtn.addEventListener('click', function() {
-                console.log("[DEBUG] 'Deselect All' clicked.");
-                if (!userListContainer) return;
-                userListContainer.querySelectorAll('.user-select-checkbox[data-user-id]').forEach(cb => {
-                     cb.checked = false;
+            deselectAllVisibleBtn.onclick = function() {
+                document.querySelectorAll('#user-list-container .user-select-checkbox').forEach(cb => {
+                    if (cb.checked) {
+                        cb.checked = false;
+                        cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                 });
-                selectedUserIds.clear();
-                updateMassEditUI();
-            });
+            };
         }
+
+        // Mass Edit Modal Logic
+        const massEditSubmitButton = document.getElementById('mass_edit_submit_button');
+        const massEditForm = document.getElementById('massEditForm');
+        const massEditActionSelect = document.getElementById('mass_edit_action_select');
+        const librariesSection = document.getElementById('mass_edit_libraries_section');
+        const deleteConfirmSection = document.getElementById('mass_edit_delete_confirmation_section');
+        const confirmDeleteCheckbox = document.getElementById('mass_edit_confirm_delete');
         
-        // --- CORRECTED Manual submission logic for the Mass Edit Modal ---
-        if (massEditSubmitButton && massEditForm) {
-            massEditSubmitButton.addEventListener('click', function() {
-                
-                // Show the loader manually
-                if (massEditLoader) massEditLoader.style.display = 'inline-block';
-
-                // 1. Get all form data into a serializable object
-                const formData = new FormData(massEditForm);
-                
-                // 2. Add our dynamically generated user_ids to it
-                formData.set('user_ids', Array.from(selectedUserIds).join(','));
-
-                // DEBUG: Log the final data being sent
-                console.log("[SUBMIT CLICK] Final data to be sent:", Object.fromEntries(formData.entries()));
-
-                // 3. Make the HTMX request using `fetch` style `htmx.ajax` for full control
-                htmx.ajax('POST', "{{ url_for('users.mass_edit_users', **request.args.to_dict(flat=False)) }}", {
-                    target: '#user-list-container',
-                    swap: 'innerHTML',
-                    values: formData,
-                    indicator: massEditLoader // Tell HTMX which indicator to manage
-                }).then(() => {
-                    // This runs only on success (2xx response)
-                    document.getElementById('mass_edit_modal').close();
-                }).catch(error => {
-                    // This runs on failure (non-2xx response)
-                    console.error("Mass edit submission failed:", error);
-                    // The error toast is handled by the HX-Trigger from the server,
-                    // so we don't need to do anything else here.
-                }).finally(() => {
-                     // Always hide loader, even on error
-                    if(massEditLoader) massEditLoader.style.display = 'none';
-                });
-            });
-        }
-
         if (massEditSubmitButton) {
             massEditSubmitButton.addEventListener('click', function() {
                 const hiddenInput = document.getElementById('mass_edit_user_ids_input');
-                if(hiddenInput) {
+                if (hiddenInput) {
                     hiddenInput.value = Array.from(selectedUserIds).join(',');
                 }
             });
         }
 
-        htmx.on("#mass_edit_submit_button", "htmx:afterRequest", function(evt){
-            if (evt.detail.successful) {
-                document.getElementById('mass_edit_modal').close();
-            }
-        });
-
         if (massEditActionSelect) {
             massEditActionSelect.addEventListener('change', function () {
                 if(librariesSection) librariesSection.classList.add('hidden'); 
                 if(deleteConfirmSection) deleteConfirmSection.classList.add('hidden');
-                
-                // Use a separate variable for the submit button inside this scope
                 const submitBtn = document.getElementById('mass_edit_submit_button');
                 if(submitBtn) submitBtn.disabled = (this.value === '');
-
                 if (this.value === 'update_libraries' && librariesSection) {
                     librariesSection.classList.remove('hidden');
                 } else if (this.value === 'delete_users' && deleteConfirmSection) {
@@ -430,10 +411,10 @@
                     }
                 }
             });
-             const submitBtn = document.getElementById('mass_edit_submit_button');
-             if (submitBtn && massEditActionSelect.value === '') {
-                submitBtn.disabled = true;
-             }
+            if (massEditActionSelect.value === '') {
+                const submitBtn = document.getElementById('mass_edit_submit_button');
+                if(submitBtn) submitBtn.disabled = true;
+            }
         }
 
         if (confirmDeleteCheckbox) {
@@ -445,32 +426,9 @@
             });
         }
         
-        // --- Logic for modals (purge, mass edit, sync) ---
-        const confirmPurgeModal = document.getElementById('confirm_purge_modal');
-        if (confirmPurgeModal) {
-            confirmPurgeModal.addEventListener('close', () => {
-                const contentDiv = document.getElementById('confirm_purge_modal_content_div');
-                if (contentDiv) {
-                    contentDiv.innerHTML = '<div class="text-center p-8"><span class="loading loading-lg loading-spinner"></span><p>Loading preview...</p></div>';
-                }
-            });
-        }
-        
-        const massEditFormEl = document.getElementById('massEditForm');
-        if (massEditFormEl) {
-            massEditFormEl.addEventListener('htmx:afterSwap', function (evt) { 
-                const modal = document.getElementById('mass_edit_modal');
-                if (modal && typeof modal.close === 'function' && evt.detail.successful) {
-                    modal.close();
-                }
-            });
-        }
-
-        document.body.addEventListener('openSyncResultsModal', function(evt) {
+        document.body.addEventListener('openSyncResultsModal', function() {
             const modal = document.getElementById('sync_results_modal');
-            if (modal && typeof modal.showModal === 'function') {
-                modal.showModal();
-            }
+            if (modal) modal.showModal();
         });
     });
 </script>

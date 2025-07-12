@@ -61,6 +61,11 @@
                         <i class="fa-brands fa-discord mr-1"></i> Linked
                     </div>
                 {% endif %}
+                {% if user.is_purge_whitelisted %}
+                    <div class="badge badge-accent badge-sm" title="This user is immune to inactivity purges.">
+                        <i class="fa-solid fa-shield-halved mr-1"></i> Purge Whitelisted
+                    </div>
+                {% endif %}
                 {% if user.plex_uuid and user.plex_uuid in admins_by_uuid %}
                     {# First, display a generic Admin badge #}
                     <div class="badge badge-error badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>

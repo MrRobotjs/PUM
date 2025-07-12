@@ -2,7 +2,7 @@
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import func, case
+from sqlalchemy import func, case, or_
 from app.models import User, EventType, StreamHistory
 from app.extensions import db
 from app.utils.helpers import log_event, format_duration
@@ -437,60 +437,52 @@ def purge_inactive_users(admin_id: int, user_ids_to_purge: list[int] = None,
     
     return {"message": result_message, "purged_count": purged_count, "errors": error_count, "skipped_final_check": skipped_due_to_final_check}
 
-def get_users_eligible_for_purge(inactive_days_threshold: int, exclude_sharers: bool, exclude_whitelisted: bool):
-    current_app.logger.info(f"User_Service.py - get_users_eligible_for_purge(): Criteria: days={inactive_days_threshold}, exclude_sharers={exclude_sharers}, exclude_whitelisted={exclude_whitelisted}")
-    if inactive_days_threshold < 1: # Users are purged if inactive for AT LEAST this many days. 0 or less is problematic.
-        raise ValueError("Inactivity threshold must be at least 1 day for eligibility check.")
+def get_users_eligible_for_purge(inactive_days_threshold: int, exclude_sharers: bool, exclude_whitelisted: bool, ignore_creation_date_for_never_streamed: bool = False):
     
-    # Cutoff date: if a user HAS streamed, their last_streamed_at must be older than this.
+    if inactive_days_threshold < 1:
+        raise ValueError("Inactivity threshold must be at least 1 day.")
+    
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=inactive_days_threshold)
-    current_app.logger.debug(f"User_Service.py - get_users_eligible_for_purge(): Cutoff date for streaming activity (for users who HAVE streamed): {cutoff_date}")
     
+    # --- START OF FIX ---
+    # Start with a base query
     query = User.query.filter(User.is_home_user == False) 
 
-    if exclude_sharers: 
-        query = query.filter(User.shares_back == False)
-        current_app.logger.debug("User_Service.py - get_users_eligible_for_purge(): Filtering out users who share back.")
+    # Conditionally add filters, now including the check for NULL
+    if exclude_sharers:
+        query = query.filter(or_(User.shares_back == False, User.shares_back == None))
     
     if exclude_whitelisted: 
-        query = query.filter(User.is_purge_whitelisted == False)
-        current_app.logger.debug("User_Service.py - get_users_eligible_for_purge(): Filtering out purge-whitelisted users.")
+        query = query.filter(or_(User.is_purge_whitelisted == False, User.is_purge_whitelisted == None))
+    # --- END OF FIX ---
         
     eligible_users_list = []
     potential_users = query.all()
-    current_app.logger.info(f"User_Service.py - get_users_eligible_for_purge(): Number of users AFTER initial filters (home, sharer, whitelist): {len(potential_users)}")
 
     for user in potential_users:
+        
         is_eligible_for_purge = False
         
-        current_app.logger.debug(f"User_Service.py - Evaluating user '{user.plex_username}' (ID: {user.id}) - Created: {user.created_at}, Last Streamed: {user.last_streamed_at}")
-
         if user.last_streamed_at is None:
-            # --- MODIFIED LOGIC FOR NEVER-STREAMED USERS ---
-            # If user has never streamed, they are considered to meet the "inactivity" part
-            # of the threshold immediately. The "X days" threshold is about lack of streaming.
-            # They have lacked streaming for their entire existence.
-            is_eligible_for_purge = True 
-            current_app.logger.debug(f"  -> User '{user.plex_username}' marked ELIGIBLE (never streamed).")
-            # --- END MODIFIED LOGIC ---
-        else: # User has streamed at least once
+            if ignore_creation_date_for_never_streamed:
+                is_eligible_for_purge = True
+            else:
+                created_at_aware = user.created_at.replace(tzinfo=timezone.utc) if user.created_at.tzinfo is None else user.created_at
+                if created_at_aware < cutoff_date:
+                    is_eligible_for_purge = True
+                else:
+                    current_app.logger.info("[PURGE_DEBUG]   -> RESULT: User is NOT eligible (created after cutoff).")
+        else: 
             last_streamed_aware = user.last_streamed_at.replace(tzinfo=timezone.utc) if user.last_streamed_at.tzinfo is None else user.last_streamed_at
             if last_streamed_aware < cutoff_date:
                 is_eligible_for_purge = True
-                current_app.logger.debug(f"  -> User '{user.plex_username}' marked ELIGIBLE (last streamed {last_streamed_aware} which is before cutoff {cutoff_date}).")
+                current_app.logger.info("[PURGE_DEBUG]   -> RESULT: User is ELIGIBLE (streamed before cutoff).")
             else:
-                current_app.logger.debug(f"  -> User '{user.plex_username}' NOT eligible (last streamed {last_streamed_aware} is NOT before cutoff {cutoff_date}).")
+                current_app.logger.info("[PURGE_DEBUG]   -> RESULT: User is NOT eligible (streamed after cutoff).")
         
         if is_eligible_for_purge:
-            eligible_users_list.append({
-                'id': user.id, 
-                'plex_username': user.plex_username, 
-                'plex_email': user.plex_email,
-                'last_streamed_at': user.last_streamed_at, 
-                'created_at': user.created_at 
-            })
+            eligible_users_list.append({ 'id': user.id, 'plex_username': user.plex_username, 'plex_email': user.plex_email, 'last_streamed_at': user.last_streamed_at, 'created_at': user.created_at })
             
-    current_app.logger.info(f"User_Service.py - get_users_eligible_for_purge(): FINAL count of eligible users matching criteria: {len(eligible_users_list)}")
     return eligible_users_list
 
 def get_user_stream_stats(user_id):
