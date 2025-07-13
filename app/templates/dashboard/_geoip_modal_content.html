@@ -1,0 +1,38 @@
+<!-- File: app/templates/dashboard/_geoip_modal_content.html -->
+{# Expects 'geoip_data' (dict) and 'ip_address' in context #}
+
+<h3 class="font-bold text-lg"><i class="fa-solid fa-map-marker-alt mr-2"></i>IP Address: {{ ip_address }}</h3>
+
+{% if geoip_data and not geoip_data.get('error') %}
+    <div class="py-4 space-y-4 text-sm">
+        <div>
+            <h4 class="font-semibold text-accent mb-1">Geolocation Lookup</h4>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-base-content/90">
+                <p><strong>Continent:</strong> {{ geoip_data.get('continent_code', 'N/A') }}</p>
+                <p><strong>Country:</strong> {{ geoip_data.get('country', 'N/A') }}</p>
+                <p><strong>Region:</strong> {{ geoip_data.get('subdivisions', 'N/A') }}</p>
+                <p><strong>City:</strong> {{ geoip_data.get('city', 'N/A') }}</p>
+                <p><strong>Timezone:</strong> {{ geoip_data.get('time_zone', 'N/A') }}</p>
+                <p><strong>Postal Code:</strong> {{ geoip_data.get('postal_code', 'N/A') }}</p>
+                <p><strong>Latitude:</strong> {{ geoip_data.get('latitude', 'N/A') }}</p>
+                <p><strong>Longitude:</strong> {{ geoip_data.get('longitude', 'N/A') }}</p>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <!-- START: Improved Error Display -->
+    <div class="alert alert-error my-4">
+        <i class="fa-solid fa-circle-xmark fa-fw"></i>
+        <div>
+            <h3 class="font-bold">Lookup Failed</h3>
+            <div class="text-xs">{{ geoip_data.get('error', 'An unknown error occurred.') }}</div>
+        </div>
+    </div>
+    <!-- END: Improved Error Display -->
+{% endif %}
+
+<div class="modal-action mt-2">
+    <form method="dialog">
+        <button class="btn btn-sm">Close</button>
+    </form>
+</div>

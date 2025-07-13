@@ -806,7 +806,8 @@ def streaming_sessions_partial():
                 product = getattr(raw_plex_session.player, 'product', 'N/A') if hasattr(raw_plex_session, 'player') else 'N/A'
                 location_ip = getattr(raw_plex_session.player, 'address', 'N/A') if hasattr(raw_plex_session, 'player') else 'N/A'
                 is_lan = hasattr(raw_plex_session.player, 'local') and raw_plex_session.player.local
-                location_lan_wan = "LAN" if is_lan else "WAN" if location_ip != 'N/A' else "Unknown"
+                is_public_ip = not is_lan and location_ip not in ['127.0.0.1', 'localhost']
+                location_lan_wan = "LAN" if is_lan else "WAN" if is_public_ip else "Local"
 
                 pum_user_id_for_link = None
                 plex_user_id_from_session_int = None
@@ -830,6 +831,8 @@ def streaming_sessions_partial():
                     'container_detail': container_text_val, 'video_detail': video_text,
                     'audio_detail': audio_text, 'subtitle_detail': subtitle_text,
                     'location_detail': f"{location_lan_wan}: {location_ip if location_ip != 'N/A' else ''}".strip(),
+                    'is_public_ip': is_public_ip, # Add the new boolean flag
+                    'location_ip': location_ip, # Pass the raw IP for the URL
                     'bandwidth_detail': f"{ (current_bitrate_kbps_for_calc / 1000.0):.1f} Mbps" if current_bitrate_kbps_for_calc > 0 else "N/A",
 
                     'bitrate_calc': current_bitrate_kbps_for_calc,

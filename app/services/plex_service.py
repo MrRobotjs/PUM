@@ -547,3 +547,49 @@ def get_library_details():
         current_app.logger.error(f"Error fetching detailed library info: {e}", exc_info=True)
         log_event(EventType.ERROR_PLEX_API, f"Error fetching library details: {e}")
         return [] # Return empty list on error
+    
+def get_geoip_info(ip_address: str) -> dict:
+    """
+    Returns a dictionary with geolocation information for an IP address
+    using Plex's GeoIP database. Now includes latitude and longitude parsing.
+    """
+    if not ip_address or ip_address in ['127.0.0.1', 'localhost']:
+        return {'error': 'Cannot look up a local address.'}
+    
+    admin_account = get_plex_admin_account()
+    if not admin_account:
+        current_app.logger.error("GeoIP: Could not get admin account to perform lookup.")
+        return {'error': 'Could not authenticate to Plex to perform lookup.'}
+
+    try:
+        current_app.logger.info(f"Performing GeoIP lookup for IP: {ip_address}")
+        xml_data = admin_account.query(f'https://plex.tv/api/v2/geoip?ip_address={ip_address}')
+        
+        if xml_data is not None and hasattr(xml_data, 'attrib'):
+            geoip_dict = dict(xml_data.attrib)
+            
+            # --- START OF MODIFICATION ---
+            # Parse the coordinates attribute
+            if 'coordinates' in geoip_dict:
+                try:
+                    lat, lon = geoip_dict['coordinates'].split(',')
+                    geoip_dict['latitude'] = lat.strip()
+                    geoip_dict['longitude'] = lon.strip()
+                except ValueError:
+                    # Handle cases where the coordinates might be malformed
+                    current_app.logger.warning(f"Could not parse coordinates: {geoip_dict['coordinates']}")
+                    geoip_dict['latitude'] = 'N/A'
+                    geoip_dict['longitude'] = 'N/A'
+            # --- END OF MODIFICATION ---
+            
+            if 'subdivisions' in geoip_dict:
+                geoip_dict['subdivisions'] = geoip_dict['subdivisions'].split(',')[-1].strip()
+
+            current_app.logger.info(f"GeoIP lookup successful for {ip_address}. Data: {geoip_dict}")
+            return geoip_dict
+        else:
+            raise Exception("Received an empty or malformed response from the GeoIP API.")
+
+    except Exception as e:
+        current_app.logger.error(f"GeoIP lookup failed for IP {ip_address}: {e}", exc_info=True)
+        return {'error': f'API lookup failed: {str(e)}'}

@@ -82,7 +82,6 @@ def monitor_plex_sessions_task():
                 
                 # If the session is new, create the history record
                 if session_key not in _active_stream_sessions:
-                    # Get media duration, converting from milliseconds to seconds
                     media_duration_ms = getattr(session, 'duration', 0)
                     media_duration_s = int(media_duration_ms / 1000) if media_duration_ms else 0
 
@@ -100,16 +99,19 @@ def monitor_plex_sessions_task():
                         media_type=getattr(session, 'type', None),
                         grandparent_title=getattr(session, 'grandparentTitle', None),
                         parent_title=getattr(session, 'parentTitle', None),
-                        # Populate our new fields
                         media_duration_seconds=media_duration_s,
                         view_offset_at_end_seconds=int(getattr(session, 'viewOffset', 0) / 1000)
                     )
                     db.session.add(new_history_record)
-                    db.session.flush()
+                    db.session.flush() # This assigns an ID to new_history_record before the commit
+                    
+                    # This is the crucial line that was missing.
+                    # We add the new session to our global tracker dictionary.
                     _active_stream_sessions[session_key] = new_history_record.id
-                    current_app.logger.info(f"Stream STARTED: Session {session_key} for user {pum_user.id}. Media Duration: {media_duration_s}s.")
+                    
+                    current_app.logger.info(f"Stream STARTED: Session {session_key} for user {pum_user.id}. Recorded with DB ID {new_history_record.id}.")
                 
-                # If the session is ongoing, just update its progress
+                # If the session is ongoing, find its record and just update the progress.
                 else:
                     history_record_id = _active_stream_sessions.get(session_key)
                     if history_record_id:

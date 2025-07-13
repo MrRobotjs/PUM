@@ -82,7 +82,7 @@
                         <td class="text-center">
                             {% set percent = ((entry.view_offset_at_end_seconds | float / entry.media_duration_seconds | float) * 100) | round if entry.media_duration_seconds and entry.view_offset_at_end_seconds and entry.media_duration_seconds > 0 else 0 %}
                             <div class="tooltip" data-tip="{{ percent | int }}% Watched">
-                                <div class="radial-progress text-primary" style="--value:{{ percent }}; --size:2.5rem; --thickness: 4px;" role="progressbar">
+                                <div class="radial-progress text-primary" style="--value:{{ percent }}; --size:1.7rem; --thickness: 4px;" role="progressbar">
                                     <span class="text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity">{{ percent | int }}</span>
                                 </div>
                             </div>

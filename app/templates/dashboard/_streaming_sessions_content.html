@@ -117,6 +117,16 @@
                                 <i class="fa-solid fa-location-dot fa-fw w-4 mr-1.5 text-info text-center"></i>
                                 <span class="font-medium mr-1 text-info">Location:</span>
                                 <span>{{ session.location_detail }}</span>
+                                {% if session.is_public_ip %}
+                                <button class="btn btn-xs btn-ghost p-1 ml-1"
+                                        title="Lookup IP Info"
+                                        hx-get="{{ url_for('api.geoip_lookup', ip_address=session.location_ip) }}"
+                                        hx-target="#geoip_modal_content_div"
+                                        hx-swap="innerHTML"
+                                        onclick="geoip_modal.showModal()">
+                                    <i class="fa-solid fa-map-location-dot text-accent"></i>
+                                </button>
+                                {% endif %}
                             </p>
                         </div>
                     </div>

@@ -159,3 +159,12 @@ def check_guild_invites():
     ]
     
     return jsonify(affected=True, invites=invites_data)
+
+@bp.route('/geoip_lookup/<ip_address>')
+@login_required
+def geoip_lookup(ip_address):
+    """
+    Looks up GeoIP information for a given IP address and returns an HTML partial.
+    """
+    geoip_data = plex_service.get_geoip_info(ip_address)
+    return render_template('dashboard/_geoip_modal_content.html', geoip_data=geoip_data, ip_address=ip_address)
