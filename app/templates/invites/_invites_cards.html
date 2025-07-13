@@ -21,6 +21,12 @@
                 <p><i class="fa-solid fa-calendar-plus fa-fw mr-1 text-info"></i> Created: {{ invite.created_at | time_ago if invite.created_at else 'N/A' }}</p>
                 <p><i class="fa-solid fa-clock fa-fw mr-1 {{ 'text-error' if invite.is_expired else 'text-success' }}"></i> Expires: {{ invite.expires_at | time_ago if invite.expires_at else 'Never' }}</p>
                 <p><i class="fa-solid fa-users-line fa-fw mr-1 text-info"></i> Uses: {{ invite.current_uses }} / {{ invite.max_uses or '∞' }}</p>
+                <p><i class="fa-solid fa-circle-question text-violet-600"></i> Status: 
+                    {% if not invite.is_active %} <span class="badge badge-error badge-xs">Deactivated</span>
+                    {% elif invite.is_expired %} <span class="badge badge-warning badge-xs">Expired</span>
+                    {% elif invite.has_reached_max_uses %} <span class="badge badge-warning badge-xs">Max Uses</span>
+                    {% else %} <span class="badge badge-success badge-xs">Active</span>
+                    {% endif %}</p>
             </div>
             
             <div class="mb-3">
@@ -40,20 +46,6 @@
                     {% if invite.membership_duration_days %}
                         <span class="badge badge-sm badge-outline badge-warning" title="Membership Duration">{{ invite.membership_duration_days }}-day access</span>
                     {% endif %}
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <p class="text-xs font-semibold mb-1">Status:</p>
-                 <div class="flex flex-wrap gap-1">
-                    {% if not invite.is_active %} <span class="badge badge-error">Deactivated</span>
-                    {% elif invite.is_expired %} <span class="badge badge-warning">Expired</span>
-                    {% elif invite.has_reached_max_uses %} <span class="badge badge-warning">Max Uses</span>
-                    {% else %} <span class="badge badge-success badge-xs">Active</span>
-                    {% endif %}
-                    {# Override indicators from table view #}
-                    {% if invite.force_discord_auth is not none %}<span class="badge badge-info badge-xs" title="Auth Rule Set">Auth Rule</span>{% endif %}
-                    {% if invite.force_guild_membership is not none %}<span class="badge badge-warning badge-xs" title="Guild Rule Set">Guild Rule</span>{% endif %}
                 </div>
             </div>
             

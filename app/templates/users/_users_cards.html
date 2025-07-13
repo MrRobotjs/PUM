@@ -54,31 +54,30 @@
 
             <div class="flex flex-wrap gap-1 mb-3"> {# Use flex-wrap for status badges #}
                 {% if user.is_home_user %}
-                    <div class="badge badge-primary badge-sm" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</div>
+                    <div class="badge badge-primary badge-sm" title="Plex Home User"><i class="fa-solid fa-home"></i>Home</div>
                 {% endif %}
                 {% if user.shares_back %}
-                    <div class="badge badge-secondary badge-sm" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</div>
+                    <div class="badge badge-secondary badge-sm" title="Shares Libraries Back"><i class="fa-solid fa-server"></i>Shares Back</div>
                 {% endif %}
                 {% if user.discord_user_id %}
                     <div class="badge badge-info badge-sm" title="Discord: {{ user.discord_username or 'Linked' }}">
-                        <i class="fa-brands fa-discord mr-1"></i> Linked
+                        <i class="fa-brands fa-discord"></i>Linked
                     </div>
                 {% endif %}
                 {% if user.is_purge_whitelisted %}
                     <div class="badge badge-accent badge-sm" title="This user is immune to inactivity purges.">
-                        <i class="fa-solid fa-shield-halved mr-1"></i> Purge Whitelisted
+                        <i class="fa-solid fa-shield-halved"></i>Purge Whitelisted
                     </div>
                 {% endif %}
                 {% if user.plex_uuid and user.plex_uuid in admins_by_uuid %}
                     {# First, display a generic Admin badge #}
-                    <div class="badge badge-error badge-outline" title="This user is an administrator"><i class="fa-solid fa-user-shield mr-1"></i> Admin</div>
+                    <div class="badge badge-error badge-outline badge-sm" title="This user is an administrator"><i class="fa-solid fa-user-shield"></i>Admin</div>
                     
                     {# Then, loop through the roles for that admin and display colored badges #}
                     {% set admin = admins_by_uuid[user.plex_uuid] %}
                     {% for role in admin.roles %}
-                    <span class="badge" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
-                        {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}
-                        {{ role.name }}
+                    <span class="badge badge-sm" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
+                        {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}{{ role.name }}
                     </span>
                     {% endfor %}
                 {% endif %}

@@ -53,7 +53,13 @@
                     <div class="flex items-center space-x-3">
                         <div class="avatar"><div class="mask mask-squircle w-10 h-10"><img src="{{ user.get_avatar(url_for('static', filename='img/default_avatar.png')) }}" alt="{{ user.plex_username }} avatar" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/default_avatar.png') }}';"/></div></div>
                         <div>
-                            <div class="font-bold truncate max-w-[150px] sm:max-w-xs" title="{{ user.plex_username }}">{{ user.plex_username }}</div>
+                            {% if current_user.has_permission('view_user') %}
+                            <a href="{{ url_for('user.view_user', user_id=user.id, view='table', page=users.page, per_page=current_per_page) }}" title="User Profile" class="text-primary link link-hover">
+                                <div class="font-bold truncate max-w-[150px] sm:max-w-xs" title="{{ user.plex_username }}">{{ user.plex_username }}</div>
+                            </a>
+                            {% else %}
+                                <div class="font-bold truncate max-w-[150px] sm:max-w-xs" title="{{ user.plex_username }}">{{ user.plex_username }}</div>
+                            {% endif %}
                             <div class="text-xs opacity-50">ID: {{ user.plex_user_id or user.id }}</div>
                         </div>
                     </div>
@@ -72,13 +78,25 @@
                     {{ stream_stats.get(user.id, {}).get('total_duration', 0) | format_duration }}
                 </td>
                 <td data-col="status">
-                    {% if user.is_home_user %}<span class="badge badge-primary badge-sm whitespace-nowrap" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</span>{% endif %}
-                    {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1 whitespace-nowrap" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</span>{% endif %}
-                    {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1 whitespace-nowrap" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Discord</span>{% endif %}
+                    {% if user.is_home_user %}<span class="badge badge-primary badge-sm whitespace-nowrap" title="Plex Home User"><i class="fa-solid fa-home"></i>Home</span>{% endif %}
+                    {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1 whitespace-nowrap" title="Shares Libraries Back"><i class="fa-solid fa-server"></i>Shares Back</span>{% endif %}
+                    {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1 whitespace-nowrap" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord"></i>Discord</span>{% endif %}
                     {% if user.is_purge_whitelisted %}
                         <span class="badge badge-accent badge-sm mb-1 whitespace-nowrap" title="This user is immune to inactivity purges.">
-                            <i class="fa-solid fa-shield-halved mr-1"></i> Purge WL
+                            <i class="fa-solid fa-shield-halved"></i>Purge WL
                         </span>
+                    {% endif %}
+                    {% if user.plex_uuid and user.plex_uuid in admins_by_uuid %}
+                        {# First, display a generic Admin badge #}
+                        <div class="badge badge-error badge-outline badge-sm" title="This user is an administrator"><i class="fa-solid fa-user-shield"></i>Admin</div>
+                        
+                        {# Then, loop through the roles for that admin and display colored badges #}
+                        {% set admin = admins_by_uuid[user.plex_uuid] %}
+                        {% for role in admin.roles %}
+                        <span class="badge badge-sm" style="background-color: {{ role.color or '#808080' }}; border-color: {{ role.color or '#808080' }}; color: {{ get_text_color_for_bg(role.color) }};" title="Role: {{ role.name }}">
+                            {% if role.icon %}<i class="{{ role.icon }}"></i>{% endif %}{{ role.name }}
+                        </span>
+                        {% endfor %}
                     {% endif %}
                 </td>
                 <td data-col="libraries" class="text-xs" data-user-id-for-libs="{{ user.id }}">
