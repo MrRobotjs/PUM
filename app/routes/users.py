@@ -550,12 +550,11 @@ def get_quick_edit_form(user_id):
     form.is_discord_bot_whitelisted.data = user.is_discord_bot_whitelisted
     form.is_purge_whitelisted.data = user.is_purge_whitelisted
     
+    # Updated logic for DateField - the form will automatically populate access_expires_at 
+    # from the user object via obj=user, but we can explicitly set it if needed
     if user.access_expires_at:
-        now_utc = datetime.now(timezone.utc)
-        user_expiry_aware = user.access_expires_at.replace(tzinfo=timezone.utc)
-        if user_expiry_aware > now_utc:
-            remaining_time = user_expiry_aware - now_utc
-            form.access_expires_in_days.data = remaining_time.days + (1 if remaining_time.seconds > 0 else 0)
+        # Convert datetime to date for the DateField
+        form.access_expires_at.data = user.access_expires_at.date()
     
     # We pass the _settings_tab partial, which contains the form we need.
     return render_template(

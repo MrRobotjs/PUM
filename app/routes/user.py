@@ -33,20 +33,19 @@ def view_user(user_id):
     # Handle form submission for the settings tab
     if form.validate_on_submit(): # This handles (if request.method == 'POST' and form.validate())
         try:
-            # The expiration update logic from your original code
+            # Updated expiration logic to handle DateField calendar picker
             access_expiration_changed = False
-            now_utc_for_calc = datetime.now(timezone.utc)
-            aware_expiry = user.access_expires_at.replace(tzinfo=timezone.utc) if user.access_expires_at else None
-
+            
             if form.clear_access_expiration.data:
                 if user.access_expires_at is not None:
                     user.access_expires_at = None
                     access_expiration_changed = True
-            elif form.access_expires_in_days.data is not None and form.access_expires_in_days.data > 0:
-                new_expiry_date = now_utc_for_calc + timedelta(days=form.access_expires_in_days.data)
-                # Only mark as changed if the date part is different
-                if aware_expiry is None or aware_expiry.date() != new_expiry_date.date():
-                    user.access_expires_at = new_expiry_date
+            elif form.access_expires_at.data:
+                # WTForms gives a date object. Combine with max time to set expiry to end of day.
+                new_expiry_datetime = datetime.combine(form.access_expires_at.data, datetime.max.time())
+                # Only update if the date is actually different
+                if user.access_expires_at is None or user.access_expires_at.date() != new_expiry_datetime.date():
+                    user.access_expires_at = new_expiry_datetime
                     access_expiration_changed = True
             
             original_library_ids = set(user.allowed_library_ids or [])
@@ -66,12 +65,14 @@ def view_user(user_id):
             user_service.update_user_details(user_id=user.id, **update_data)
             
             if access_expiration_changed:
-                log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' access expiration updated.", user_id=user.id, admin_id=current_user.id)
+                if user.access_expires_at is None:
+                    log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' access expiration cleared.", user_id=user.id, admin_id=current_user.id)
+                else:
+                    log_event(EventType.SETTING_CHANGE, f"User '{user.plex_username}' access expiration set to {user.access_expires_at.strftime('%Y-%m-%d')}.", user_id=user.id, admin_id=current_user.id)
             
             # This commit saves all changes from user_service and the expiration date
             db.session.commit()
             
-            # --- START OF MODIFICATION ---
             if request.headers.get('HX-Request'):
                 # Re-fetch user data to ensure the form is populated with the freshest data after save
                 user_after_save = User.query.get(user_id)
@@ -100,7 +101,6 @@ def view_user(user_id):
                 # Fallback for standard form submissions remains the same
                 flash(f"User '{user.plex_username}' updated successfully.", "success")
                 return redirect(url_for('user.view_user', user_id=user.id, tab='settings'))
-            # --- END OF MODIFICATION ---
             
         except Exception as e:
             db.session.rollback()
@@ -113,12 +113,8 @@ def view_user(user_id):
 
     if request.method == 'GET':
         form.libraries.data = list(user.allowed_library_ids or [])
-        if user.access_expires_at:
-            aware_expiry = user.access_expires_at.replace(tzinfo=timezone.utc)
-            now_utc = datetime.now(timezone.utc)
-            if aware_expiry > now_utc:
-                remaining_time = aware_expiry - now_utc
-                form.access_expires_in_days.data = remaining_time.days + (1 if remaining_time.seconds > 0 else 0)
+        # Remove the old access_expires_in_days logic since we're now using DateField
+        # The form will automatically populate access_expires_at from the user object via obj=user
 
     stream_history_pagination = None
     stream_stats = None

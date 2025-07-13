@@ -1,6 +1,6 @@
 # File: app/forms.py
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField, TextAreaField, HiddenField
+from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField, TextAreaField, HiddenField, DateField
 from wtforms.validators import DataRequired, EqualTo, Length, Optional, URL, NumberRange, Regexp, ValidationError
 from wtforms import SelectMultipleField
 from app.models import Setting, AdminAccount # For custom validator if checking existing secrets
@@ -156,11 +156,11 @@ class UserEditForm(FlaskForm): # As updated for whitelist fields
     is_discord_bot_whitelisted = BooleanField('Whitelist from Discord Bot Actions')
     is_purge_whitelisted = BooleanField('Whitelist from Inactivity Purge')
 
-    access_expires_in_days = IntegerField(
-        'Set/Update Access Expiration (days from now)',
-        validators=[Optional(), NumberRange(min=1, message="Must be at least 1 day, or leave blank for no change / to use 'Clear' option.")],
-        render_kw={"placeholder": "e.g., 30 (updates from today)"},
-        description="Enter days from today for new expiry, or leave blank. Use checkbox below to clear existing expiry."
+    access_expires_at = DateField(
+        'Set/Update Access Expiration Date',
+        validators=[Optional()],
+        format='%Y-%m-%d',
+        description="Select a date for the user's access to expire. Leave blank for no change."
     )
     clear_access_expiration = BooleanField(
         'Clear Existing Access Expiration (Grant Permanent Access)',

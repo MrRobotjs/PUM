@@ -37,7 +37,7 @@
                     <p class="text-warning"> {# Or choose another color like text-error if very soon #}
                         <i class="fa-solid fa-hourglass-end fa-fw mr-1"></i> 
                         Access Expires: {{ user.access_expires_at | time_ago }} 
-                        <span class="text-base-content/60">({{ user.access_expires_at | format_datetime_human(include_time=False) }})</span>
+                        <span class="text-base-content">{{ user.access_expires_at | format_datetime_human(include_time=False) }}</span>
                     </p>
                 {% endif %}
             </div>

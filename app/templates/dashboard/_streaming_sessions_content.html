@@ -152,7 +152,7 @@
                         value="{{ session.progress }}" max="100"></progress>
                     <h2 class="card-title text-sm font-semibold" title="{{ session.media_title }}">
                         {{ session.media_title or 'Unknown Title' }}
-                        {% if session.year %}<span class="text-xs font-normal text-base-content/70 ml-1">({{ session.year }})</span>{% endif %}
+                        {% if session.year %}<span class="text-xs font-normal text-base-content/70">({{ session.year }})</span>{% endif %}
                     </h2>
                     {% if session.media_type == 'Episode' and session.grandparent_title %}
                         <p class="text-xs text-primary" title="{{session.grandparent_title}}{% if session.parent_title %} - {{session.parent_title}}{% endif %}">{{session.grandparent_title}}{% if session.parent_title %} - {{session.parent_title}}{% endif %}</p>

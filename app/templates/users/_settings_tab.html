@@ -60,9 +60,11 @@
             <h3 class="text-lg font-semibold border-b border-base-100 pb-2">Access Duration</h3>
              <div class="pt-4 space-y-4">
                 <div class="form-control w-full max-w-sm">
-                    {{ form.access_expires_in_days.label(class="label font-medium whitespace-normal") }}
-                    {{ form.access_expires_in_days(id="user_edit_access_expires_in_days_input", class="input input-bordered " + ("input-error" if form.access_expires_in_days.errors else ""), type="number", min="1") }}
-                    <label class="label whitespace-normal"><span class="label-text-alt">{{ form.access_expires_in_days.description }}</span></label>
+                    {{ form.access_expires_at.label(class="label font-medium whitespace-normal") }}
+                    {# The input type is now 'date' which browsers render as a calendar picker #}
+                    {{ form.access_expires_at(id="user_edit_access_expires_at_input", class="input input-bordered " + ("input-error" if form.access_expires_at.errors else "")) }}
+                    <label class="label whitespace-normal"><span class="label-text-alt">{{ form.access_expires_at.description }}</span></label>
+                    {% if form.access_expires_at.errors %}<p class="text-error text-xs mt-1">{{ form.access_expires_at.errors[0] }}</p>{% endif %}
                 </div>
                 <div class="form-control w-full">
                     <label class="label cursor-pointer justify-start whitespace-normal">
@@ -113,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (selectAllButton) { selectAllButton.addEventListener('click', function() { libraryCheckboxes.forEach(checkbox => checkbox.checked = true); }); }
     if (deselectAllButton) { deselectAllButton.addEventListener('click', function() { libraryCheckboxes.forEach(checkbox => checkbox.checked = false); }); }
 
-    const daysInput = document.getElementById('user_edit_access_expires_in_days_input');
+    const dateInput = document.getElementById('user_edit_access_expires_at_input');
     const clearCheckbox = document.getElementById('user_edit_clear_access_expiration_checkbox');
 
     function syncExpiryFields() {
