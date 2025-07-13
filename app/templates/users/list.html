@@ -280,7 +280,7 @@
         for (const [key, label] of Object.entries(TABLE_COLUMNS)) {
             const li = document.createElement('li');
             const isChecked = prefs[key] !== false;
-            li.innerHTML = `<label class="label cursor-pointer"><span class="label-text">${label}</span><input type="checkbox" class="checkbox checkbox-primary column-toggle-checkbox" data-column="${key}" ${isChecked ? 'checked' : ''}></label>`;
+            li.innerHTML = `<label class="label cursor-pointer"><input type="checkbox" class="checkbox checkbox-primary column-toggle-checkbox" data-column="${key}" ${isChecked ? 'checked' : ''}><span class="label-text">${label}</span></label>`;
             menu.appendChild(li);
         }
         attachColumnToggleListeners();
