@@ -32,6 +32,11 @@ def monitor_plex_sessions_task():
             # Create a dictionary of current sessions for easy lookup and to get the full session object
             current_sessions_dict = {session.sessionKey: session for session in active_plex_sessions if hasattr(session, 'sessionKey')}
             current_plex_session_keys = set(current_sessions_dict.keys())
+            
+            # DEBUG: Log session tracking info
+            current_app.logger.debug(f"MONITOR_DEBUG: Current Plex sessions: {list(current_plex_session_keys)}")
+            current_app.logger.debug(f"MONITOR_DEBUG: Tracked active sessions: {list(_active_stream_sessions.keys())}")
+            current_app.logger.debug(f"MONITOR_DEBUG: Session key types - Plex: {[type(k) for k in current_plex_session_keys]}, Tracked: {[type(k) for k in _active_stream_sessions.keys()]}")
 
             # Step 1: Check for stopped streams
             stopped_session_keys = set(_active_stream_sessions.keys()) - current_plex_session_keys
@@ -140,6 +145,8 @@ def monitor_plex_sessions_task():
 
                 # If the session is new, create the history record AND add it to our tracker.
                 if session_key not in _active_stream_sessions:
+                    current_app.logger.debug(f"MONITOR_DEBUG: Creating NEW session record for session_key: {session_key} (type: {type(session_key)})")
+                    
                     media_duration_ms = getattr(session, 'duration', 0)
                     media_duration_s = int(media_duration_ms / 1000) if media_duration_ms else 0
 
@@ -167,6 +174,7 @@ def monitor_plex_sessions_task():
                 
                 # If the session is ongoing, find its record and just update the progress
                 else:
+                    current_app.logger.debug(f"MONITOR_DEBUG: Updating EXISTING session {session_key}")
                     history_record_id = _active_stream_sessions.get(session_key)
                     if history_record_id:
                         history_record = db.session.get(StreamHistory, history_record_id)
@@ -174,6 +182,10 @@ def monitor_plex_sessions_task():
                             current_offset_s = int(getattr(session, 'viewOffset', 0) / 1000)
                             history_record.view_offset_at_end_seconds = current_offset_s
                             current_app.logger.debug(f"Stream ONGOING: Session {session_key}. Updated progress to {current_offset_s}s.")
+                        else:
+                            current_app.logger.warning(f"MONITOR_DEBUG: Could not find StreamHistory record with ID {history_record_id} for session {session_key}")
+                    else:
+                        current_app.logger.warning(f"MONITOR_DEBUG: Session {session_key} in _active_stream_sessions but no record ID found")
 
                 # Always update the user's main 'last_streamed_at' field
                 user_service.update_user_last_streamed(pum_user.plex_user_id, now_utc)

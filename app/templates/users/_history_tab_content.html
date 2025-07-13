@@ -1,4 +1,4 @@
-<!-- File: app/templates/user/_history_tab_content.html -->
+<!-- File: app/templates/users/_history_tab_content.html -->
 {# Expects 'user' and 'history_logs' (pagination object) in context #}
 
 <form id="history-delete-form"
@@ -24,7 +24,7 @@
                     <th>Player / Platform</th>
                     <th class="hidden sm:table-cell">IP Address</th>
                     <th>Started</th>
-                    <th>Paused</th> {# New Column #}
+                    <th>Paused</th>
                     <th>Stopped</th>
                     <th>Duration</th>
                     <th>Progress</th>
@@ -55,41 +55,94 @@
                             {% endif %}
                         </td>
                         
-                        {# --- MODIFIED: Started Column --- #}
+                        {# Started Column #}
                         <td title="{{ entry.started_at | format_datetime_human if entry.started_at }}">
                             <div>{{ entry.started_at.strftime('%I:%M %p') if entry.started_at else 'N/A' }}</div>
                             <div class="text-xs opacity-60">{{ entry.started_at | format_datetime_human(include_time=False) }}</div>
                         </td>
                         
-                        {# --- NEW: Paused Column --- #}
+                        {# Paused Column #}
                         <td>
                             {% if entry.stopped_at and entry.duration_seconds is not none %}
-                                {# Calculate paused time on the fly #}
+                                {# Calculate paused time for completed sessions #}
                                 {% set total_elapsed = (entry.stopped_at - entry.started_at).total_seconds() %}
                                 {% set paused_seconds = total_elapsed - entry.duration_seconds %}
                                 {{ paused_seconds | format_duration if paused_seconds > 0 else '0m' }}
                             {% else %}
-                                N/A
+                                {# For sessions without stopped_at, they should not be "Active" unless actually streaming #}
+                                <span class="text-xs italic opacity-60">N/A</span>
                             {% endif %}
                         </td>
                         
+                        {# Stopped Column #}
                         <td>
-                            {{ entry.stopped_at.strftime('%I:%M %p') if entry.stopped_at else 'N/A' }}
+                            {% if entry.stopped_at %}
+                                {{ entry.stopped_at.strftime('%I:%M %p') }}
+                            {% else %}
+                                {# Only show "Active" if the session is actually in current active sessions #}
+                                {# This requires passing active session keys from the backend #}
+                                {% if entry.session_key in active_session_keys|default([]) %}
+                                    <span class="text-success font-medium">Active</span>
+                                {% else %}
+                                    <span class="text-xs italic opacity-60">Incomplete</span>
+                                {% endif %}
+                            {% endif %}
                         </td>
+                        
+                        {# Duration Column #}
                         <td>
-                            {{ entry.duration_seconds | format_duration if entry.duration_seconds is not none else 'In Progress' }}
+                            {% if entry.stopped_at and entry.duration_seconds is not none %}
+                                {# Completed session - show final duration #}
+                                {{ entry.duration_seconds | format_duration }}
+                            {% elif entry.session_key in active_session_keys|default([]) and entry.view_offset_at_end_seconds %}
+                                {# Actually active session - show current watched time #}
+                                <span class="text-warning">{{ (entry.view_offset_at_end_seconds / 1000) | int | format_duration }}</span>
+                                <span class="text-xs opacity-60 ml-1">watching</span>
+                            {% elif entry.view_offset_at_end_seconds %}
+                                {# Incomplete session - show last known progress #}
+                                <span class="text-gray-500">{{ (entry.view_offset_at_end_seconds / 1000) | int | format_duration }}</span>
+                                <span class="text-xs opacity-60 ml-1">incomplete</span>
+                            {% else %}
+                                {# No data available #}
+                                <span class="text-xs italic opacity-60">0m</span>
+                            {% endif %}
                         </td>
+                        
+                        {# Progress Column #}
                         <td class="text-center">
-                            {% set percent = ((entry.view_offset_at_end_seconds | float / entry.media_duration_seconds | float) * 100) | round if entry.media_duration_seconds and entry.view_offset_at_end_seconds and entry.media_duration_seconds > 0 else 0 %}
-                            <div class="tooltip" data-tip="{{ percent | int }}% Watched">
-                                <div class="radial-progress text-primary" style="--value:{{ percent }}; --size:1.7rem; --thickness: 4px;" role="progressbar">
-                                    <span class="text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity">{{ percent | int }}</span>
+                            {% if entry.view_offset_at_end_seconds and entry.media_duration_seconds and entry.media_duration_seconds > 0 %}
+                                {# Calculate progress based on view_offset_at_end_seconds #}
+                                {% set progress_seconds = entry.view_offset_at_end_seconds %}
+                                {% set percent = ((progress_seconds / entry.media_duration_seconds) * 100) | round %}
+                                {% set percent = [percent, 100] | min %}  {# Cap at 100% #}
+                                
+                                {# Determine status for tooltip and styling #}
+                                {% if entry.stopped_at %}
+                                    {% set status_text = "Completed" %}
+                                    {% set progress_class = "text-primary" %}
+                                {% elif entry.session_key in active_session_keys|default([]) %}
+                                    {% set status_text = "Currently Watching" %}
+                                    {% set progress_class = "text-warning" %}
+                                {% else %}
+                                    {% set status_text = "Incomplete Session" %}
+                                    {% set progress_class = "text-gray-400" %}
+                                {% endif %}
+                                
+                                <div class="tooltip tooltip-left" data-tip="{{ percent | int }}% {{ status_text }} ({{ progress_seconds | format_duration }} / {{ entry.media_duration_seconds | format_duration }})">
+                                    <div class="radial-progress {{ progress_class }}" style="--value:{{ percent }}; --size:1.7rem; --thickness: 4px;" role="progressbar">
+                                        <span class="text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity">{{ percent | int }}</span>
+                                    </div>
                                 </div>
-                            </div>
+                            {% else %}
+                                <div class="tooltip tooltip-left" data-tip="No progress data available">
+                                    <div class="radial-progress text-gray-400" style="--value:0; --size:1.7rem; --thickness: 4px;" role="progressbar">
+                                        <span class="text-xs font-mono">0</span>
+                                    </div>
+                                </div>
+                            {% endif %}
                         </td>
                     </tr>
                 {% else %}
-                    {# --- MODIFIED: Colspan increased from 8 to 9 --- #}
                     <tr>
                         <td colspan="9" class="text-center py-6 text-base-content/70 italic">
                             No stream history found for this user.

@@ -118,14 +118,29 @@ def view_user(user_id):
 
     stream_history_pagination = None
     stream_stats = None
+    active_session_keys = []
+    
     if tab == 'history':
         page = request.args.get('page', 1, type=int)
         stream_history_pagination = StreamHistory.query.filter_by(user_id=user.id).order_by(StreamHistory.started_at.desc()).paginate(page=page, per_page=15, error_out=False)
+        
+        # Get current active session keys for this user's history
+        try:
+            active_sessions = plex_service.get_active_sessions()
+            active_session_keys = [str(session.sessionKey) for session in active_sessions if hasattr(session, 'sessionKey')]
+            current_app.logger.debug(f"Active session keys for history display: {active_session_keys}")
+        except Exception as e:
+            current_app.logger.warning(f"Could not fetch active sessions for history display: {e}")
+            active_session_keys = []
+            
     elif tab == 'profile':
         stream_stats = user_service.get_user_stream_stats(user_id)
 
     if request.headers.get('HX-Request') and tab == 'history':
-        return render_template('users/_history_tab_content.html', user=user, history_logs=stream_history_pagination)
+        return render_template('users/_history_tab_content.html', 
+                             user=user, 
+                             history_logs=stream_history_pagination,
+                             active_session_keys=active_session_keys)
         
     return render_template(
         'users/profile.html',
@@ -133,6 +148,7 @@ def view_user(user_id):
         user=user,
         form=form,
         history_logs=stream_history_pagination,
+        active_session_keys=active_session_keys,
         active_tab=tab,
         is_admin=AdminAccount.query.filter_by(plex_uuid=user.plex_uuid).first() is not None if user.plex_uuid else False,
         stream_stats=stream_stats,

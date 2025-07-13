@@ -2333,6 +2333,16 @@
   .sticky {
     position: sticky;
   }
+  .tooltip-left {
+    > .tooltip-content, &[data-tip]:before {
+      transform: translateX(calc(var(--tt-pos, 0.25rem) - 0.25rem)) translateY(-50%);
+      inset: 50% var(--tt-off) auto auto;
+    }
+    &:after {
+      transform: translateX(var(--tt-pos, 0.25rem)) translateY(-50%) rotate(-90deg);
+      inset: 50% calc(var(--tt-tail) + 1px) auto auto;
+    }
+  }
   .tooltip-right {
     > .tooltip-content, &[data-tip]:before {
       transform: translateX(calc(var(--tt-pos, -0.25rem) + 0.25rem)) translateY(-50%);
