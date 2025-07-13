@@ -90,8 +90,44 @@
                 {% for player in stream_stats.players %}
                 <div class="card bg-base-200 shadow-md text-center items-center">
                     <div class="card-body p-4">
-                        <h4 class="card-title text-base">{{ player.name or 'Unknown Player' }}</h4>
-                        <p><strong class="text-2xl text-primary">{{ player.plays }}</strong> plays</p>
+                        {# Player icon #}
+                        <div class="mb-3">
+                            {% if 'xbox' in player.name.lower() %}
+                                <div class="w-10 h-10 mx-auto bg-green-600 rounded-lg flex items-center justify-center">
+                                    <i class="fab fa-xbox text-white text-lg"></i>
+                                </div>
+                            {% elif 'apple' in player.name.lower() or 'tv' in player.name.lower() %}
+                                <div class="w-10 h-10 mx-auto bg-gray-600 rounded-lg flex items-center justify-center">
+                                    <i class="fab fa-apple text-white text-lg"></i>
+                                </div>
+                            {% elif 'chrome' in player.name.lower() or 'edge' in player.name.lower() or 'firefox' in player.name.lower() or 'safari' in player.name.lower() %}
+                                <div class="w-10 h-10 mx-auto bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-globe text-white text-lg"></i>
+                                </div>
+                            {% elif 'roku' in player.name.lower() %}
+                                <div class="w-10 h-10 mx-auto bg-purple-600 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-tv text-white text-lg"></i>
+                                </div>
+                            {% elif 'android' in player.name.lower() %}
+                                <div class="w-10 h-10 mx-auto bg-green-500 rounded-lg flex items-center justify-center">
+                                    <i class="fab fa-android text-white text-lg"></i>
+                                </div>
+                            {% elif 'ios' in player.name.lower() or 'iphone' in player.name.lower() or 'ipad' in player.name.lower() %}
+                                <div class="w-10 h-10 mx-auto bg-gray-800 rounded-lg flex items-center justify-center">
+                                    <i class="fab fa-apple text-white text-lg"></i>
+                                </div>
+                            {% else %}
+                                <div class="w-10 h-10 mx-auto bg-base-content/20 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-play text-base-content text-lg"></i>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <h4 class="card-title text-base mb-2">{{ player.name or 'Unknown Player' }}</h4>
+                        <div class="flex items-baseline justify-center gap-1">
+                            <span class="text-2xl font-bold text-primary">{{ player.plays }}</span>
+                            <span class="text-xs text-base-content/80">plays</span>
+                        </div>
                     </div>
                 </div>
                 {% else %}
