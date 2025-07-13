@@ -45,7 +45,7 @@
         </thead>
         <tbody>
             {% for user in users.items %}
-            <tr id="user-row-{{ user.id }}" class="hover">
+            <tr id="user-row-{{ user.id }}" class="hover:bg-base-300">
                 <td class="text-center">
                     <input type="checkbox" class="checkbox checkbox-primary checkbox-xs sm:checkbox-sm user-select-checkbox" data-user-id="{{ user.id }}">
                 </td>
