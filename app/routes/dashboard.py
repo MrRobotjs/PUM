@@ -646,16 +646,20 @@ def streaming_sessions_partial():
                 if hasattr(raw_plex_session, '_data') and raw_plex_session._data is not None: # Log raw XML attributes
                    current_app.logger.debug(f"STREAMING_DEBUG:   raw_plex_session._data.attrib: {json.dumps(raw_plex_session._data.attrib if hasattr(raw_plex_session._data, 'attrib') else raw_plex_session._data, indent=2, default=str)}")
                 
+                # Progress calculation
                 progress_value = 0.0
                 raw_duration = getattr(raw_plex_session, 'duration', None)
                 raw_view_offset = getattr(raw_plex_session, 'viewOffset', None)
-                # current_app.logger.debug(f"STREAMING_DEBUG (Progress): raw_duration='{raw_duration}', raw_view_offset='{raw_view_offset}'")
                 if raw_duration and raw_view_offset:
                     try:
-                        duration = float(raw_duration); view_offset = float(raw_view_offset)
-                        if duration > 0: progress_value = (view_offset / duration) * 100
-                    except (ValueError, TypeError): pass # Handled by default progress_value = 0.0
+                        duration = float(raw_duration)
+                        view_offset = float(raw_view_offset)
+                        if duration > 0: 
+                            progress_value = (view_offset / duration) * 100
+                    except (ValueError, TypeError): 
+                        pass
                 
+                # Basic session info
                 user_name_from_session = getattr(raw_plex_session.user, 'title', 'Unknown User') if hasattr(raw_plex_session, 'user') and raw_plex_session.user else 'Unknown User'
                 player_title = getattr(raw_plex_session.player, 'title', 'Unknown Player') if hasattr(raw_plex_session, 'player') and raw_plex_session.player else 'Unknown Player'
                 player_platform = getattr(raw_plex_session.player, 'platform', '') if hasattr(raw_plex_session, 'player') and raw_plex_session.player else ''
@@ -663,7 +667,10 @@ def streaming_sessions_partial():
                 media_type = getattr(raw_plex_session, 'type', 'unknown').capitalize()
                 year = getattr(raw_plex_session, 'year', None)
                 library_name = getattr(raw_plex_session, 'librarySectionTitle', "N/A")
-                grandparent_title = None; parent_title = None;
+                
+                # Handle grandparent/parent titles for episodes and tracks
+                grandparent_title = None
+                parent_title = None
                 if media_type == 'Episode':
                     grandparent_title = getattr(raw_plex_session, 'grandparentTitle', None)
                     parent_title = getattr(raw_plex_session, 'parentTitle', None)
@@ -671,11 +678,14 @@ def streaming_sessions_partial():
                     grandparent_title = getattr(raw_plex_session, 'grandparentTitle', None)
                     parent_title = getattr(raw_plex_session, 'parentTitle', None)
                 
+                # Session state
                 session_state = getattr(raw_plex_session, 'state', "N/A")
                 if session_state == "N/A" and hasattr(raw_plex_session, 'player') and raw_plex_session.player:
                     player_state = getattr(raw_plex_session.player, 'state', None)
-                    if player_state: session_state = player_state.capitalize()
+                    if player_state: 
+                        session_state = player_state.capitalize()
                 
+                # Thumbnail handling
                 thumb_url_for_template_final = None 
                 plex_image_path_relative = None
                 if media_type == 'Episode' and hasattr(raw_plex_session, 'grandparentThumb') and raw_plex_session.grandparentThumb:
@@ -684,155 +694,361 @@ def streaming_sessions_partial():
                     plex_image_path_relative = raw_plex_session.thumbUrl
                 elif hasattr(raw_plex_session, 'thumb') and raw_plex_session.thumb:
                     plex_image_path_relative = raw_plex_session.thumb
+                    
                 if plex_image_path_relative:
                     path_to_proxy = None
                     if plex_image_path_relative.startswith('http://') or plex_image_path_relative.startswith('https://'):
                         try:
-                            parsed_url = urlparse(plex_image_path_relative); path_to_proxy = parsed_url.path
-                        except Exception: pass
-                    else: path_to_proxy = plex_image_path_relative
+                            parsed_url = urlparse(plex_image_path_relative)
+                            path_to_proxy = parsed_url.path
+                        except Exception: 
+                            pass
+                    else: 
+                        path_to_proxy = plex_image_path_relative
                     if path_to_proxy:
-                        try: thumb_url_for_template_final = url_for('api.plex_image_proxy', path=path_to_proxy.lstrip('/'))
-                        except Exception: pass
-                # current_app.logger.debug(f"STREAMING_DEBUG (Thumb): Final thumb_url_for_template_final: {thumb_url_for_template_final}")
+                        try: 
+                            thumb_url_for_template_final = url_for('api.plex_image_proxy', path=path_to_proxy.lstrip('/'))
+                        except Exception: 
+                            pass
 
-
-                # --- Detailed Stream Information Extraction ---
+                # --- Enhanced Stream Information Extraction ---
+                transcode_session_obj = getattr(raw_plex_session, 'transcodeSession', None)
+                is_transcoding = transcode_session_obj is not None
+                
+                # Get session bandwidth from Session element
+                session_bandwidth_kbps = None
+                if hasattr(raw_plex_session, '_data') and raw_plex_session._data is not None:
+                    # Look for Session child element
+                    session_element = raw_plex_session._data.find('Session')
+                    if session_element is not None:
+                        try:
+                            session_bandwidth_kbps = int(session_element.get('bandwidth', 0))
+                        except (ValueError, TypeError):
+                            pass
+                
+                # Default values
                 stream_details_text = "Direct Play"
                 container_text_val = "N/A"
                 video_text = "N/A"
                 audio_text = "N/A"
                 subtitle_text = "None"
-                current_bitrate_kbps = None
+                quality_desc = "Unknown"
                 
+                # Get media information
                 media_item = None
+                selected_media = None
+                if hasattr(raw_plex_session, 'media') and isinstance(raw_plex_session.media, list) and len(raw_plex_session.media) > 0:
+                    # Find the selected media item (look for selected="1" attribute)
+                    for media in raw_plex_session.media:
+                        if hasattr(media, '_data') and media._data is not None:
+                            if media._data.get('selected') == '1':
+                                selected_media = media
+                                break
+                    
+                    # Fallback to first media if no selected found
+                    if selected_media is None:
+                        selected_media = raw_plex_session.media[0]
+                    
+                    media_item = selected_media
+
+                # Extract stream details
                 video_stream_info = None
                 audio_stream_info = None
                 subtitle_stream_info = None
-                source_container_from_media_item = "N/A" # Default for clarity
+                
+                if media_item and hasattr(media_item, 'parts') and isinstance(media_item.parts, list) and len(media_item.parts) > 0:
+                    part_item = media_item.parts[0]
+                    for stream in getattr(part_item, 'streams', []):
+                        stream_type = getattr(stream, 'streamType', 0)
+                        if stream_type == 1:  # Video
+                            video_stream_info = stream
+                        elif stream_type == 2:  # Audio
+                            if not audio_stream_info or getattr(stream, 'selected', False):
+                                audio_stream_info = stream
+                        elif stream_type == 3:  # Subtitle
+                            if getattr(stream, 'selected', False):
+                                subtitle_stream_info = stream
 
-                if hasattr(raw_plex_session, 'media') and isinstance(raw_plex_session.media, list) and len(raw_plex_session.media) > 0:
-                    media_item = raw_plex_session.media[0]
-                    current_bitrate_kbps = getattr(media_item, 'bitrate', None)
-                    source_container_from_media_item = getattr(media_item, 'container', "N/A") # Get source from media_item
-                    current_app.logger.debug(f"STREAMING_DEBUG (Container): Source container from media_item (media[0]): '{source_container_from_media_item}'")
-                    container_text_val = source_container_from_media_item.upper() if source_container_from_media_item else "N/A"
+                # --- Quality and Resolution Logic ---
+                source_resolution = "Unknown"
+                target_resolution = "Unknown"
+                
+                # Get source resolution from the ORIGINAL media (not the transcoded one)
+                # Look for the first media item that is NOT selected (the original)
+                original_media = None
+                transcoded_media = None
+                
+                if hasattr(raw_plex_session, 'media') and isinstance(raw_plex_session.media, list):
+                    for media in raw_plex_session.media:
+                        if hasattr(media, '_data') and media._data is not None:
+                            if media._data.get('selected') == '1':
+                                transcoded_media = media
+                            else:
+                                original_media = media
+                
+                # Get source resolution from original media
+                if original_media:
+                    if hasattr(original_media, 'height') and original_media.height:
+                        height = int(original_media.height)
+                        if height >= 2160:
+                            source_resolution = "4K"
+                        elif height >= 1080:
+                            source_resolution = "1080p"
+                        elif height >= 720:
+                            source_resolution = "720p"
+                        elif height >= 480:
+                            source_resolution = "480p"
+                        else:
+                            source_resolution = f"{height}p"
+                    elif hasattr(original_media, 'videoResolution') and original_media.videoResolution:
+                        vid_res = original_media.videoResolution.lower()
+                        if vid_res == "4k":
+                            source_resolution = "4K"
+                        else:
+                            source_resolution = original_media.videoResolution
+                
+                # If no original media found, try to get from video stream displayTitle
+                if source_resolution == "Unknown" and video_stream_info:
+                    if hasattr(video_stream_info, 'displayTitle') and video_stream_info.displayTitle:
+                        display_title = video_stream_info.displayTitle.upper()
+                        if "4K" in display_title:
+                            source_resolution = "4K"
+                        elif "1080P" in display_title:
+                            source_resolution = "1080p"
+                        elif "720P" in display_title:
+                            source_resolution = "720p"
+                        elif "480P" in display_title:
+                            source_resolution = "480p"
+                    elif hasattr(video_stream_info, 'height') and video_stream_info.height:
+                        height = int(video_stream_info.height)
+                        if height >= 2160:
+                            source_resolution = "4K"
+                        elif height >= 1080:
+                            source_resolution = "1080p"
+                        elif height >= 720:
+                            source_resolution = "720p"
+                        elif height >= 480:
+                            source_resolution = "480p"
+                        else:
+                            source_resolution = f"{height}p"
+
+                # Get target resolution for transcoding
+                if is_transcoding:
+                    # First try to get from transcode session videoHeight (most accurate)
+                    if hasattr(transcode_session_obj, 'videoHeight') and transcode_session_obj.videoHeight:
+                        height = int(transcode_session_obj.videoHeight)
+                        if height >= 2160:
+                            target_resolution = "4K"
+                        elif height >= 1080:
+                            target_resolution = "1080p"
+                        elif height >= 720:
+                            target_resolution = "720p"
+                        elif height >= 480:
+                            target_resolution = "480p"
+                        else:
+                            target_resolution = f"{height}p"
+                    # Fallback to transcoded media if transcode session doesn't have height
+                    elif transcoded_media:
+                        if hasattr(transcoded_media, 'videoResolution') and transcoded_media.videoResolution:
+                            vid_res = transcoded_media.videoResolution.lower()
+                            if vid_res == "4k":
+                                target_resolution = "4K"
+                            elif vid_res == "1080":
+                                target_resolution = "1080p"
+                            elif vid_res == "720":
+                                target_resolution = "720p"
+                            elif vid_res == "sd":
+                                target_resolution = "480p"  # SD typically means 480p or lower
+                            else:
+                                target_resolution = transcoded_media.videoResolution
+                        elif hasattr(transcoded_media, 'height') and transcoded_media.height:
+                            height = int(transcoded_media.height)
+                            # Round up common transcoding heights to standard resolutions
+                            if height >= 700:  # 720p range (includes 704, 720, etc.)
+                                target_resolution = "720p"
+                            elif height >= 1070:  # 1080p range
+                                target_resolution = "1080p"
+                            elif height >= 2100:  # 4K range
+                                target_resolution = "4K"
+                            elif height >= 470:  # 480p range (includes 404, 480, etc.)
+                                target_resolution = "480p"
+                            else:
+                                target_resolution = f"{height}p"
                     
-                    if hasattr(media_item, 'parts') and isinstance(media_item.parts, list) and len(media_item.parts) > 0:
-                        part_item = media_item.parts[0]
-                        for stream in getattr(part_item, 'streams', []):
-                            if getattr(stream, 'streamType', 0) == 1: video_stream_info = stream
-                            elif getattr(stream, 'streamType', 0) == 2: audio_stream_info = stream
-                            elif getattr(stream, 'streamType', 0) == 3: subtitle_stream_info = stream
-                
-                # --- FIXED VIDEO RESOLUTION LOGIC ---
-                # Get source resolution from video stream displayTitle (e.g., "1080p (HEVC Main 10)")
-                source_resolution = "N/A"
-                if video_stream_info and hasattr(video_stream_info, 'displayTitle') and video_stream_info.displayTitle:
-                    # Extract resolution from displayTitle like "1080p (HEVC Main 10)"
-                    display_title = video_stream_info.displayTitle
-                    # Look for pattern like "1080p", "720p", "480p", etc.
-                    import re
-                    resolution_match = re.search(r'(\d+p)', display_title)
-                    if resolution_match:
-                        source_resolution = resolution_match.group(1)
-                    else:
-                        # Fallback to height-based resolution if no 'p' format found
-                        if hasattr(video_stream_info, 'height') and video_stream_info.height:
-                            source_resolution = f"{video_stream_info.height}p"
-                elif video_stream_info and hasattr(video_stream_info, 'height') and video_stream_info.height:
-                    # Fallback to height if no displayTitle
-                    source_resolution = f"{video_stream_info.height}p"
-                
-                # Get target resolution - use media_item.videoResolution for transcoded content
-                target_resolution = "N/A"
-                transcode_session_obj = getattr(raw_plex_session, 'transcodeSession', None)
-                if transcode_session_obj:
-                    # For transcoded content, use media_item.videoResolution as the target
-                    if media_item and hasattr(media_item, 'videoResolution') and media_item.videoResolution:
-                        target_resolution = media_item.videoResolution
-                    elif hasattr(transcode_session_obj, 'videoHeight') and transcode_session_obj.videoHeight:
-                        target_resolution = f"{transcode_session_obj.videoHeight}p"
-                    else:
-                        target_resolution = source_resolution  # Fallback
+                    # If still unknown, check if we can get from player quality settings
+                    if target_resolution == "Unknown" and hasattr(raw_plex_session, '_data') and raw_plex_session._data is not None:
+                        # Sometimes the target resolution is in the session or player data
+                        session_element = raw_plex_session._data.find('Session')
+                        if session_element is not None:
+                            # Check for quality indicators in session
+                            pass  # Could add more session-based detection here
                 else:
-                    # For direct play, target = source
                     target_resolution = source_resolution
-                
-                # For quality description, use the final resolution (target for transcoded, source for direct play)
-                video_resolution_final = target_resolution if transcode_session_obj else source_resolution
-                
-                current_app.logger.debug(f"STREAMING_DEBUG (Quality): Source resolution: '{source_resolution}', Target resolution: '{target_resolution}', Final: '{video_resolution_final}'")
-                
-                if transcode_session_obj:
-                    stream_details_text = "Transcode"
-                    if getattr(transcode_session_obj, 'throttled', False): stream_details_text += " (Throttled)"
-                    if getattr(transcode_session_obj, 'speed', None) is not None: stream_details_text += f" (Speed: {transcode_session_obj.speed:.1f})"
-                    
-                    target_container_from_transcode = getattr(transcode_session_obj, 'container', "N/A_transcode")
-                    current_app.logger.debug(f"STREAMING_DEBUG (Container): Target container from transcode_session_obj: '{target_container_from_transcode}'")
-                    if source_container_from_media_item != "N/A" and target_container_from_transcode != "N/A_transcode":
-                        container_text_val = f"Converting ({source_container_from_media_item.upper()} -> {target_container_from_transcode.upper()})"
-                    elif target_container_from_transcode != "N/A_transcode": container_text_val = f"To {target_container_from_transcode.upper()}"
-                    # else: container_text_val remains what was set from source_container_from_media_item
-                    
-                    # Safely get all potentially None attributes from the transcode object first.
-                    video_decision_str = getattr(transcode_session_obj, 'videoDecision', 'Unknown')
-                    src_v_codec_str = getattr(transcode_session_obj, 'sourceVideoCodec', 'N/A')
-                    tgt_v_codec_str = getattr(transcode_session_obj, 'videoCodec', 'N/A')
-                    
-                    audio_decision_str = getattr(transcode_session_obj, 'audioDecision', 'Unknown')
-                    src_a_codec_str = getattr(transcode_session_obj, 'sourceAudioCodec', 'N/A')
-                    tgt_a_codec_str = getattr(transcode_session_obj, 'audioCodec', 'N/A')
 
-                    # Now, call methods only if the strings are not None.
-                    v_decision = video_decision_str.capitalize() if video_decision_str else 'Unknown'
-                    src_v_codec = src_v_codec_str.upper() if src_v_codec_str else 'N/A'
-                    tgt_v_codec = tgt_v_codec_str.upper() if tgt_v_codec_str else 'N/A'
+                # --- Bitrate and Quality ---
+                if session_bandwidth_kbps and session_bandwidth_kbps > 0:
+                    bitrate_mbps = session_bandwidth_kbps / 1000.0
+                    quality_desc = f"{target_resolution} ({bitrate_mbps:.1f} Mbps)"
+                    current_bitrate_kbps_for_calc = session_bandwidth_kbps
+                else:
+                    # Fallback to media bitrate
+                    current_bitrate_kbps = getattr(media_item, 'bitrate', None) if media_item else None
+                    if current_bitrate_kbps:
+                        try:
+                            current_bitrate_kbps_for_calc = int(current_bitrate_kbps)
+                            bitrate_mbps = current_bitrate_kbps_for_calc / 1000.0
+                            quality_desc = f"{target_resolution} ({bitrate_mbps:.1f} Mbps)"
+                        except (ValueError, TypeError):
+                            current_bitrate_kbps_for_calc = 0
+                            quality_desc = target_resolution
+                    else:
+                        current_bitrate_kbps_for_calc = 0
+                        quality_desc = target_resolution
 
-                    a_decision = audio_decision_str.capitalize() if audio_decision_str else 'Unknown'
-                    src_a_codec = src_a_codec_str.upper() if src_a_codec_str else 'N/A'
-                    tgt_a_codec = tgt_a_codec_str.upper() if tgt_a_codec_str else 'N/A'
+                # --- Container Logic ---
+                source_container = "Unknown"
+                if original_media:
+                    source_container = getattr(original_media, 'container', "Unknown").upper()
+                elif media_item:
+                    source_container = getattr(media_item, 'container', "Unknown").upper()
+                
+                current_app.logger.debug(f"STREAMING_DEBUG (Container): Source container from media_item (media[0]): '{source_container}'")
+                current_app.logger.debug(f"STREAMING_DEBUG (Quality): Source resolution: '{source_resolution}', Target resolution: '{target_resolution}', Final: '{target_resolution if is_transcoding else source_resolution}'")
+                
+                if is_transcoding:
+                    target_container = getattr(transcode_session_obj, 'container', "Unknown").upper()
+                    current_app.logger.debug(f"STREAMING_DEBUG (Container): Target container from transcode_session_obj: '{target_container.lower()}'")
+                    if source_container != "Unknown" and target_container != "Unknown":
+                        container_text_val = f"Converting ({source_container} → {target_container})"
+                    else:
+                        container_text_val = f"To {target_container}" if target_container != "Unknown" else "Transcoding"
+                else:
+                    container_text_val = source_container
 
-                    # Use the FIXED resolution values
-                    video_text = f"{v_decision} ({src_v_codec} {source_resolution} -> {tgt_v_codec} {target_resolution})"
+                # --- Stream Details ---
+                if is_transcoding:
+                    transcode_speed = getattr(transcode_session_obj, 'speed', 0)
+                    is_throttled = getattr(transcode_session_obj, 'throttled', False)
                     
-                    src_a_ch = audio_stream_info.channels if audio_stream_info and hasattr(audio_stream_info, 'channels') else 'N/A'
-                    tgt_a_ch = transcode_session_obj.audioChannels if hasattr(transcode_session_obj, 'audioChannels') else 'N/A'
-                    audio_lang = (audio_stream_info.displayTitle or audio_stream_info.language) if audio_stream_info else ''
-                    audio_text = f"{a_decision} ({audio_lang} - {src_a_codec} {src_a_ch}ch -> {tgt_a_codec} {tgt_a_ch}ch)".replace("  - ", " - ").replace("( - ", "(").strip()
-                else: 
-                    if video_stream_info: video_text = f"Direct Play ({getattr(video_stream_info, 'codec', 'N/A').upper()} {source_resolution})"
+                    stream_details_text = f"Transcode (Speed: {transcode_speed:.1f})"
+                    if is_throttled:
+                        stream_details_text = f"Transcode (Throttled) (Speed: {transcode_speed:.1f})"
+                else:
+                    stream_details_text = "Direct Play"
+
+                # --- Video Details ---
+                if is_transcoding and transcode_session_obj:
+                    video_decision = getattr(transcode_session_obj, 'videoDecision', 'Unknown').capitalize()
+                    src_v_codec = getattr(transcode_session_obj, 'sourceVideoCodec', 'Unknown').upper()
+                    tgt_v_codec = getattr(transcode_session_obj, 'videoCodec', 'Unknown').upper()
+                    
+                    # Handle HDR/Dolby Vision info
+                    hdr_info = ""
+                    if video_stream_info and hasattr(video_stream_info, 'displayTitle'):
+                        display_title = video_stream_info.displayTitle
+                        if "DoVi" in display_title or "Dolby Vision" in display_title:
+                            hdr_info = " DoVi/HDR10"
+                        elif "HDR" in display_title:
+                            hdr_info = " HDR"
+                    
+                    video_text = f"{video_decision} ({src_v_codec}{hdr_info} {source_resolution} → {tgt_v_codec} {target_resolution})"
+                else:
+                    v_codec = getattr(video_stream_info, 'codec', 'Unknown').upper() if video_stream_info else 'Unknown'
+                    hdr_info = ""
+                    if video_stream_info and hasattr(video_stream_info, 'displayTitle'):
+                        display_title = video_stream_info.displayTitle
+                        if "DoVi" in display_title or "Dolby Vision" in display_title:
+                            hdr_info = " DoVi/HDR10"
+                        elif "HDR" in display_title:
+                            hdr_info = " HDR"
+                    
+                    video_text = f"Direct Play ({v_codec}{hdr_info} {source_resolution})"
+
+                # --- Audio Details ---
+                if is_transcoding and transcode_session_obj:
+                    audio_decision = getattr(transcode_session_obj, 'audioDecision', 'Unknown').capitalize()
+                    src_a_codec = getattr(transcode_session_obj, 'sourceAudioCodec', 'Unknown').upper()
+                    tgt_a_codec = getattr(transcode_session_obj, 'audioCodec', 'Unknown').upper()
+                    
+                    # Get channel info
+                    src_channels = getattr(audio_stream_info, 'channels', 'Unknown') if audio_stream_info else 'Unknown'
+                    tgt_channels = getattr(transcode_session_obj, 'audioChannels', 'Unknown')
+                    
+                    # Get language
+                    audio_lang = ""
                     if audio_stream_info:
-                        audio_lang = (audio_stream_info.displayTitle or audio_stream_info.language) if audio_stream_info and (audio_stream_info.displayTitle or audio_stream_info.language) else ''
-                        audio_text = f"Direct Play ({audio_lang} - {getattr(audio_stream_info, 'codec', 'N/A').upper()} {getattr(audio_stream_info, 'channels', 'N/A')}ch)".replace("  - ", " - ").replace("( - ", "(").strip()
-                
+                        if hasattr(audio_stream_info, 'displayTitle') and audio_stream_info.displayTitle:
+                            # Extract language from displayTitle like "English (TRUEHD 7.1)"
+                            display_title = audio_stream_info.displayTitle
+                            if "(" in display_title:
+                                audio_lang = display_title.split("(")[0].strip()
+                            else:
+                                audio_lang = display_title
+                        elif hasattr(audio_stream_info, 'language') and audio_stream_info.language:
+                            audio_lang = audio_stream_info.language
+                    
+                    if not audio_lang:
+                        audio_lang = "Unknown"
+                    
+                    # Format channel info
+                    src_ch_text = f"{src_channels}ch" if src_channels != 'Unknown' else ""
+                    tgt_ch_text = f"{tgt_channels}ch" if tgt_channels != 'Unknown' else ""
+                    
+                    audio_text = f"{audio_decision} ({audio_lang} - {src_a_codec} {src_ch_text} → {tgt_a_codec} {tgt_ch_text})"
+                else:
+                    a_codec = getattr(audio_stream_info, 'codec', 'Unknown').upper() if audio_stream_info else 'Unknown'
+                    channels = getattr(audio_stream_info, 'channels', 'Unknown') if audio_stream_info else 'Unknown'
+                    
+                    # Get language for direct play
+                    audio_lang = ""
+                    if audio_stream_info:
+                        if hasattr(audio_stream_info, 'displayTitle') and audio_stream_info.displayTitle:
+                            display_title = audio_stream_info.displayTitle
+                            if "(" in display_title:
+                                audio_lang = display_title.split("(")[0].strip()
+                            else:
+                                audio_lang = display_title
+                        elif hasattr(audio_stream_info, 'language') and audio_stream_info.language:
+                            audio_lang = audio_stream_info.language
+                    
+                    if not audio_lang:
+                        audio_lang = "Unknown"
+                    
+                    ch_text = f"{channels}ch" if channels != 'Unknown' else ""
+                    audio_text = f"Direct Play ({audio_lang} - {a_codec} {ch_text})"
+
+                # --- Subtitle Details ---
                 if subtitle_stream_info:
-                    sub_lang_parts = []
-                    if hasattr(subtitle_stream_info, 'displayTitle') and subtitle_stream_info.displayTitle: sub_lang_parts.append(subtitle_stream_info.displayTitle)
-                    elif hasattr(subtitle_stream_info, 'language') and subtitle_stream_info.language: sub_lang_parts.append(subtitle_stream_info.language.capitalize())
-                    sub_lang = " - ".join(sub_lang_parts) if sub_lang_parts else "Und"
-                    raw_sub_format = getattr(subtitle_stream_info, 'format', None) or getattr(subtitle_stream_info, 'codec', None)
-                    sub_format = (raw_sub_format or '').upper()
-                    subtitle_text = f"{sub_lang}"
-                    if sub_format: subtitle_text += f" ({sub_format})"
-                    if transcode_session_obj and getattr(transcode_session_obj, 'subtitleDecision', 'copy') == 'burn':
-                        subtitle_text = f"Burn - {subtitle_text}"
-                
-                quality_desc = f"{video_resolution_final if video_resolution_final != 'N/A' else 'Unknown Res'}"
-                current_bitrate_kbps_for_calc = 0 
-                if current_bitrate_kbps:
-                    try:
-                        current_bitrate_kbps_for_calc = int(current_bitrate_kbps)
-                        if current_bitrate_kbps_for_calc > 0: quality_desc += f" ({ (current_bitrate_kbps_for_calc / 1000.0):.1f} Mbps)"
-                    except (ValueError, TypeError): pass # quality_desc will not have bitrate part
-                
+                    sub_lang = "Unknown"
+                    if hasattr(subtitle_stream_info, 'displayTitle') and subtitle_stream_info.displayTitle:
+                        sub_lang = subtitle_stream_info.displayTitle
+                    elif hasattr(subtitle_stream_info, 'language') and subtitle_stream_info.language:
+                        sub_lang = subtitle_stream_info.language.capitalize()
+                    
+                    sub_format = ""
+                    if hasattr(subtitle_stream_info, 'format') and subtitle_stream_info.format:
+                        sub_format = f" ({subtitle_stream_info.format.upper()})"
+                    elif hasattr(subtitle_stream_info, 'codec') and subtitle_stream_info.codec:
+                        sub_format = f" ({subtitle_stream_info.codec.upper()})"
+                    
+                    # Check if subtitle is being burned in
+                    if is_transcoding and transcode_session_obj:
+                        subtitle_decision = getattr(transcode_session_obj, 'subtitleDecision', 'copy')
+                        if subtitle_decision == 'burn':
+                            subtitle_text = f"Burn - {sub_lang}{sub_format}"
+                        else:
+                            subtitle_text = f"{sub_lang}{sub_format}"
+                    else:
+                        subtitle_text = f"{sub_lang}{sub_format}"
+
+                # --- Location Details ---
                 product = getattr(raw_plex_session.player, 'product', 'N/A') if hasattr(raw_plex_session, 'player') else 'N/A'
                 location_ip = getattr(raw_plex_session.player, 'address', 'N/A') if hasattr(raw_plex_session, 'player') else 'N/A'
                 is_lan = hasattr(raw_plex_session.player, 'local') and raw_plex_session.player.local
                 is_public_ip = not is_lan and location_ip not in ['127.0.0.1', 'localhost']
                 location_lan_wan = "LAN" if is_lan else "WAN" if is_public_ip else "Local"
 
+                # User mapping
                 pum_user_id_for_link = None
                 plex_user_id_from_session_int = None
                 if hasattr(raw_plex_session, 'user') and raw_plex_session.user and hasattr(raw_plex_session.user, 'id'):
@@ -840,43 +1056,61 @@ def streaming_sessions_partial():
                         plex_user_id_from_session_int = int(raw_plex_session.user.id)
                         if plex_user_id_from_session_int in pum_users_map_by_plex_id:
                             pum_user_id_for_link = pum_users_map_by_plex_id[plex_user_id_from_session_int].id
-                    except (ValueError, TypeError): pass
+                    except (ValueError, TypeError): 
+                        pass
 
                 session_details = {
-                    'user': user_name_from_session, 'pum_user_id': pum_user_id_for_link,
-                    'player_title': player_title, 'player_platform': player_platform, 'product': product,
-                    'media_title': media_title, 'grandparent_title': grandparent_title, 'parent_title': parent_title,
-                    'media_type': media_type, 'library_name': library_name, 'year': year,
-                    'state': session_state, 'progress': round(progress_value, 1),
+                    'user': user_name_from_session, 
+                    'pum_user_id': pum_user_id_for_link,
+                    'player_title': player_title, 
+                    'player_platform': player_platform, 
+                    'product': product,
+                    'media_title': media_title, 
+                    'grandparent_title': grandparent_title, 
+                    'parent_title': parent_title,
+                    'media_type': media_type, 
+                    'library_name': library_name, 
+                    'year': year,
+                    'state': session_state, 
+                    'progress': round(progress_value, 1),
                     'thumb_url': thumb_url_for_template_final, 
                     'session_key': getattr(raw_plex_session, 'sessionKey', None),
                     
-                    'quality_detail': quality_desc, 'stream_detail': stream_details_text,
-                    'container_detail': container_text_val, 'video_detail': video_text,
-                    'audio_detail': audio_text, 'subtitle_detail': subtitle_text,
+                    'quality_detail': quality_desc, 
+                    'stream_detail': stream_details_text,
+                    'container_detail': container_text_val, 
+                    'video_detail': video_text,
+                    'audio_detail': audio_text, 
+                    'subtitle_detail': subtitle_text,
                     'location_detail': f"{location_lan_wan}: {location_ip if location_ip != 'N/A' else ''}".strip(),
-                    'is_public_ip': is_public_ip, # Add the new boolean flag
-                    'location_ip': location_ip, # Pass the raw IP for the URL
-                    'bandwidth_detail': f"{ (current_bitrate_kbps_for_calc / 1000.0):.1f} Mbps" if current_bitrate_kbps_for_calc > 0 else "N/A",
+                    'is_public_ip': is_public_ip,
+                    'location_ip': location_ip,
+                    'bandwidth_detail': f"{(current_bitrate_kbps_for_calc / 1000.0):.1f} Mbps" if current_bitrate_kbps_for_calc > 0 else "N/A",
 
                     'bitrate_calc': current_bitrate_kbps_for_calc,
                     'location_type_calc': location_lan_wan,
-                    'is_transcode_calc': bool(transcode_session_obj)
+                    'is_transcode_calc': is_transcoding
                 }
                 active_sessions_data.append(session_details)
 
-                if session_details['is_transcode_calc']: summary_stats["transcode_count"] += 1
-                else: summary_stats["direct_play_count"] += 1
+                # Update summary stats
+                if session_details['is_transcode_calc']: 
+                    summary_stats["transcode_count"] += 1
+                else: 
+                    summary_stats["direct_play_count"] += 1
+                    
                 if session_details['bitrate_calc'] > 0:
                     bitrate_mbps = session_details['bitrate_calc'] / 1000.0
                     summary_stats["total_bandwidth_mbps"] += bitrate_mbps
-                    if session_details['location_type_calc'] == 'LAN': summary_stats["lan_bandwidth_mbps"] += bitrate_mbps
-                    elif session_details['location_type_calc'] == 'WAN': summary_stats["wan_bandwidth_mbps"] += bitrate_mbps
+                    if session_details['location_type_calc'] == 'LAN': 
+                        summary_stats["lan_bandwidth_mbps"] += bitrate_mbps
+                    elif session_details['location_type_calc'] == 'WAN': 
+                        summary_stats["wan_bandwidth_mbps"] += bitrate_mbps
             
+            # Round summary stats
             summary_stats["total_bandwidth_mbps"] = round(summary_stats["total_bandwidth_mbps"], 1)
             summary_stats["lan_bandwidth_mbps"] = round(summary_stats["lan_bandwidth_mbps"], 1)
             summary_stats["wan_bandwidth_mbps"] = round(summary_stats["wan_bandwidth_mbps"], 1)
-            # current_app.logger.debug(f"STREAMING_DEBUG: Final Summary Stats: {json.dumps(summary_stats)}") # Already present
         else: 
             current_app.logger.debug("STREAMING_DEBUG: No active Plex sessions found by service.")
 
