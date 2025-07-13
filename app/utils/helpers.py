@@ -1,7 +1,7 @@
 # File: app/utils/helpers.py
 import re
 from datetime import datetime, timezone, timedelta
-from flask import current_app, flash, url_for, g as flask_g, redirect # Use flask_g to avoid conflict with local g
+from flask import current_app, flash, url_for, g as flask_g, redirect, request # Use flask_g to avoid conflict with local g
 from functools import wraps
 from flask_login import current_user
 # app.models import HistoryLog, EventType # This creates circular import if models also import helpers
@@ -11,15 +11,37 @@ from flask_login import current_user
 # or ensure helpers don't directly cause DB interaction at module level.
 
 def is_setup_complete():
+    """
+    Helper function to check the global setup flag.
+    The g.setup_complete flag is set on each request by the before_request hook.
+    """
     return getattr(flask_g, 'setup_complete', False)
 
 
 def setup_required(f):
+    """
+    Decorator to ensure that the application setup has been completed
+    before allowing access to a route. If setup is not complete, it redirects
+    the user to the first step of the setup process.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_setup_complete():
-            from app.models import AdminAccount, Setting # Local import
-            # ... rest of the logic
+        # The 'g.setup_complete' flag is the primary check. If it's true,
+        # the user can proceed to the requested page.
+        if is_setup_complete():
+            return f(*args, **kwargs)
+
+        # If setup is not complete, we need to redirect the user.
+        # This check complements the global before_request hook in app/__init__.py
+        # and acts as a direct protector on the route.
+        
+        # We also check that we are not already on a setup page to avoid redirect loops.
+        if request.endpoint and not request.endpoint.startswith('setup.'):
+            flash("Application setup is not complete. Please follow the steps below.", "warning")
+            return redirect(url_for('setup.account_setup'))
+        
+        # If we are already on a setup page (like /setup/plex), allow it to run
+        # so the user can complete the setup process.
         return f(*args, **kwargs)
     return decorated_function
 
