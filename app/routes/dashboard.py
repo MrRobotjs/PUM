@@ -725,18 +725,45 @@ def streaming_sessions_partial():
                             elif getattr(stream, 'streamType', 0) == 2: audio_stream_info = stream
                             elif getattr(stream, 'streamType', 0) == 3: subtitle_stream_info = stream
                 
-                video_resolution_final = "N/A"
-                if hasattr(raw_plex_session, 'transcodeSession') and raw_plex_session.transcodeSession and getattr(raw_plex_session.transcodeSession, 'videoResolution', None):
-                    video_resolution_final = raw_plex_session.transcodeSession.videoResolution
-                elif getattr(raw_plex_session, 'videoResolution', None) and getattr(raw_plex_session, 'videoResolution') != "N/A": # Check if it's not already "N/A"
-                    video_resolution_final = raw_plex_session.videoResolution
+                # --- FIXED VIDEO RESOLUTION LOGIC ---
+                # Get source resolution from video stream displayTitle (e.g., "1080p (HEVC Main 10)")
+                source_resolution = "N/A"
+                if video_stream_info and hasattr(video_stream_info, 'displayTitle') and video_stream_info.displayTitle:
+                    # Extract resolution from displayTitle like "1080p (HEVC Main 10)"
+                    display_title = video_stream_info.displayTitle
+                    # Look for pattern like "1080p", "720p", "480p", etc.
+                    import re
+                    resolution_match = re.search(r'(\d+p)', display_title)
+                    if resolution_match:
+                        source_resolution = resolution_match.group(1)
+                    else:
+                        # Fallback to height-based resolution if no 'p' format found
+                        if hasattr(video_stream_info, 'height') and video_stream_info.height:
+                            source_resolution = f"{video_stream_info.height}p"
                 elif video_stream_info and hasattr(video_stream_info, 'height') and video_stream_info.height:
-                    video_resolution_final = f"{video_stream_info.height}p"
-                elif video_stream_info and hasattr(video_stream_info, 'width') and video_stream_info.width:
-                    video_resolution_final = f"{video_stream_info.width}w"
-                # current_app.logger.debug(f"STREAMING_DEBUG (Quality): Final video_resolution_final for quality_desc: '{video_resolution_final}'")
+                    # Fallback to height if no displayTitle
+                    source_resolution = f"{video_stream_info.height}p"
                 
+                # Get target resolution - use media_item.videoResolution for transcoded content
+                target_resolution = "N/A"
                 transcode_session_obj = getattr(raw_plex_session, 'transcodeSession', None)
+                if transcode_session_obj:
+                    # For transcoded content, use media_item.videoResolution as the target
+                    if media_item and hasattr(media_item, 'videoResolution') and media_item.videoResolution:
+                        target_resolution = media_item.videoResolution
+                    elif hasattr(transcode_session_obj, 'videoHeight') and transcode_session_obj.videoHeight:
+                        target_resolution = f"{transcode_session_obj.videoHeight}p"
+                    else:
+                        target_resolution = source_resolution  # Fallback
+                else:
+                    # For direct play, target = source
+                    target_resolution = source_resolution
+                
+                # For quality description, use the final resolution (target for transcoded, source for direct play)
+                video_resolution_final = target_resolution if transcode_session_obj else source_resolution
+                
+                current_app.logger.debug(f"STREAMING_DEBUG (Quality): Source resolution: '{source_resolution}', Target resolution: '{target_resolution}', Final: '{video_resolution_final}'")
+                
                 if transcode_session_obj:
                     stream_details_text = "Transcode"
                     if getattr(transcode_session_obj, 'throttled', False): stream_details_text += " (Throttled)"
@@ -749,8 +776,7 @@ def streaming_sessions_partial():
                     elif target_container_from_transcode != "N/A_transcode": container_text_val = f"To {target_container_from_transcode.upper()}"
                     # else: container_text_val remains what was set from source_container_from_media_item
                     
-                     # Safely get all potentially None attributes from the transcode object first.
-
+                    # Safely get all potentially None attributes from the transcode object first.
                     video_decision_str = getattr(transcode_session_obj, 'videoDecision', 'Unknown')
                     src_v_codec_str = getattr(transcode_session_obj, 'sourceVideoCodec', 'N/A')
                     tgt_v_codec_str = getattr(transcode_session_obj, 'videoCodec', 'N/A')
@@ -768,17 +794,15 @@ def streaming_sessions_partial():
                     src_a_codec = src_a_codec_str.upper() if src_a_codec_str else 'N/A'
                     tgt_a_codec = tgt_a_codec_str.upper() if tgt_a_codec_str else 'N/A'
 
-                    # Use these safe variables to build the text strings.
-                    src_v_res_display = (f"{video_stream_info.height}p" if video_stream_info and hasattr(video_stream_info, 'height') else 'N/A')
-                    tgt_v_res_display = (f"{transcode_session_obj.videoHeight}p" if hasattr(transcode_session_obj, 'videoHeight') else video_resolution_final)
-                    video_text = f"{v_decision} ({src_v_codec} {src_v_res_display} -> {tgt_v_codec} {tgt_v_res_display})"
+                    # Use the FIXED resolution values
+                    video_text = f"{v_decision} ({src_v_codec} {source_resolution} -> {tgt_v_codec} {target_resolution})"
                     
                     src_a_ch = audio_stream_info.channels if audio_stream_info and hasattr(audio_stream_info, 'channels') else 'N/A'
                     tgt_a_ch = transcode_session_obj.audioChannels if hasattr(transcode_session_obj, 'audioChannels') else 'N/A'
                     audio_lang = (audio_stream_info.displayTitle or audio_stream_info.language) if audio_stream_info else ''
                     audio_text = f"{a_decision} ({audio_lang} - {src_a_codec} {src_a_ch}ch -> {tgt_a_codec} {tgt_a_ch}ch)".replace("  - ", " - ").replace("( - ", "(").strip()
                 else: 
-                    if video_stream_info: video_text = f"Direct Play ({getattr(video_stream_info, 'codec', 'N/A').upper()} {video_resolution_final})"
+                    if video_stream_info: video_text = f"Direct Play ({getattr(video_stream_info, 'codec', 'N/A').upper()} {source_resolution})"
                     if audio_stream_info:
                         audio_lang = (audio_stream_info.displayTitle or audio_stream_info.language) if audio_stream_info and (audio_stream_info.displayTitle or audio_stream_info.language) else ''
                         audio_text = f"Direct Play ({audio_lang} - {getattr(audio_stream_info, 'codec', 'N/A').upper()} {getattr(audio_stream_info, 'channels', 'N/A')}ch)".replace("  - ", " - ").replace("( - ", "(").strip()
