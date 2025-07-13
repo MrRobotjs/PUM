@@ -17,7 +17,7 @@ def monitor_plex_sessions_task():
     - Creates a new StreamHistory record when a new session starts.
     - Continuously updates the view offset (progress) on the SAME record for an ongoing session.
     - Correctly calculates final playback duration from the last known viewOffset when the session stops.
-    - Enforces "No 4K Transcoding" user setting.
+    - Enforces "No 4K Transcoding" user setting with improved detection.
     """
     global _active_stream_sessions
     with scheduler.app.app_context():
@@ -53,16 +53,78 @@ def monitor_plex_sessions_task():
                 if hasattr(session, 'user') and session.user and hasattr(session.user, 'id'):
                     pum_user = User.query.filter_by(plex_user_id=session.user.id).first()
                 
-                if not pum_user: continue 
+                if not pum_user: 
+                    continue 
 
-                # 4K Transcode Enforcement Logic
+                # Enhanced 4K Transcode Enforcement Logic
                 transcode_session = getattr(session, 'transcodeSession', None)
                 if transcode_session and not pum_user.allow_4k_transcode:
                     video_decision = getattr(transcode_session, 'videoDecision', 'copy').lower()
                     if video_decision == 'transcode':
-                        media_item = session.media[0] if hasattr(session, 'media') and session.media else None
-                        video_stream = next((s for s in media_item.parts[0].streams if s.streamType == 1), None) if media_item and media_item.parts else None
-                        if video_stream and hasattr(video_stream, 'height') and video_stream.height >= 2000:
+                        
+                        # Enhanced 4K detection using the same logic as streaming_sessions_partial
+                        is_4k_source = False
+                        
+                        # Get media elements to find original source
+                        original_media = None
+                        if hasattr(session, 'media') and isinstance(session.media, list):
+                            for media in session.media:
+                                if hasattr(media, '_data') and media._data is not None:
+                                    if media._data.get('selected') != '1':
+                                        original_media = media
+                                        break
+                            
+                            # If no non-selected media found, use first media as fallback
+                            if original_media is None and session.media:
+                                original_media = session.media[0]
+                        
+                        # Check for 4K in original media
+                        if original_media:
+                            # Method 1: Check videoResolution attribute
+                            if hasattr(original_media, 'videoResolution') and original_media.videoResolution:
+                                vid_res = original_media.videoResolution.lower()
+                                if vid_res == "4k":
+                                    is_4k_source = True
+                                    current_app.logger.debug(f"4K detected via videoResolution: {original_media.videoResolution}")
+                            
+                            # Method 2: Check height
+                            elif hasattr(original_media, 'height') and original_media.height:
+                                height = int(original_media.height)
+                                if height >= 2160:
+                                    is_4k_source = True
+                                    current_app.logger.debug(f"4K detected via height: {height}p")
+                            
+                            # Method 3: Check video streams in parts
+                            elif hasattr(original_media, 'parts') and original_media.parts:
+                                part = original_media.parts[0]
+                                for stream in getattr(part, 'streams', []):
+                                    if getattr(stream, 'streamType', 0) == 1:  # Video stream
+                                        # Check displayTitle for 4K
+                                        if hasattr(stream, 'displayTitle') and stream.displayTitle:
+                                            display_title = stream.displayTitle.upper()
+                                            if "4K" in display_title:
+                                                is_4k_source = True
+                                                current_app.logger.debug(f"4K detected via displayTitle: {stream.displayTitle}")
+                                                break
+                                        
+                                        # Check height
+                                        elif hasattr(stream, 'height') and stream.height:
+                                            height = int(stream.height)
+                                            if height >= 2160:
+                                                is_4k_source = True
+                                                current_app.logger.debug(f"4K detected via stream height: {height}p")
+                                                break
+                        
+                        # Legacy fallback method (for compatibility)
+                        if not is_4k_source:
+                            media_item = session.media[0] if hasattr(session, 'media') and session.media else None
+                            if media_item and hasattr(media_item, 'parts') and media_item.parts:
+                                video_stream = next((s for s in media_item.parts[0].streams if getattr(s, 'streamType', 0) == 1), None)
+                                if video_stream and hasattr(video_stream, 'height') and video_stream.height >= 2000:
+                                    is_4k_source = True
+                                    current_app.logger.debug(f"4K detected via legacy method: {video_stream.height}p")
+                        
+                        if is_4k_source:
                             current_app.logger.warning(f"RULE ENFORCED: Terminating 4K transcode for user '{pum_user.plex_username}' (Session: {session_key}).")
                             termination_message = "4K to non-4K transcoding is not permitted on this server."
                             try:
