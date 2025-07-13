@@ -1,8 +1,8 @@
 # File: app/routes/users.py
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, make_response 
+from flask import Blueprint, render_template, request, current_app, session, make_response 
 from flask_login import login_required, current_user
-from sqlalchemy import or_
-from app.models import User, Setting, EventType, AdminAccount  # AdminAccount might not be needed directly here
+from sqlalchemy import or_, func
+from app.models import User, Setting, EventType, AdminAccount, StreamHistory  # AdminAccount might not be needed directly here
 from app.forms import UserEditForm, MassUserEditForm
 from app.extensions import db
 from app.utils.helpers import log_event, setup_required, permission_required
@@ -18,9 +18,9 @@ bp = Blueprint('users', __name__)
 @setup_required
 def list_users():
     page = request.args.get('page', 1, type=int)
-    view_mode = request.args.get('view', Setting.get('DEFAULT_USER_VIEW', 'cards')) 
-    
-    session_per_page_key = 'users_list_per_page' 
+    view_mode = request.args.get('view', Setting.get('DEFAULT_USER_VIEW', 'cards'))
+   
+    session_per_page_key = 'users_list_per_page'
     default_per_page_config = current_app.config.get('DEFAULT_USERS_PER_PAGE', 12)
     try:
         items_per_page = int(request.args.get('per_page'))
@@ -37,47 +37,71 @@ def list_users():
     search_term = request.args.get('search', '').strip()
     if search_term:
         query = query.filter(or_(User.plex_username.ilike(f"%{search_term}%"), User.plex_email.ilike(f"%{search_term}%")))
-    
+   
     filter_type = request.args.get('filter_type', '')
     if filter_type == 'home_user': query = query.filter(User.is_home_user == True)
     elif filter_type == 'shares_back': query = query.filter(User.shares_back == True)
     elif filter_type == 'has_discord': query = query.filter(User.discord_user_id != None)
     elif filter_type == 'no_discord': query = query.filter(User.discord_user_id == None)
-    
-    # --- START OF NEW SORTING LOGIC ---
+   
+    # --- START OF ENHANCED SORTING LOGIC ---
     sort_by_param = request.args.get('sort_by', 'username_asc')
     sort_parts = sort_by_param.rsplit('_', 1)
     sort_column = sort_parts[0]
     sort_direction = 'desc' if len(sort_parts) > 1 and sort_parts[1] == 'desc' else 'asc'
 
-    sort_map = {
-        'username': User.plex_username,
-        'email': User.plex_email,
-        'last_streamed': User.last_streamed_at,
-        'created_at': User.created_at # Added for completeness if you want to sort by date added
-    }
-    
-    # Default to sorting by username if the column is invalid
-    sort_field = sort_map.get(sort_column, User.plex_username)
-
-    if sort_direction == 'desc':
-        # Use .nullslast() to ensure users with no data (e.g., never streamed) appear at the end
-        query = query.order_by(sort_field.desc().nullslast())
+    # Handle sorting that requires joins and aggregation
+    if sort_column in ['total_plays', 'total_duration']:
+        # For stats sorting, we must join and group
+        query = query.outerjoin(User.stream_history).group_by(User.id)
+        
+        # Select the User object and the aggregated columns
+        sort_field = func.count(StreamHistory.id) if sort_column == 'total_plays' else func.sum(func.coalesce(StreamHistory.duration_seconds, 0))
+        query = query.add_columns(sort_field.label('sort_value'))
+        
+        if sort_direction == 'desc':
+            query = query.order_by(db.desc('sort_value').nullslast())
+        else:
+            query = query.order_by(db.asc('sort_value').nullsfirst())
     else:
-        # Use .nullsfirst() to ensure users with no data appear at the beginning
-        query = query.order_by(sort_field.asc().nullsfirst())
-    # --- END OF NEW SORTING LOGIC ---
+        # Standard sorting on direct User model fields
+        sort_map = {
+            'username': User.plex_username,
+            'email': User.plex_email,
+            'last_streamed': User.last_streamed_at,
+            'plex_join_date': User.plex_join_date,
+            'created_at': User.created_at
+        }
+        
+        # Default to sorting by username if the column is invalid
+        sort_field = sort_map.get(sort_column, User.plex_username)
+
+        if sort_direction == 'desc':
+            # Use .nullslast() to ensure users with no data appear at the end
+            query = query.order_by(sort_field.desc().nullslast())
+        else:
+            # Use .nullsfirst() to ensure users with no data appear at the beginning
+            query = query.order_by(sort_field.asc().nullsfirst())
+    # --- END OF ENHANCED SORTING LOGIC ---
 
     admin_accounts = AdminAccount.query.filter(AdminAccount.plex_uuid.isnot(None)).all()
     admins_by_uuid = {admin.plex_uuid: admin for admin in admin_accounts}
     users_pagination = query.paginate(page=page, per_page=items_per_page, error_out=False)
-    users_count = query.count() 
+    users_count = query.count()
+
+    # Extract users from pagination results (handling complex queries that return tuples)
+    users_on_page = [item[0] if isinstance(item, tuple) else item for item in users_pagination.items]
+    user_ids_on_page = [user.id for user in users_on_page]
+
+    # Fetch additional data for the current page
+    stream_stats = user_service.get_bulk_user_stream_stats(user_ids_on_page)
+    last_ips = user_service.get_bulk_last_known_ips(user_ids_on_page)
 
     available_libraries = plex_service.get_plex_libraries_dict()
     mass_edit_form = MassUserEditForm()
     mass_edit_form.libraries.choices = [(lib_id, name) for lib_id, name in available_libraries.items()]
-    if mass_edit_form.libraries.data is None: 
-        mass_edit_form.libraries.data = []   
+    if mass_edit_form.libraries.data is None:
+        mass_edit_form.libraries.data = []  
 
     default_inactive_days = 90
     default_exclude_sharers = True
@@ -86,12 +110,14 @@ def list_users():
         'inactive_days': request.form.get('inactive_days', default_inactive_days, type=int),
         'exclude_sharers': request.form.get('exclude_sharers', 'true' if default_exclude_sharers else 'false').lower() == 'true'
     }
-    
-    # We will build a single context dictionary to pass to the templates
+   
+    # Enhanced context dictionary with additional data
     template_context = {
         'title': "Managed Users",
         'users': users_pagination,
         'users_count': users_count,
+        'stream_stats': stream_stats,  # Added for total plays and duration
+        'last_ips': last_ips,  # Added for last known IP
         'current_view': view_mode,
         'available_libraries': available_libraries,
         'mass_edit_form': mass_edit_form,
@@ -100,8 +126,8 @@ def list_users():
         'purge_settings': purge_settings_context,
         'admin_plex_uuids': {admin.plex_uuid for admin in admin_accounts},
         'admins_by_uuid': admins_by_uuid,
-        'sort_column': sort_column,      # Pass sorting info to the template
-        'sort_direction': sort_direction # Pass sorting info to the template
+        'sort_column': sort_column,
+        'sort_direction': sort_direction
     }
 
     if request.headers.get('HX-Request'):

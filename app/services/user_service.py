@@ -492,3 +492,45 @@ def get_user_stream_stats(user_id):
     player_stats = [{'name': p.player or 'Unknown', 'plays': p.play_count} for p in player_stats_query]
 
     return {'global': global_stats, 'players': player_stats}
+
+def get_bulk_user_stream_stats(user_ids: list[int]) -> dict:
+    """
+    Efficiently gets total plays and duration for a list of user IDs.
+    Returns a dictionary mapping user_id to its stats.
+    """
+    if not user_ids:
+        return {}
+
+    results = db.session.query(
+        StreamHistory.user_id,
+        func.count(StreamHistory.id).label('total_plays'),
+        func.sum(StreamHistory.duration_seconds).label('total_duration')
+    ).filter(StreamHistory.user_id.in_(user_ids)).group_by(StreamHistory.user_id).all()
+
+    return {
+        user_id: {'play_count': plays, 'total_duration': duration or 0}
+        for user_id, plays, duration in results
+    }
+
+def get_bulk_last_known_ips(user_ids: list[int]) -> dict:
+    """
+    Efficiently gets the most recent IP address for a list of user IDs.
+    Returns a dictionary mapping user_id to the last known IP address.
+    """
+    if not user_ids:
+        return {}
+
+    # Use a subquery to rank history entries by date for each user
+    subquery = db.session.query(
+        StreamHistory.user_id,
+        StreamHistory.ip_address,
+        func.row_number().over(
+            partition_by=StreamHistory.user_id,
+            order_by=StreamHistory.started_at.desc()
+        ).label('rn')
+    ).filter(StreamHistory.user_id.in_(user_ids)).filter(StreamHistory.ip_address.isnot(None)).subquery()
+
+    # Select only the most recent entry (rank = 1) for each user
+    results = db.session.query(subquery.c.user_id, subquery.c.ip_address).filter(subquery.c.rn == 1).all()
+
+    return {user_id: ip_address for user_id, ip_address in results}

@@ -7,9 +7,9 @@
             <thead>
                 <tr>
                     <th>Invite Link / Path</th>
-                    <th class="hidden md:table-cell">Granted Libraries</th>
+                    <th>Granted Libraries</th>
                     <th>Uses</th>
-                    <th class="hidden sm:table-cell">Expires</th>
+                    <th>Expires</th>
                     <th>Status</th>
                     <th class="text-center">Actions</th>
                 </tr>
@@ -29,7 +29,7 @@
                         </a>
                         <div class="text-xs opacity-60">Created: {{ invite.created_at | time_ago }}</div>
                     </td>
-                    <td class="hidden md:table-cell text-xs">
+                    <td class="text-xs">
                         {% set granted_ids = invite.grant_library_ids or [] %}
                         {% if granted_ids|length > 0 %}
                             <div class="flex flex-col space-y-0.5 max-h-16 overflow-y-auto">
@@ -44,7 +44,7 @@
                         {% endif %}
                     </td>
                     <td class="text-sm">{{ invite.current_uses }} / {{ invite.max_uses or '∞' }}</td>
-                    <td class="hidden sm:table-cell text-sm" title="{{ invite.expires_at | format_datetime_human if invite.expires_at else 'Never expires' }}">
+                    <td class="text-sm" title="{{ invite.expires_at | format_datetime_human if invite.expires_at else 'Never expires' }}">
                         {{ invite.expires_at | time_ago if invite.expires_at else 'Never' }}
                         {% if invite.expires_at and not invite.is_expired %}<div class="text-xs opacity-60">({{ invite.expires_at | format_datetime_human(include_time=False) }})</div>{% endif %}
                     </td>

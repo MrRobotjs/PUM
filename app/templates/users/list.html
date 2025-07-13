@@ -253,8 +253,13 @@
 {{ super() }}
 <script>
     const TABLE_COLUMNS = {
-        email: 'Email', status: 'Status', libraries: 'Libraries',
-        last_streamed: 'Last Streamed', actions: 'Actions'
+        email: 'Email',
+        plex_join_date: 'Plex Join Date',
+        last_known_ip: 'Last Known IP',
+        total_plays: 'Total Plays',
+        total_duration: 'Total Duration',
+        last_streamed: 'Last Streamed',
+        actions: 'Actions'
     };
     function saveColumnPreferences(prefs) { localStorage.setItem('userTableColumnPrefs', JSON.stringify(prefs)); }
     function loadColumnPreferences() {

@@ -10,50 +10,37 @@
                     </label>
                 </th>
 
-                <!-- START: Header Modifications -->
-                {# Create a mutable dictionary from the request args #}
                 {% set query_params = request.args.to_dict() %}
                 
-                {# User Header #}
-                {% set next_sort_username = 'username_desc' if sort_column == 'username' and sort_direction == 'asc' else 'username_asc' %}
-                {% do query_params.update({'sort_by': next_sort_username}) %}
-                <th data-col="user">
-                    <a href="{{ url_for('users.list_users', **query_params) }}" 
-                       hx-get="{{ url_for('users.list_users', **query_params) }}"
-                       hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">
-                        User
-                        {% if sort_column == 'username' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}
-                    </a>
-                </th>
+                {% set next_sort_user = 'username_desc' if sort_column == 'username' and sort_direction == 'asc' else 'username_asc' %}
+                {% do query_params.update({'sort_by': next_sort_user}) %}
+                <th data-col="user"><a href="{{ url_for('users.list_users', **query_params) }}" hx-get="{{ url_for('users.list_users', **query_params) }}" hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">User {% if sort_column == 'username' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}</a></th>
+                
+                <th data-col="email">Email</th>
 
-                {# Email Header #}
-                {% set next_sort_email = 'email_desc' if sort_column == 'email' and sort_direction == 'asc' else 'email_asc' %}
-                {% do query_params.update({'sort_by': next_sort_email}) %}
-                <th data-col="email">
-                    <a href="{{ url_for('users.list_users', **query_params) }}"
-                       hx-get="{{ url_for('users.list_users', **query_params) }}"
-                       hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">
-                        Email
-                        {% if sort_column == 'email' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}
-                    </a>
-                </th>
+                {% set next_sort_join_date = 'plex_join_date_desc' if sort_column == 'plex_join_date' and sort_direction == 'asc' else 'plex_join_date_asc' %}
+                {% do query_params.update({'sort_by': next_sort_join_date}) %}
+                <th data-col="plex_join_date"><a href="{{ url_for('users.list_users', **query_params) }}" hx-get="{{ url_for('users.list_users', **query_params) }}" hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">Plex Join Date {% if sort_column == 'plex_join_date' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}</a></th>
 
+                <th data-col="last_known_ip">Last Known IP</th>
+
+                {% set next_sort_plays = 'total_plays_desc' if sort_column == 'total_plays' and sort_direction == 'asc' else 'total_plays_asc' %}
+                {% do query_params.update({'sort_by': next_sort_plays}) %}
+                <th data-col="total_plays"><a href="{{ url_for('users.list_users', **query_params) }}" hx-get="{{ url_for('users.list_users', **query_params) }}" hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">Total Plays {% if sort_column == 'total_plays' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}</a></th>
+                
+                {% set next_sort_duration = 'total_duration_desc' if sort_column == 'total_duration' and sort_direction == 'asc' else 'total_duration_asc' %}
+                {% do query_params.update({'sort_by': next_sort_duration}) %}
+                <th data-col="total_duration"><a href="{{ url_for('users.list_users', **query_params) }}" hx-get="{{ url_for('users.list_users', **query_params) }}" hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">Total Duration {% if sort_column == 'total_duration' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}</a></th>
+                
                 <th data-col="status">Status</th>
+                
                 <th data-col="libraries">Libraries</th>
-
-                {# Last Streamed Header #}
+                
                 {% set next_sort_streamed = 'last_streamed_desc' if sort_column == 'last_streamed' and sort_direction == 'asc' else 'last_streamed_asc' %}
                 {% do query_params.update({'sort_by': next_sort_streamed}) %}
-                <th data-col="last_streamed">
-                     <a href="{{ url_for('users.list_users', **query_params) }}"
-                       hx-get="{{ url_for('users.list_users', **query_params) }}"
-                       hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">
-                        Last Streamed
-                        {% if sort_column == 'last_streamed' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}
-                    </a>
-                </th>
+                <th data-col="last_streamed"><a href="{{ url_for('users.list_users', **query_params) }}" hx-get="{{ url_for('users.list_users', **query_params) }}" hx-target="#user-list-container" hx-swap="innerHTML" hx-push-url="true" class="link link-hover">Last Streamed {% if sort_column == 'last_streamed' %}<i class="fa-solid fa-sort-{{ 'down' if sort_direction == 'desc' else 'up' }} ml-1"></i>{% endif %}</a></th>
+                
                 <th class="text-center" data-col="actions">Actions</th>
-                <!-- END: Header Modifications -->
             </tr>
         </thead>
         <tbody>
@@ -72,12 +59,24 @@
                     </div>
                 </td>
                 <td data-col="email" class="text-sm truncate max-w-xs" title="{{ user.plex_email or 'No email' }}">{{ user.plex_email or 'N/A' }}</td>
+                <td data-col="plex_join_date" class="text-sm">
+                    {{ user.plex_join_date | format_datetime_human(include_time=False) if user.plex_join_date else 'N/A' }}
+                </td>
+                <td data-col="last_known_ip" class="text-sm font-mono">
+                    {{ last_ips.get(user.id, 'N/A') }}
+                </td>
+                <td data-col="total_plays" class="text-sm">
+                    {{ stream_stats.get(user.id, {}).get('play_count', 0) }}
+                </td>
+                <td data-col="total_duration" class="text-sm">
+                    {{ stream_stats.get(user.id, {}).get('total_duration', 0) | format_duration }}
+                </td>
                 <td data-col="status">
-                    {% if user.is_home_user %}<span class="badge badge-primary badge-sm" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</span>{% endif %}
-                    {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</span>{% endif %}
-                    {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Discord</span>{% endif %}
+                    {% if user.is_home_user %}<span class="badge badge-primary badge-sm whitespace-nowrap" title="Plex Home User"><i class="fa-solid fa-home mr-1"></i> Home</span>{% endif %}
+                    {% if user.shares_back %}<span class="badge badge-secondary badge-sm mt-1 whitespace-nowrap" title="Shares Libraries Back"><i class="fa-solid fa-server mr-1"></i> Shares Back</span>{% endif %}
+                    {% if user.discord_user_id %}<span class="badge badge-info badge-sm mt-1 whitespace-nowrap" title="Discord: {{ user.discord_username or 'Linked' }}"><i class="fa-brands fa-discord mr-1"></i> Discord</span>{% endif %}
                     {% if user.is_purge_whitelisted %}
-                        <span class="badge badge-accent badge-sm mb-1" title="This user is immune to inactivity purges.">
+                        <span class="badge badge-accent badge-sm mb-1 whitespace-nowrap" title="This user is immune to inactivity purges.">
                             <i class="fa-solid fa-shield-halved mr-1"></i> Purge WL
                         </span>
                     {% endif %}
@@ -88,7 +87,7 @@
                         {% set initially_visible_count = 3 %}
                         {% for lib_id in user.allowed_library_ids %}
                             {% set lib_name = available_libraries.get(lib_id | string, 'Lib ID ' ~ (lib_id | string)) %}
-                            <span class="badge badge-xs badge-outline library-badge-for-user-{{ user.id }} {{ 'extra-library-badge hidden' if loop.index0 >= initially_visible_count else '' }}" title="{{ lib_name }}">
+                            <span class="badge badge-xs badge-outline whitespace-nowrap library-badge-for-user-{{ user.id }} {{ 'extra-library-badge hidden' if loop.index0 >= initially_visible_count else '' }}" title="{{ lib_name }}">
                                 {{ lib_name | truncate(25, True) }}
                             </span>
                         {% endfor %}
