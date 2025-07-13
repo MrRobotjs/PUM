@@ -69,12 +69,12 @@
                                 {% set paused_seconds = total_elapsed - entry.duration_seconds %}
                                 {{ paused_seconds | format_duration if paused_seconds > 0 else '0m' }}
                             {% else %}
-                                ...
+                                N/A
                             {% endif %}
                         </td>
                         
                         <td>
-                            {{ entry.stopped_at.strftime('%I:%M %p') if entry.stopped_at else '...' }}
+                            {{ entry.stopped_at.strftime('%I:%M %p') if entry.stopped_at else 'N/A' }}
                         </td>
                         <td>
                             {{ entry.duration_seconds | format_duration if entry.duration_seconds is not none else 'In Progress' }}
