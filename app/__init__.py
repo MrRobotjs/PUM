@@ -293,6 +293,7 @@ def create_app(config_name=None):
     app.register_blueprint(api_bp, url_prefix='/api')
     from .routes.user import bp as user_bp
     app.register_blueprint(user_bp, url_prefix='/user')
+    
 
     register_error_handlers(app)
 

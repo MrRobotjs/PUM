@@ -199,18 +199,33 @@ def monitor_plex_sessions_task():
 
 def check_user_access_expirations_task():
     """
-    Checks for users whose access (granted by invites with duration) has expired
-    and removes them from PUM and Plex.
+    Checks for users whose access has expired and removes them from PUM and Plex.
+    This version correctly compares naive datetimes to ensure accuracy.
     """
     with scheduler.app.app_context():
         current_app.logger.info("Task_Service: Running check_user_access_expirations_task...")
         
-        now_utc = datetime.now(timezone.utc)
-        # Query for users who have an expiration date set and that date is in the past or now
+        # Enhanced debugging
+        now_naive = datetime.utcnow()
+        current_app.logger.info(f"Task_Service: Current UTC time (naive): {now_naive}")
+        
+        # First, let's see all users with expiration dates
+        all_users_with_expiry = User.query.filter(User.access_expires_at.isnot(None)).all()
+        current_app.logger.info(f"Task_Service: Found {len(all_users_with_expiry)} users with expiration dates:")
+        
+        for user in all_users_with_expiry:
+            expiry_date = user.access_expires_at
+            is_expired = expiry_date <= now_naive
+            time_diff = (expiry_date - now_naive).total_seconds() if expiry_date else None
+            current_app.logger.info(f"  - User '{user.plex_username}' (ID: {user.id}): expires {expiry_date} | Expired: {is_expired} | Time diff: {time_diff}s")
+        
+        # Now get actually expired users
         expired_users = User.query.filter(
             User.access_expires_at.isnot(None), 
-            User.access_expires_at <= now_utc
+            User.access_expires_at <= now_naive
         ).all()
+        
+        current_app.logger.info(f"Task_Service: Query returned {len(expired_users)} expired users")
 
         if not expired_users:
             current_app.logger.info("Task_Service: No users found with expired access.")
@@ -218,50 +233,87 @@ def check_user_access_expirations_task():
 
         current_app.logger.info(f"Task_Service: Found {len(expired_users)} user(s) with expired access. Processing removals...")
         
-        removed_count = 0
-        error_count = 0
-        system_admin_id = None # Or determine a system admin ID if you have one for logging
-
-        # Attempt to get admin ID for logging purposes, if an admin account exists
+        system_admin_id = None
         try:
-            from app.models import AdminAccount # Local import
-            admin = AdminAccount.query.first() # Get first admin, or a specific system admin
+            from app.models import AdminAccount
+            admin = AdminAccount.query.first()
             if admin:
                 system_admin_id = admin.id
+            current_app.logger.debug(f"Task_Service: Using system_admin_id: {system_admin_id}")
         except Exception as e_admin:
             current_app.logger.warning(f"Task_Service: Could not fetch admin_id for logging expiration task: {e_admin}")
 
-
+        removal_count = 0
         for user in expired_users:
             username_for_log = user.plex_username
             pum_user_id_for_log = user.id
             original_expiry_for_log = user.access_expires_at
             
             try:
-                current_app.logger.info(f"Task_Service: Expired access for user '{username_for_log}' (PUM ID: {pum_user_id_for_log}). Original expiry: {original_expiry_for_log}. Removing...")
-                # The user_service.delete_user_from_pum_and_plex logs the PUM_USER_DELETED_FROM_PUM event.
-                # We can add a more specific event here for automated removal due to expiration.
-                user_service.delete_user_from_pum_and_plex(user_id=pum_user_id_for_log, admin_id=system_admin_id) # Pass admin_id for log
-                removed_count += 1
+                current_app.logger.info(f"Task_Service: Processing expired user '{username_for_log}' (PUM ID: {pum_user_id_for_log}). Expiry: {original_expiry_for_log}. Removing...")
+                
+                # Check if user_service.delete_user_from_pum_and_plex exists
+                if not hasattr(user_service, 'delete_user_from_pum_and_plex'):
+                    current_app.logger.error(f"Task_Service: user_service.delete_user_from_pum_and_plex method not found!")
+                    continue
+                
+                user_service.delete_user_from_pum_and_plex(user_id=pum_user_id_for_log, admin_id=system_admin_id)
+                removal_count += 1
+                
                 log_event(
-                    EventType.PUM_USER_DELETED_FROM_PUM, # Consider a new EventType.USER_ACCESS_EXPIRED_REMOVED
+                    EventType.PUM_USER_DELETED_FROM_PUM,
                     f"User '{username_for_log}' automatically removed due to expired invite-based access (expired: {original_expiry_for_log}).",
                     user_id=pum_user_id_for_log,
                     admin_id=system_admin_id, 
                     details={"reason": "Automated removal: invite access duration expired."}
                 )
+                current_app.logger.info(f"Task_Service: Successfully removed expired user '{username_for_log}'")
+                
             except Exception as e:
-                error_count += 1
                 current_app.logger.error(f"Task_Service: Error removing expired user '{username_for_log}' (PUM ID: {pum_user_id_for_log}): {e}", exc_info=True)
                 log_event(
-                    EventType.ERROR_GENERAL, # Or ERROR_TASK_PROCESSING
+                    EventType.ERROR_GENERAL,
                     f"Task failed to remove expired user '{username_for_log}': {e}",
                     user_id=pum_user_id_for_log,
                     admin_id=system_admin_id
                 )
         
-        current_app.logger.info(f"Task_Service: User access expiration check complete. Removed: {removed_count}, Errors: {error_count}.")
+        current_app.logger.info(f"Task_Service: User access expiration check complete. Removed: {removal_count}/{len(expired_users)} users.")
 
+# Add this helper function to check scheduler status
+def debug_scheduler_status():
+    """Debug function to check scheduler status"""
+    with scheduler.app.app_context():
+        current_app.logger.info("=== SCHEDULER DEBUG INFO ===")
+        current_app.logger.info(f"Scheduler running: {scheduler.running}")
+        current_app.logger.info(f"Scheduler state: {scheduler.state}")
+        
+        jobs = scheduler.get_jobs()
+        current_app.logger.info(f"Total jobs: {len(jobs)}")
+        
+        for job in jobs:
+            current_app.logger.info(f"Job ID: {job.id}")
+            current_app.logger.info(f"  Function: {job.func}")
+            current_app.logger.info(f"  Next run: {job.next_run_time}")
+            current_app.logger.info(f"  Trigger: {job.trigger}")
+            
+        # Check specific expiration job
+        expiration_job = scheduler.get_job('check_user_expirations')
+        if expiration_job:
+            current_app.logger.info(f"Expiration job found:")
+            current_app.logger.info(f"  Next run: {expiration_job.next_run_time}")
+            current_app.logger.info(f"  Trigger: {expiration_job.trigger}")
+        else:
+            current_app.logger.warning("Expiration job NOT found in scheduler!")
+        
+        current_app.logger.info("=== END SCHEDULER DEBUG ===")
+
+# Add this manual trigger function
+def manually_trigger_expiration_check():
+    """Manually trigger the expiration check for testing"""
+    current_app.logger.info("MANUAL TRIGGER: Running expiration check manually...")
+    check_user_access_expirations_task()
+    current_app.logger.info("MANUAL TRIGGER: Expiration check completed.")
 
 def _schedule_job_if_not_exists_or_reschedule(job_id, func, trigger_type, **trigger_args):
     """Helper to add or reschedule a job."""
@@ -292,7 +344,7 @@ def schedule_all_tasks():
     """Schedules all recurring tasks defined in the application."""
     current_app.logger.info("Task_Service: Attempting to schedule all defined tasks...")
 
-    # 1. Plex Session Monitoring
+    # Get the session monitoring interval from settings
     try:
         interval_str = Setting.get('SESSION_MONITORING_INTERVAL_SECONDS', '60')
         session_interval_seconds = int(interval_str)
@@ -302,7 +354,8 @@ def schedule_all_tasks():
     except (ValueError, TypeError):
         session_interval_seconds = 60
         current_app.logger.warning(f"Invalid SESSION_MONITORING_INTERVAL_SECONDS. Defaulting to {session_interval_seconds}s.")
-    
+
+    # 1. Plex Session Monitoring
     if _schedule_job_if_not_exists_or_reschedule(
         job_id='monitor_plex_sessions',
         func=monitor_plex_sessions_task,
@@ -312,22 +365,14 @@ def schedule_all_tasks():
     ):
         log_event(EventType.APP_STARTUP, f"Plex session monitoring task (re)scheduled (Interval: {session_interval_seconds}s).")
 
-    # 2. User Access Expiration Check
-    try:
-        expiration_check_interval_hours_str = Setting.get('USER_EXPIRATION_CHECK_INTERVAL_HOURS', '24')
-        expiration_check_interval_hours = int(expiration_check_interval_hours_str)
-        if expiration_check_interval_hours <= 0: expiration_check_interval_hours = 24
-    except (ValueError, TypeError):
-        expiration_check_interval_hours = 24
-        current_app.logger.warning(f"Invalid USER_EXPIRATION_CHECK_INTERVAL_HOURS. Defaulting to {expiration_check_interval_hours}h.")
-
+    # 2. User Access Expiration Check - NOW USES SAME INTERVAL AS SESSION MONITORING
     if _schedule_job_if_not_exists_or_reschedule(
         job_id='check_user_expirations',
         func=check_user_access_expirations_task,
         trigger_type='interval',
-        hours=expiration_check_interval_hours,
-        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=5) # Start 5 mins from now
+        seconds=session_interval_seconds,  # CHANGED: Now uses same interval as session monitoring
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30) # Start 30 seconds after app start (offset from session monitoring)
     ):
-        log_event(EventType.APP_STARTUP, f"User access expiration check task (re)scheduled (Interval: {expiration_check_interval_hours}h).")
+        log_event(EventType.APP_STARTUP, f"User access expiration check task (re)scheduled (Interval: {session_interval_seconds}s - same as session monitoring).")
 
     current_app.logger.info("Task_Service: Finished attempting to schedule all tasks.")
