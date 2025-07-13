@@ -13,10 +13,10 @@ _active_stream_sessions = {}
 
 def monitor_plex_sessions_task():
     """
-    Statefully monitors Plex sessions, now with progress tracking.
-    - Creates a StreamHistory record on start, including total media duration.
-    - Continuously updates the view offset (progress) on each check.
-    - Updates the record with a final timestamp when the session stops.
+    Statefully monitors Plex sessions, with corrected session tracking and duration calculation.
+    - Creates a new StreamHistory record when a new session starts.
+    - Continuously updates the view offset (progress) on the SAME record for an ongoing session.
+    - Correctly calculates final playback duration from the last known viewOffset when the session stops.
     - Enforces "No 4K Transcoding" user setting.
     """
     global _active_stream_sessions
@@ -29,7 +29,9 @@ def monitor_plex_sessions_task():
             active_plex_sessions = plex_service.get_active_sessions()
             now_utc = datetime.now(timezone.utc)
             
-            current_plex_session_keys = {session.sessionKey for session in active_plex_sessions if hasattr(session, 'sessionKey')}
+            # Create a dictionary of current sessions for easy lookup and to get the full session object
+            current_sessions_dict = {session.sessionKey: session for session in active_plex_sessions if hasattr(session, 'sessionKey')}
+            current_plex_session_keys = set(current_sessions_dict.keys())
 
             # Step 1: Check for stopped streams
             stopped_session_keys = set(_active_stream_sessions.keys()) - current_plex_session_keys
@@ -38,26 +40,22 @@ def monitor_plex_sessions_task():
                 if stream_history_id:
                     history_record = db.session.get(StreamHistory, stream_history_id)
                     if history_record and not history_record.stopped_at:
+                        # The final known progress IS the actual playback duration.
+                        final_duration = history_record.view_offset_at_end_seconds
+                        history_record.duration_seconds = final_duration if final_duration and final_duration > 0 else 0
+                        
                         history_record.stopped_at = now_utc
-                        started_at_aware = history_record.started_at.replace(tzinfo=timezone.utc)
-                        duration_delta = history_record.stopped_at - started_at_aware
-                        history_record.duration_seconds = int(duration_delta.total_seconds())
-                        current_app.logger.info(f"Stream STOPPED: Session {session_key}. Duration: {history_record.duration_seconds}s.")
+                        current_app.logger.info(f"Stream STOPPED: Session {session_key}. Final playback duration: {history_record.duration_seconds}s.")
             
             # Step 2: Check for new and ongoing streams
-            for session in active_plex_sessions:
-                session_key = getattr(session, 'sessionKey', None)
-                if not session_key:
-                    continue
-
+            for session_key, session in current_sessions_dict.items():
                 pum_user = None
                 if hasattr(session, 'user') and session.user and hasattr(session.user, 'id'):
                     pum_user = User.query.filter_by(plex_user_id=session.user.id).first()
                 
-                if not pum_user:
-                    continue 
+                if not pum_user: continue 
 
-                # --- 4K Transcode Enforcement Logic (no changes needed here) ---
+                # 4K Transcode Enforcement Logic
                 transcode_session = getattr(session, 'transcodeSession', None)
                 if transcode_session and not pum_user.allow_4k_transcode:
                     video_decision = getattr(transcode_session, 'videoDecision', 'copy').lower()
@@ -78,9 +76,7 @@ def monitor_plex_sessions_task():
                             except Exception as e_term:
                                 current_app.logger.error(f"Failed to terminate 4K transcode for session {session_key}: {e_term}")
 
-                # --- START OF MODIFIED LOGIC ---
-                
-                # If the session is new, create the history record
+                # If the session is new, create the history record AND add it to our tracker.
                 if session_key not in _active_stream_sessions:
                     media_duration_ms = getattr(session, 'duration', 0)
                     media_duration_s = int(media_duration_ms / 1000) if media_duration_ms else 0
@@ -90,28 +86,24 @@ def monitor_plex_sessions_task():
                         session_key=str(session_key),
                         rating_key=str(getattr(session, 'ratingKey', None)),
                         started_at=now_utc,
-                        platform=getattr(session.player, 'platform', None) if hasattr(session, 'player') else None,
-                        product=getattr(session.player, 'product', None) if hasattr(session, 'player') else None,
-                        player=getattr(session.player, 'title', None) if hasattr(session, 'player') else None,
-                        ip_address=getattr(session.player, 'address', None) if hasattr(session, 'player') else None,
-                        is_lan=getattr(session.player, 'local', False) if hasattr(session, 'player') else False,
-                        media_title=getattr(session, 'title', "Unknown Title"),
-                        media_type=getattr(session, 'type', None),
+                        platform=getattr(session.player, 'platform', 'N/A'),
+                        product=getattr(session.player, 'product', 'N/A'),
+                        player=getattr(session.player, 'title', 'N/A'),
+                        ip_address=getattr(session.player, 'address', 'N/A'),
+                        is_lan=getattr(session.player, 'local', False),
+                        media_title=getattr(session, 'title', "Unknown"),
+                        media_type=getattr(session, 'type', "Unknown"),
                         grandparent_title=getattr(session, 'grandparentTitle', None),
                         parent_title=getattr(session, 'parentTitle', None),
                         media_duration_seconds=media_duration_s,
                         view_offset_at_end_seconds=int(getattr(session, 'viewOffset', 0) / 1000)
                     )
                     db.session.add(new_history_record)
-                    db.session.flush() # This assigns an ID to new_history_record before the commit
-                    
-                    # This is the crucial line that was missing.
-                    # We add the new session to our global tracker dictionary.
+                    db.session.flush()
                     _active_stream_sessions[session_key] = new_history_record.id
-                    
                     current_app.logger.info(f"Stream STARTED: Session {session_key} for user {pum_user.id}. Recorded with DB ID {new_history_record.id}.")
                 
-                # If the session is ongoing, find its record and just update the progress.
+                # If the session is ongoing, find its record and just update the progress
                 else:
                     history_record_id = _active_stream_sessions.get(session_key)
                     if history_record_id:
@@ -120,8 +112,6 @@ def monitor_plex_sessions_task():
                             current_offset_s = int(getattr(session, 'viewOffset', 0) / 1000)
                             history_record.view_offset_at_end_seconds = current_offset_s
                             current_app.logger.debug(f"Stream ONGOING: Session {session_key}. Updated progress to {current_offset_s}s.")
-
-                # --- END OF MODIFIED LOGIC ---
 
                 # Always update the user's main 'last_streamed_at' field
                 user_service.update_user_last_streamed(pum_user.plex_user_id, now_utc)
