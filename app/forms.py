@@ -30,7 +30,7 @@ class PlexConfigForm(FlaskForm):
     connection_tested_successfully = HiddenField(default="false")
     submit = SubmitField('Save Plex Configuration')
 
-# ... The old AppBaseUrlForm is now redundant, but we can leave it for now ...
+# The old AppBaseUrlForm is now redundant, but we can leave it for now ...
 class AppBaseUrlForm(FlaskForm): # This form is no longer used on a dedicated page
     app_base_url = StringField('Application Base URL', validators=[DataRequired(message="This URL is required."), URL(message="Invalid URL. Must be full public URL (e.g., https://pum.example.com).")], description="Full public URL where this application is accessible.")
     submit = SubmitField('Save Application URL')
@@ -229,7 +229,7 @@ class InviteCreateForm(FlaskForm):
     
     submit = SubmitField('Create Invite')
     
-# --- GeneralSettingsForm, PlexSettingsForm ---
+# --- GeneralSettingsForm ---
 class GeneralSettingsForm(FlaskForm): # As before
     app_name = StringField("Application Name", validators=[Optional(), Length(max=100)])
     app_base_url = StringField(
